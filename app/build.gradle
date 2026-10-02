@@ -28,10 +28,14 @@ android {
 }
 
 dependencies {
+    // Baaki dependencies ke saath yeh line jodein:
+    implementation 'com.google.android.gms:play-services-auth:20.7.0'
+
+
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.cardview:cardview:1.0.0'
     
     // Google Sign-In लाइब्रेरी
-    implementation 'com.google.android.gms:play-services-auth:21.0.0'
+
 }
