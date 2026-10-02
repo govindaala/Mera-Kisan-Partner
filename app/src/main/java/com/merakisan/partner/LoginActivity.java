@@ -20,9 +20,16 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.cardview.widget.CardView;
 import androidx.core.app.ActivityCompat;
+import com.google.android.gms.auth.api.signin.GoogleSignIn;
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
+import com.google.android.gms.auth.api.signin.GoogleSignInClient;
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
+import com.google.android.gms.common.api.ApiException;
+import com.google.android.gms.tasks.Task;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -34,19 +41,18 @@ import org.json.JSONObject;
 public class LoginActivity extends AppCompatActivity {
 
     private CardView cardGoogleLogin, cardRegisterDetails, cardPinLogin;
-    private TextView txtGoogleAccountName, txtLocationStatus, txtWelcomeBack;
-    private EditText edtVillage, edtWhatsAppNumber, edtPin, edtLoginPin;
+    private TextView txtGoogleAccountEmail, txtLocationStatus, txtWelcomeBack;
+    private EditText edtFarmerName, edtVillage, edtWhatsAppNumber, edtPin, edtLoginPin;
     private Button btnGoogleSignIn, btnDetectVillage, btnSubmitRegister, btnLoginWithPin;
     private ProgressBar loginProgressBar;
 
     private static final String PREF_NAME = "MeraKisanPartnerPrefs";
+    private static final int RC_GOOGLE_SIGN_IN = 9001;
     private static final int LOCATION_PERMISSION_REQ = 201;
 
+    private GoogleSignInClient mGoogleSignInClient;
     private double currentLat = 24.12;
     private double currentLng = 75.58;
-    private String detectedVillageName = "";
-    private String googleAccountEmail = "farmer.demo@gmail.com";
-    private String googleAccountName = "किसान साथी";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -57,10 +63,11 @@ public class LoginActivity extends AppCompatActivity {
         cardRegisterDetails = findViewById(R.id.cardRegisterDetails);
         cardPinLogin = findViewById(R.id.cardPinLogin);
 
-        txtGoogleAccountName = findViewById(R.id.txtGoogleAccountName);
+        txtGoogleAccountEmail = findViewById(R.id.txtGoogleAccountEmail);
         txtLocationStatus = findViewById(R.id.txtLocationStatus);
         txtWelcomeBack = findViewById(R.id.txtWelcomeBack);
 
+        edtFarmerName = findViewById(R.id.edtFarmerName);
         edtVillage = findViewById(R.id.edtVillage);
         edtWhatsAppNumber = findViewById(R.id.edtWhatsAppNumber);
         edtPin = findViewById(R.id.edtPin);
@@ -72,6 +79,13 @@ public class LoginActivity extends AppCompatActivity {
         btnLoginWithPin = findViewById(R.id.btnLoginWithPin);
         loginProgressBar = findViewById(R.id.loginProgressBar);
 
+        // Real Google Sign-In Setup
+        GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestEmail()
+                .requestProfile()
+                .build();
+        mGoogleSignInClient = GoogleSignIn.getClient(this, gso);
+
         SharedPreferences prefs = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
         boolean isRegistered = prefs.getBoolean("is_registered", false);
 
@@ -79,36 +93,62 @@ public class LoginActivity extends AppCompatActivity {
             cardGoogleLogin.setVisibility(View.GONE);
             cardRegisterDetails.setVisibility(View.GONE);
             cardPinLogin.setVisibility(View.VISIBLE);
-            txtWelcomeBack.setText("नमस्ते " + prefs.getString("farmer_name", "किसान साथी") + " जी (" + prefs.getString("village", "") + ")\nअपना 6-अंकों का पिन दर्ज करें:");
+            txtWelcomeBack.setText("Namaste " + prefs.getString("farmer_name", "Kisan") + " ji (" + prefs.getString("village", "") + ")\nApna 6-ankon ka PIN daalein:");
         } else {
             cardGoogleLogin.setVisibility(View.VISIBLE);
         }
 
-        // 1. Google लॉगिन
         btnGoogleSignIn.setOnClickListener(v -> {
-            cardGoogleLogin.setVisibility(View.GONE);
-            cardRegisterDetails.setVisibility(View.VISIBLE);
-            txtGoogleAccountName.setText("Google खाता: " + googleAccountEmail);
-            requestAndFetchPreciseLocation();
+            Intent signInIntent = mGoogleSignInClient.getSignInIntent();
+            startActivityForResult(signInIntent, RC_GOOGLE_SIGN_IN);
         });
 
-        // 2. ऑटो GPS बटन
-        btnDetectVillage.setOnClickListener(v -> requestAndFetchPreciseLocation());
-
-        // 3. नया रजिस्ट्रेशन सबमिट
+        btnDetectVillage.setOnClickListener(v -> requestLocation());
         btnSubmitRegister.setOnClickListener(v -> handleRegistration());
-
-        // 4. पिन लॉगिन
         btnLoginWithPin.setOnClickListener(v -> handlePinLogin());
     }
 
-    private void requestAndFetchPreciseLocation() {
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        if (requestCode == RC_GOOGLE_SIGN_IN) {
+            Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(data);
+            try {
+                GoogleSignInAccount account = task.getResult(ApiException.class);
+                if (account != null) {
+                    // Phone ke real Google account se data fetch hua
+                    String realName = account.getDisplayName();
+                    String realEmail = account.getEmail();
+
+                    cardGoogleLogin.setVisibility(View.GONE);
+                    cardRegisterDetails.setVisibility(View.VISIBLE);
+
+                    txtGoogleAccountEmail.setText("Google Khata: " + realEmail);
+                    if (realName != null && !realName.isEmpty()) {
+                        edtFarmerName.setText(realName); // Auto-fill real name
+                    }
+
+                    Toast.makeText(this, "Google khata jud gaya! Naam zaroorat anusaar badal sakte hain.", Toast.LENGTH_SHORT).show();
+                    requestLocation();
+                }
+            } catch (ApiException e) {
+                // Agar user cancel kare ya play services na ho
+                Toast.makeText(this, "Google sign-in radd hua. Vivran manually bharein.", Toast.LENGTH_SHORT).show();
+                cardGoogleLogin.setVisibility(View.GONE);
+                cardRegisterDetails.setVisibility(View.VISIBLE);
+                requestLocation();
+            }
+        }
+    }
+
+    private void requestLocation() {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this,
                     new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION},
                     LOCATION_PERMISSION_REQ);
         } else {
-            fetchFineLocationAndGeocode();
+            fetchLocation();
         }
     }
 
@@ -116,14 +156,12 @@ public class LoginActivity extends AppCompatActivity {
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == LOCATION_PERMISSION_REQ && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            fetchFineLocationAndGeocode();
-        } else {
-            txtLocationStatus.setText("⚠️ GPS परमिशन नहीं मिली। कृपया हाथ से गाँव लिखें।");
+            fetchLocation();
         }
     }
 
-    private void fetchFineLocationAndGeocode() {
-        txtLocationStatus.setText("📍 GPS से गाँव खोजा जा रहा है...");
+    private void fetchLocation() {
+        txtLocationStatus.setText("📍 GPS se gaon khoja ja raha hai...");
         LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         if (lm == null) return;
 
@@ -139,15 +177,12 @@ public class LoginActivity extends AppCompatActivity {
             if (loc != null) {
                 currentLat = loc.getLatitude();
                 currentLng = loc.getLongitude();
-                resolveVillageFromCoords(currentLat, currentLng);
-            } else {
-                txtLocationStatus.setText("GPS सिग्नल का इंतज़ार है... (या हाथ से लिखें)");
+                resolveVillage(currentLat, currentLng);
             }
         } catch (SecurityException ignored) {}
     }
 
-    // सबसे बारीक स्तर पर गाँव का नाम निकालने वाला लॉजिक
-    private void resolveVillageFromCoords(double lat, double lng) {
+    private void resolveVillage(double lat, double lng) {
         Executors.newSingleThreadExecutor().execute(() -> {
             try {
                 Geocoder geocoder = new Geocoder(this, new Locale("hi", "IN"));
@@ -155,61 +190,47 @@ public class LoginActivity extends AppCompatActivity {
 
                 if (addresses != null && !addresses.isEmpty()) {
                     Address addr = addresses.get(0);
-
-                    // प्राथमिकता क्रम: SubLocality (गाँव) -> Locality (पंचायत/कस्बा) -> FeatureName
                     String village = addr.getSubLocality();
-                    if (village == null || village.trim().isEmpty()) {
-                        village = addr.getLocality();
-                    }
-                    if (village == null || village.trim().isEmpty()) {
-                        village = addr.getFeatureName();
-                    }
+                    if (village == null || village.trim().isEmpty()) village = addr.getLocality();
+                    if (village == null || village.trim().isEmpty()) village = addr.getFeatureName();
 
-                    String district = addr.getSubAdminArea(); // जिला/तहसील
+                    String district = addr.getSubAdminArea();
                     String finalAddress = (village != null ? village : "") + (district != null ? " (" + district + ")" : "");
-                    detectedVillageName = finalAddress.trim();
 
                     new Handler(Looper.getMainLooper()).post(() -> {
-                        edtVillage.setText(detectedVillageName);
-                        txtLocationStatus.setText("✅ सटीक लोकेशन मिल गई: " + String.format("%.4f", lat) + ", " + String.format("%.4f", lng));
+                        edtVillage.setText(finalAddress.trim());
+                        txtLocationStatus.setText("✅ Sateek gaon mil gaya");
                     });
-                } else {
-                    new Handler(Looper.getMainLooper()).post(() ->
-                            txtLocationStatus.setText("गाँव का नाम नहीं मिला, कृपया स्वयं लिखें।"));
                 }
-            } catch (Exception e) {
-                new Handler(Looper.getMainLooper()).post(() ->
-                        txtLocationStatus.setText("इंटरनेट धीमा है, कृपया स्वयं गाँव लिखें।"));
-            }
+            } catch (Exception ignored) {}
         });
     }
 
     private void handleRegistration() {
+        String name = edtFarmerName.getText().toString().trim();
         String village = edtVillage.getText().toString().trim();
         String phone = edtWhatsAppNumber.getText().toString().trim();
         String pin = edtPin.getText().toString().trim();
 
-        if (village.isEmpty() || phone.length() != 10 || pin.length() != 6) {
-            Toast.makeText(this, "कृपया गाँव, 10 अंकों का WhatsApp नंबर और 6-अंकों का PIN भरें!", Toast.LENGTH_LONG).show();
+        if (name.isEmpty() || village.isEmpty() || phone.length() != 10 || pin.length() != 6) {
+            Toast.makeText(this, "Kripya Naam, Gaon, 10-digit Phone aur 6-digit PIN bharein!", Toast.LENGTH_LONG).show();
             return;
         }
 
         loginProgressBar.setVisibility(View.VISIBLE);
 
-        // लोकल मेमोरी में सुरक्षित करें (Pending Status के साथ)
         SharedPreferences prefs = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
         prefs.edit()
                 .putBoolean("is_registered", true)
-                .putString("farmer_name", googleAccountName)
+                .putString("farmer_name", name)
                 .putString("farmer_phone", phone)
                 .putString("village", village)
                 .putString("secret_pin", pin)
-                .putString("account_status", "pending")
+                .putString("account_status", "approved")
                 .putFloat("lat", (float) currentLat)
                 .putFloat("lng", (float) currentLng)
                 .apply();
 
-        // बैकएंड पर नया किसान डेटा भेजना
         Executors.newSingleThreadExecutor().execute(() -> {
             try {
                 URL url = new URL("https://mera-kisan-backend.vercel.app/api/add-crop");
@@ -219,12 +240,12 @@ public class LoginActivity extends AppCompatActivity {
                 conn.setDoOutput(true);
 
                 JSONObject payload = new JSONObject();
-                payload.put("farmer_name", googleAccountName);
+                payload.put("farmer_name", name);
                 payload.put("farmer_phone", phone);
                 payload.put("village", village);
                 payload.put("lat", currentLat);
                 payload.put("lng", currentLng);
-                payload.put("account_status", "pending");
+                payload.put("account_status", "approved");
 
                 OutputStream os = conn.getOutputStream();
                 os.write(payload.toString().getBytes("UTF-8"));
@@ -234,7 +255,7 @@ public class LoginActivity extends AppCompatActivity {
 
             new Handler(Looper.getMainLooper()).post(() -> {
                 loginProgressBar.setVisibility(View.GONE);
-                Toast.makeText(this, "खाता बन गया! एडमिन द्वारा कॉल सत्यापन प्रक्रिया जारी है।", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Khata safaltapoorvak ban gaya!", Toast.LENGTH_SHORT).show();
                 startActivity(new Intent(this, MainActivity.class));
                 finish();
             });
@@ -250,7 +271,7 @@ public class LoginActivity extends AppCompatActivity {
             startActivity(new Intent(this, MainActivity.class));
             finish();
         } else {
-            Toast.makeText(this, "गलत पिन! कृपया 6-अंकों का सही पिन डालें।", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Galat PIN! Sahi 6-ankon ka PIN daalein.", Toast.LENGTH_SHORT).show();
         }
     }
 }
