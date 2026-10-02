@@ -10,7 +10,7 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="VERTICAL"
+        android:orientation="vertical"
         android:padding="16dp">
 
         <!-- शीर्ष हेडर -->
@@ -18,7 +18,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
-            android:orientation="HORIZONTAL">
+            android:orientation="horizontal">
 
             <TextView
                 android:layout_width="0dp"
@@ -52,7 +52,7 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="VERTICAL"
+                android:orientation="vertical"
                 android:padding="12dp">
 
                 <TextView
@@ -86,7 +86,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="center"
-                android:orientation="VERTICAL"
+                android:orientation="vertical"
                 android:padding="14dp">
 
                 <Button
@@ -122,7 +122,7 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="VERTICAL"
+                android:orientation="vertical"
                 android:padding="16dp">
 
                 <TextView
@@ -149,19 +149,19 @@
                     android:hint="उदा. शरबती गेहूँ (पूसा किरण)"
                     android:inputType="text" />
 
-                <!-- भाव और स्टॉक मात्रा -->
+                <!-- भाव और मात्रा -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:orientation="HORIZONTAL">
+                    android:orientation="horizontal">
 
                     <LinearLayout
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_marginEnd="6dp"
                         android:layout_weight="1"
-                        android:orientation="VERTICAL">
+                        android:orientation="vertical">
 
                         <TextView
                             android:layout_width="wrap_content"
@@ -183,7 +183,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginStart="6dp"
                         android:layout_weight="1"
-                        android:orientation="VERTICAL">
+                        android:orientation="vertical">
 
                         <TextView
                             android:layout_width="wrap_content"
@@ -201,7 +201,7 @@
                     </LinearLayout>
                 </LinearLayout>
 
-                <!-- श्रेणी (Category) -->
+                <!-- श्रेणी -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -215,7 +215,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="48dp" />
 
-                <!-- खेती का प्रकार (जैविक / कम केमिकल) -->
+                <!-- खेती का प्रकार -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -245,7 +245,7 @@
                     android:hint="उदा. Grade A, सुपर बोल्ड दाना, हाथ से बीना हुआ"
                     android:inputType="text" />
 
-                <!-- फ़सल की खासियत / विवरण -->
+                <!-- खासियत / विवरण -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -283,7 +283,7 @@
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- 4. पोस्टर प्रिव्यू व सोशल शेयरिंग सेक्शन -->
+        <!-- 4. पोस्टर प्रिव्यू व शेयर सेक्शन -->
         <androidx.cardview.widget.CardView
             android:id="@+id/cardPosterSection"
             android:layout_width="match_parent"
@@ -297,7 +297,7 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="VERTICAL"
+                android:orientation="vertical"
                 android:padding="16dp">
 
                 <TextView
@@ -308,7 +308,6 @@
                     android:textSize="16sp"
                     android:textStyle="bold" />
 
-                <!-- पोस्टर की छवि -->
                 <ImageView
                     android:id="@+id/imgPosterPreview"
                     android:layout_width="match_parent"
@@ -318,12 +317,11 @@
                     android:background="#E0E0E0"
                     android:scaleType="fitCenter" />
 
-                <!-- WhatsApp और Facebook शेयरिंग बटन -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="14dp"
-                    android:orientation="HORIZONTAL">
+                    android:orientation="horizontal">
 
                     <Button
                         android:id="@+id/btnShareWhatsApp"
