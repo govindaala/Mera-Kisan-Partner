@@ -4,7 +4,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F4F6F8"
+    android:background="#F8FAFC"
     android:fillViewport="true">
 
     <LinearLayout
@@ -18,7 +18,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="🌱 Mera Kisan Partner"
-            android:textColor="#1B5E20"
+            android:textColor="#166534"
             android:textSize="26sp"
             android:textStyle="bold" />
 
@@ -26,18 +26,18 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="किसान साथी पोर्टल | सीधी बिक्री, सही भाव"
-            android:textColor="#555555"
-            android:textSize="14sp" />
+            android:text="Kisan Saathi Portal | Asli Kisaan, Seedhi Bikri"
+            android:textColor="#64748B"
+            android:textSize="13sp" />
 
-        <!-- 1. गूगल लॉगिन कार्ड -->
+        <!-- 1. Real Google Login Card -->
         <androidx.cardview.widget.CardView
             android:id="@+id/cardGoogleLogin"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="28dp"
-            app:cardCornerRadius="8dp"
-            app:cardElevation="4dp">
+            android:layout_marginTop="26dp"
+            app:cardCornerRadius="14dp"
+            app:cardElevation="3dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -48,40 +48,40 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="कदम 1: पहचान सत्यापन"
-                    android:textColor="#2E7D32"
+                    android:text="Kadam 1: Google Pehchan Satypan"
+                    android:textColor="#166534"
                     android:textSize="16sp"
                     android:textStyle="bold" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="शुरू करने के लिए अपने Google / Gmail खाते से लॉगिन करें।"
-                    android:textColor="#666666"
+                    android:layout_marginTop="6dp"
+                    android:text="Phone me maujood Google account se 1-tap me login karein."
+                    android:textColor="#64748B"
                     android:textSize="13sp" />
 
                 <Button
                     android:id="@+id/btnGoogleSignIn"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
+                    android:layout_height="52dp"
                     android:layout_marginTop="16dp"
                     android:backgroundTint="#DB4437"
-                    android:text="G  Google खाते से आगे बढ़ें"
+                    android:text="G   Google Khate se Aage Badhein"
                     android:textColor="#FFFFFF"
                     android:textSize="15sp"
                     android:textStyle="bold" />
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- 2. ऑटो-गाँव + WhatsApp नंबर + 6-डिजिट पिन कार्ड -->
+        <!-- 2. Kisan Profile & Security Card (Naam edit karne ka option) -->
         <androidx.cardview.widget.CardView
             android:id="@+id/cardRegisterDetails"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            app:cardCornerRadius="8dp"
-            app:cardElevation="4dp"
+            android:layout_marginTop="18dp"
+            app:cardCornerRadius="14dp"
+            app:cardElevation="3dp"
             android:visibility="gone">
 
             <LinearLayout
@@ -93,28 +93,46 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="कदम 2: खेत का स्थान व सुरक्षा विवरण"
-                    android:textColor="#1B5E20"
+                    android:text="Kadam 2: Kisan Profile & Vivran"
+                    android:textColor="#166534"
                     android:textSize="16sp"
                     android:textStyle="bold" />
 
                 <TextView
-                    android:id="@+id/txtGoogleAccountName"
+                    android:id="@+id/txtGoogleAccountEmail"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="Google खाता: farmer@gmail.com"
-                    android:textColor="#0D47A1"
+                    android:text="Google: -"
+                    android:textColor="#0369A1"
                     android:textSize="13sp" />
 
-                <!-- गाँव ऑटो-डिटेक्ट सेक्शन -->
+                <!-- Naam Edit Option -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:text="गाँव का नाम (सटीक GPS लोकेशन से)"
-                    android:textColor="#333333"
-                    android:textSize="14sp"
+                    android:layout_marginTop="14dp"
+                    android:text="Kisan ka Naam (Zaroorat ho to badlein)"
+                    android:textColor="#334155"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <EditText
+                    android:id="@+id/edtFarmerName"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:background="@android:drawable/edit_text"
+                    android:hint="Aapka pura naam"
+                    android:inputType="textPersonName" />
+
+                <!-- Gaon GPS -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="Gaon ka Naam (GPS se)"
+                    android:textColor="#334155"
+                    android:textSize="13sp"
                     android:textStyle="bold" />
 
                 <LinearLayout
@@ -126,18 +144,19 @@
                     <EditText
                         android:id="@+id/edtVillage"
                         android:layout_width="0dp"
-                        android:layout_height="wrap_content"
+                        android:layout_height="48dp"
                         android:layout_weight="1"
-                        android:hint="गाँव खोजा जा रहा है..."
+                        android:background="@android:drawable/edit_text"
+                        android:hint="Gaon ka naam"
                         android:inputType="textPostalAddress" />
 
                     <Button
                         android:id="@+id/btnDetectVillage"
                         android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
-                        android:backgroundTint="#388E3C"
-                        android:text="📍 ऑटो GPS"
+                        android:layout_height="48dp"
+                        android:layout_marginStart="6dp"
+                        android:backgroundTint="#166534"
+                        android:text="📍 GPS"
                         android:textColor="#FFFFFF"
                         android:textSize="12sp" />
                 </LinearLayout>
@@ -146,74 +165,69 @@
                     android:id="@+id/txtLocationStatus"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="GPS से सटीक गाँव पकड़ा जा रहा है..."
-                    android:textColor="#2E7D32"
+                    android:text="Sateek gaon dhoondha ja raha hai..."
+                    android:textColor="#166534"
                     android:textSize="11sp" />
 
-                <!-- WhatsApp नंबर -->
+                <!-- WhatsApp Number -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:text="WhatsApp मोबाइल नंबर"
-                    android:textColor="#333333"
-                    android:textSize="14sp"
+                    android:layout_marginTop="12dp"
+                    android:text="WhatsApp Mobile Number"
+                    android:textColor="#334155"
+                    android:textSize="13sp"
                     android:textStyle="bold" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="*ग्राहक ऑर्डर इसी नंबर पर भेजेंगे और एडमिन सत्यापन कॉल इसी पर आएगा"
-                    android:textColor="#D84315"
-                    android:textSize="12sp" />
 
                 <EditText
                     android:id="@+id/edtWhatsAppNumber"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:hint="10 अंकों का WhatsApp नंबर"
+                    android:layout_height="48dp"
+                    android:background="@android:drawable/edit_text"
+                    android:hint="10 ankon ka WhatsApp number"
                     android:inputType="phone"
                     android:maxLength="10" />
 
-                <!-- 6-डिजिट पिन -->
+                <!-- 6-digit PIN -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:text="6-अंकों का गुप्त सुरक्षा पिन (PIN)"
-                    android:textColor="#333333"
-                    android:textSize="14sp"
+                    android:layout_marginTop="12dp"
+                    android:text="6-Ankon ka Gupt Suraksha PIN"
+                    android:textColor="#334155"
+                    android:textSize="13sp"
                     android:textStyle="bold" />
 
                 <EditText
                     android:id="@+id/edtPin"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:hint="उदा. 123456"
+                    android:layout_height="48dp"
+                    android:background="@android:drawable/edit_text"
+                    android:hint="Uda. 123456"
                     android:inputType="numberPassword"
                     android:maxLength="6" />
 
                 <Button
                     android:id="@+id/btnSubmitRegister"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="20dp"
-                    android:backgroundTint="#1B5E20"
-                    android:text="खाता पंजीकृत करें व ऐप खोलें 👉"
+                    android:layout_height="50dp"
+                    android:layout_marginTop="18dp"
+                    android:backgroundTint="#166534"
+                    android:text="Profile Save Karein Aur App Kholein 👉"
                     android:textColor="#FFFFFF"
                     android:textSize="15sp"
                     android:textStyle="bold" />
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- 3. मौजूदा किसान के लिए 6-अंकों का पिन लॉगिन -->
+        <!-- 3. Existing Farmer PIN Login Card -->
         <androidx.cardview.widget.CardView
             android:id="@+id/cardPinLogin"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            app:cardCornerRadius="8dp"
-            app:cardElevation="4dp"
+            android:layout_marginTop="18dp"
+            app:cardCornerRadius="14dp"
+            app:cardElevation="3dp"
             android:visibility="gone">
 
             <LinearLayout
@@ -225,8 +239,8 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="सुरक्षा पिन दर्ज करें"
-                    android:textColor="#1B5E20"
+                    android:text="Suraksha PIN Darj Karein"
+                    android:textColor="#166534"
                     android:textSize="16sp"
                     android:textStyle="bold" />
 
@@ -235,26 +249,27 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="नमस्ते किसान साथी, अपना 6-अंकों का पिन डालें:"
-                    android:textColor="#555555"
+                    android:text="Namaste kisan saathi, apna 6-ankon ka PIN daalein:"
+                    android:textColor="#64748B"
                     android:textSize="13sp" />
 
                 <EditText
                     android:id="@+id/edtLoginPin"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
+                    android:layout_height="48dp"
                     android:layout_marginTop="12dp"
-                    android:hint="6-अंकों का PIN"
+                    android:background="@android:drawable/edit_text"
+                    android:hint="6-ankon ka PIN"
                     android:inputType="numberPassword"
                     android:maxLength="6" />
 
                 <Button
                     android:id="@+id/btnLoginWithPin"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:backgroundTint="#2E7D32"
-                    android:text="लॉगिन करें 🔓"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="14dp"
+                    android:backgroundTint="#166534"
+                    android:text="Login Karein 🔓"
                     android:textColor="#FFFFFF"
                     android:textSize="15sp"
                     android:textStyle="bold" />
