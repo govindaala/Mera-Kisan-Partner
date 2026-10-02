@@ -26,11 +26,11 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Kisan Saathi Portal | Asli Kisaan, Seedhi Bikri"
+            android:text="किसान साथी पोर्टल | सीधी बिक्री, सही भाव"
             android:textColor="#64748B"
             android:textSize="13sp" />
 
-        <!-- 1. Real Google Login Card -->
+        <!-- 1. असली गूगल लॉगिन कार्ड -->
         <androidx.cardview.widget.CardView
             android:id="@+id/cardGoogleLogin"
             android:layout_width="match_parent"
@@ -48,7 +48,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Kadam 1: Google Pehchan Satypan"
+                    android:text="कदम 1: पहचान सत्यापन"
                     android:textColor="#166534"
                     android:textSize="16sp"
                     android:textStyle="bold" />
@@ -57,7 +57,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
-                    android:text="Phone me maujood Google account se 1-tap me login karein."
+                    android:text="फ़ोन में मौजूद Google खाते से 1-टैप में सुरक्षित लॉगिन करें।"
                     android:textColor="#64748B"
                     android:textSize="13sp" />
 
@@ -67,14 +67,14 @@
                     android:layout_height="52dp"
                     android:layout_marginTop="16dp"
                     android:backgroundTint="#DB4437"
-                    android:text="G   Google Khate se Aage Badhein"
+                    android:text="G   Google खाते से आगे बढ़ें"
                     android:textColor="#FFFFFF"
                     android:textSize="15sp"
                     android:textStyle="bold" />
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- 2. Kisan Profile & Security Card (Naam edit karne ka option) -->
+        <!-- 2. किसान प्रोफ़ाइल कार्ड (नाम बदलने की सुविधा) -->
         <androidx.cardview.widget.CardView
             android:id="@+id/cardRegisterDetails"
             android:layout_width="match_parent"
@@ -93,7 +93,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Kadam 2: Kisan Profile & Vivran"
+                    android:text="कदम 2: किसान प्रोफ़ाइल और विवरण"
                     android:textColor="#166534"
                     android:textSize="16sp"
                     android:textStyle="bold" />
@@ -107,12 +107,12 @@
                     android:textColor="#0369A1"
                     android:textSize="13sp" />
 
-                <!-- Naam Edit Option -->
+                <!-- नाम बदलने का इनपुट -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="14dp"
-                    android:text="Kisan ka Naam (Zaroorat ho to badlein)"
+                    android:text="किसान का नाम (ज़रूरत हो तो बदलें)"
                     android:textColor="#334155"
                     android:textSize="13sp"
                     android:textStyle="bold" />
@@ -122,15 +122,15 @@
                     android:layout_width="match_parent"
                     android:layout_height="48dp"
                     android:background="@android:drawable/edit_text"
-                    android:hint="Aapka pura naam"
+                    android:hint="आपका पूरा नाम"
                     android:inputType="textPersonName" />
 
-                <!-- Gaon GPS -->
+                <!-- गाँव ऑटो GPS -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
-                    android:text="Gaon ka Naam (GPS se)"
+                    android:text="गाँव का नाम (GPS द्वारा)"
                     android:textColor="#334155"
                     android:textSize="13sp"
                     android:textStyle="bold" />
@@ -147,7 +147,7 @@
                         android:layout_height="48dp"
                         android:layout_weight="1"
                         android:background="@android:drawable/edit_text"
-                        android:hint="Gaon ka naam"
+                        android:hint="गाँव का नाम"
                         android:inputType="textPostalAddress" />
 
                     <Button
@@ -165,16 +165,16 @@
                     android:id="@+id/txtLocationStatus"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Sateek gaon dhoondha ja raha hai..."
+                    android:text="सटीक गाँव खोजा जा रहा है..."
                     android:textColor="#166534"
                     android:textSize="11sp" />
 
-                <!-- WhatsApp Number -->
+                <!-- WhatsApp नंबर -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
-                    android:text="WhatsApp Mobile Number"
+                    android:text="WhatsApp मोबाइल नंबर"
                     android:textColor="#334155"
                     android:textSize="13sp"
                     android:textStyle="bold" />
@@ -184,16 +184,16 @@
                     android:layout_width="match_parent"
                     android:layout_height="48dp"
                     android:background="@android:drawable/edit_text"
-                    android:hint="10 ankon ka WhatsApp number"
+                    android:hint="10 अंकों का WhatsApp नंबर"
                     android:inputType="phone"
                     android:maxLength="10" />
 
-                <!-- 6-digit PIN -->
+                <!-- 6-अंकों का गुप्त पिन -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
-                    android:text="6-Ankon ka Gupt Suraksha PIN"
+                    android:text="6-अंकों का गुप्त सुरक्षा पिन"
                     android:textColor="#334155"
                     android:textSize="13sp"
                     android:textStyle="bold" />
@@ -203,7 +203,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="48dp"
                     android:background="@android:drawable/edit_text"
-                    android:hint="Uda. 123456"
+                    android:hint="उदा. 123456"
                     android:inputType="numberPassword"
                     android:maxLength="6" />
 
@@ -213,14 +213,14 @@
                     android:layout_height="50dp"
                     android:layout_marginTop="18dp"
                     android:backgroundTint="#166534"
-                    android:text="Profile Save Karein Aur App Kholein 👉"
+                    android:text="प्रोफ़ाइल सुरक्षित करें व ऐप खोलें 👉"
                     android:textColor="#FFFFFF"
                     android:textSize="15sp"
                     android:textStyle="bold" />
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- 3. Existing Farmer PIN Login Card -->
+        <!-- 3. मौजूदा किसान पिन लॉगिन कार्ड -->
         <androidx.cardview.widget.CardView
             android:id="@+id/cardPinLogin"
             android:layout_width="match_parent"
@@ -239,7 +239,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Suraksha PIN Darj Karein"
+                    android:text="सुरक्षा पिन दर्ज करें"
                     android:textColor="#166534"
                     android:textSize="16sp"
                     android:textStyle="bold" />
@@ -249,7 +249,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="Namaste kisan saathi, apna 6-ankon ka PIN daalein:"
+                    android:text="नमस्ते किसान साथी, अपना 6-अंकों का पिन डालें:"
                     android:textColor="#64748B"
                     android:textSize="13sp" />
 
@@ -259,7 +259,7 @@
                     android:layout_height="48dp"
                     android:layout_marginTop="12dp"
                     android:background="@android:drawable/edit_text"
-                    android:hint="6-ankon ka PIN"
+                    android:hint="6-अंकों का PIN"
                     android:inputType="numberPassword"
                     android:maxLength="6" />
 
@@ -269,7 +269,7 @@
                     android:layout_height="48dp"
                     android:layout_marginTop="14dp"
                     android:backgroundTint="#166534"
-                    android:text="Login Karein 🔓"
+                    android:text="लॉगिन करें 🔓"
                     android:textColor="#FFFFFF"
                     android:textSize="15sp"
                     android:textStyle="bold" />
