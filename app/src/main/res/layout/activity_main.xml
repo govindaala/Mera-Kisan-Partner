@@ -1,0 +1,354 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- File Path: app/src/main/res/layout/activity_main.xml -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F4F6F8"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="VERTICAL"
+        android:padding="16dp">
+
+        <!-- शीर्ष हेडर -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="HORIZONTAL">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="🌱 Mera Kisan Partner"
+                android:textColor="#1B5E20"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/txtFarmerHeader"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="किसान साथी"
+                android:textColor="#333333"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- 1. खाता सत्यापन अलर्ट (Pending Verification Status) -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/cardPendingAlert"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            app:cardBackgroundColor="#FFF8E1"
+            app:cardCornerRadius="8dp"
+            app:cardElevation="2dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="VERTICAL"
+                android:padding="12dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="⚠️ खाता सत्यापन प्रक्रिया में है"
+                    android:textColor="#F57C00"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="एडमिन द्वारा कॉल सत्यापन के बाद आपकी फ़सलें ग्राहक ऐप पर लाइव होंगी। तब तक आप फ़सलें जोड़ सकते हैं और WhatsApp/Facebook के लिए पोस्टर बना सकते हैं।"
+                    android:textColor="#6D4C41"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- 2. AI वॉइस असिस्टेंट कार्ड -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            app:cardBackgroundColor="#E8F5E9"
+            app:cardCornerRadius="10dp"
+            app:cardElevation="3dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:orientation="VERTICAL"
+                android:padding="14dp">
+
+                <Button
+                    android:id="@+id/btnVoiceInput"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:backgroundTint="#2E7D32"
+                    android:paddingHorizontal="24dp"
+                    android:text="🎙️ बोलकर फ़सल भरें (AI Voice)"
+                    android:textColor="#FFFFFF"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/txtVoiceStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="माइक दबाकर बोलें: '20 क्विंटल शरबती गेहूँ 38 रुपये किलो'"
+                    android:textColor="#388E3C"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- 3. फ़सल विवरण फ़ॉर्म -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            app:cardCornerRadius="10dp"
+            app:cardElevation="3dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="VERTICAL"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🌾 फ़सल की जानकारी (हाथ से लिखें या बदलें)"
+                    android:textColor="#1B5E20"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <!-- फ़सल का नाम -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="फ़सल का नाम व किस्म"
+                    android:textColor="#333333"
+                    android:textSize="13sp" />
+
+                <EditText
+                    android:id="@+id/edtCropName"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="उदा. शरबती गेहूँ (पूसा किरण)"
+                    android:inputType="text" />
+
+                <!-- भाव और स्टॉक मात्रा -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="HORIZONTAL">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="6dp"
+                        android:layout_weight="1"
+                        android:orientation="VERTICAL">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="भाव (₹ प्रति किलो)"
+                            android:textColor="#333333"
+                            android:textSize="13sp" />
+
+                        <EditText
+                            android:id="@+id/edtPrice"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:hint="उदा. 38"
+                            android:inputType="numberDecimal" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
+                        android:layout_weight="1"
+                        android:orientation="VERTICAL">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="उपलब्ध मात्रा (किलो)"
+                            android:textColor="#333333"
+                            android:textSize="13sp" />
+
+                        <EditText
+                            android:id="@+id/edtQty"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:hint="उदा. 1000"
+                            android:inputType="number" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- श्रेणी (Category) -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="श्रेणी (Category)"
+                    android:textColor="#333333"
+                    android:textSize="13sp" />
+
+                <Spinner
+                    android:id="@+id/spnCategory"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp" />
+
+                <!-- खेती का प्रकार (जैविक / कम केमिकल) -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="खेती का प्रकार (गुणवत्ता)"
+                    android:textColor="#333333"
+                    android:textSize="13sp" />
+
+                <Spinner
+                    android:id="@+id/spnFarmingType"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp" />
+
+                <!-- गुणवत्ता टैग -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="गुणवत्ता टैग"
+                    android:textColor="#333333"
+                    android:textSize="13sp" />
+
+                <EditText
+                    android:id="@+id/edtQualityTag"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="उदा. Grade A, सुपर बोल्ड दाना, हाथ से बीना हुआ"
+                    android:inputType="text" />
+
+                <!-- फ़सल की खासियत / विवरण -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="फ़सल की खासियत (विवरण)"
+                    android:textColor="#333333"
+                    android:textSize="13sp" />
+
+                <EditText
+                    android:id="@+id/edtDescription"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="उदा. गोबर खाद से पकाया गया, रोटियाँ एकदम मुलायम बनती हैं।"
+                    android:inputType="textMultiLine"
+                    android:lines="2" />
+
+                <Button
+                    android:id="@+id/btnSubmitCrop"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:backgroundTint="#1B5E20"
+                    android:text="🚀 फ़सल सेव करें व पोस्टर बनाएँ"
+                    android:textColor="#FFFFFF"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <ProgressBar
+                    android:id="@+id/progressBar"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:layout_marginTop="10dp"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- 4. पोस्टर प्रिव्यू व सोशल शेयरिंग सेक्शन -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/cardPosterSection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="24dp"
+            android:visibility="gone"
+            app:cardCornerRadius="10dp"
+            app:cardElevation="4dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="VERTICAL"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🎉 फ़सल सेव हो गई! आपका पोस्टर तैयार है:"
+                    android:textColor="#1B5E20"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <!-- पोस्टर की छवि -->
+                <ImageView
+                    android:id="@+id/imgPosterPreview"
+                    android:layout_width="match_parent"
+                    android:layout_height="360dp"
+                    android:layout_marginTop="12dp"
+                    android:adjustViewBounds="true"
+                    android:background="#E0E0E0"
+                    android:scaleType="fitCenter" />
+
+                <!-- WhatsApp और Facebook शेयरिंग बटन -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:orientation="HORIZONTAL">
+
+                    <Button
+                        android:id="@+id/btnShareWhatsApp"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="6dp"
+                        android:layout_weight="1"
+                        android:backgroundTint="#25D366"
+                        android:text="WhatsApp शेयर"
+                        android:textColor="#FFFFFF"
+                        android:textStyle="bold" />
+
+                    <Button
+                        android:id="@+id/btnShareFacebook"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
+                        android:layout_weight="1"
+                        android:backgroundTint="#1877F2"
+                        android:text="Facebook शेयर"
+                        android:textColor="#FFFFFF"
+                        android:textStyle="bold" />
+                </LinearLayout>
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+    </LinearLayout>
+</ScrollView>
