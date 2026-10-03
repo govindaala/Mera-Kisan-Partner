@@ -426,6 +426,26 @@
                             android:background="@android:drawable/edit_text"
                             android:hint="उदा. 600"
                             android:inputType="numberDecimal" />
+                                                <!-- फ़सल का विवरण (Description) -->
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:text="📝 फ़सल / उत्पाद का विवरण (Description)"
+                            android:textColor="#334155"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+
+                        <EditText
+                            android:id="@+id/edtCropDesc"
+                            android:layout_width="match_parent"
+                            android:layout_height="75dp"
+                            android:background="@android:drawable/edit_text"
+                            android:gravity="top|start"
+                            android:hint="उदा. दाने की क्वालिटी, पैकिंग साइज़, शुद्धता या अन्य विशेषता..."
+                            android:inputType="textMultiLine"
+                            android:padding="8dp" />
+                        
 
                         <!-- जैविक चेकबॉक्स -->
                         <CheckBox
