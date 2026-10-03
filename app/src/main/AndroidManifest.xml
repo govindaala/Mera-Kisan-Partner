@@ -15,7 +15,6 @@
         android:icon="@drawable/logomrp"
         android:roundIcon="@drawable/logomrp"
         android:label="Mera Kisan Partner"
-        android:roundIcon="@android:drawable/sym_def_app_icon"
         android:supportsRtl="true"
         android:theme="@style/Theme.AppCompat.Light.NoActionBar"
         android:usesCleartextTraffic="true">
