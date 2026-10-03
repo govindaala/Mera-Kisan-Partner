@@ -30,7 +30,7 @@
             android:textColor="#64748B"
             android:textSize="13sp" />
 
-        <!-- 1. असली गूगल लॉगिन कार्ड -->
+        <!-- 1. Google Login Card -->
         <androidx.cardview.widget.CardView
             android:id="@+id/cardGoogleLogin"
             android:layout_width="match_parent"
@@ -74,7 +74,7 @@
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- 2. किसान प्रोफ़ाइल कार्ड (नाम बदलने की सुविधा) -->
+        <!-- 2. Registration Card -->
         <androidx.cardview.widget.CardView
             android:id="@+id/cardRegisterDetails"
             android:layout_width="match_parent"
@@ -107,12 +107,11 @@
                     android:textColor="#0369A1"
                     android:textSize="13sp" />
 
-                <!-- नाम बदलने का इनपुट -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="14dp"
-                    android:text="किसान का नाम (ज़रूरत हो तो बदलें)"
+                    android:text="किसान का नाम"
                     android:textColor="#334155"
                     android:textSize="13sp"
                     android:textStyle="bold" />
@@ -125,7 +124,6 @@
                     android:hint="आपका पूरा नाम"
                     android:inputType="textPersonName" />
 
-                <!-- गाँव ऑटो GPS -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -169,7 +167,6 @@
                     android:textColor="#166534"
                     android:textSize="11sp" />
 
-                <!-- WhatsApp नंबर -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -188,12 +185,11 @@
                     android:inputType="phone"
                     android:maxLength="10" />
 
-                <!-- 6-अंकों का गुप्त पिन -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
-                    android:text="6-अंकों का गुप्त सुरक्षा पिन"
+                    android:text="6-अंकों का गुप्त सुरक्षा पिन बनाएं"
                     android:textColor="#334155"
                     android:textSize="13sp"
                     android:textStyle="bold" />
@@ -220,7 +216,7 @@
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- 3. मौजूदा किसान पिन लॉगिन कार्ड -->
+        <!-- 3. Existing PIN Login Card -->
         <androidx.cardview.widget.CardView
             android:id="@+id/cardPinLogin"
             android:layout_width="match_parent"
@@ -272,6 +268,74 @@
                     android:text="लॉगिन करें 🔓"
                     android:textColor="#FFFFFF"
                     android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <!-- पिन भूल गए? बटन -->
+                <TextView
+                    android:id="@+id/btnForgotPin"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:layout_marginTop="14dp"
+                    android:padding="6dp"
+                    android:text="पिन भूल गए? (Google से रीसेट करें)"
+                    android:textColor="#0369A1"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- 4. Reset PIN Flow Card (Forgot PIN) -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/cardResetPinSection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            app:cardCornerRadius="14dp"
+            app:cardElevation="3dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="20dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🔑 नया 6-अंकों का PIN सेट करें"
+                    android:textColor="#166534"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="Google खाते से पहचान सत्यापित हो गई है। नया गुप्त पिन बनाएं:"
+                    android:textColor="#64748B"
+                    android:textSize="12sp" />
+
+                <EditText
+                    android:id="@+id/edtNewResetPin"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="12dp"
+                    android:background="@android:drawable/edit_text"
+                    android:hint="नया 6-अंकों का PIN"
+                    android:inputType="numberPassword"
+                    android:maxLength="6" />
+
+                <Button
+                    android:id="@+id/btnSaveNewPin"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="14dp"
+                    android:backgroundTint="#166534"
+                    android:text="नया PIN सुरक्षित करें व लॉगिन करें 👉"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
                     android:textStyle="bold" />
             </LinearLayout>
         </androidx.cardview.widget.CardView>
