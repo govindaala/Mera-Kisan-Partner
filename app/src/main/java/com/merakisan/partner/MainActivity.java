@@ -726,4 +726,41 @@ public class MainActivity extends AppCompatActivity {
         b.setNegativeButton("रद्द करें", null);
         b.show();
     }
+        private void handleBoostCrop(String cropId, String cropName, boolean isAlreadyBoosted) {
+        if (isAlreadyBoosted) {
+            Toast.makeText(this, "यह फ़सल पहले से ही सबसे ऊपर प्रमोटेड है!", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("🚀 फ़सल बूस्ट करें")
+                .setMessage("क्या आप '" + cropName + "' को मंडी में सबसे ऊपर (Top Deal) दिखाना चाहते हैं?")
+                .setPositiveButton("हाँ, बूस्ट करें", (dialog, which) -> {
+                    Executors.newSingleThreadExecutor().execute(() -> {
+                        try {
+                            URL url = new URL("https://mera-kisan-backend.vercel.app/api/admin");
+                            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                            conn.setRequestMethod("POST");
+                            conn.setRequestProperty("Content-Type", "application/json");
+                            conn.setDoOutput(true);
+
+                            JSONObject payload = new JSONObject();
+                            payload.put("action", "boost_crop");
+                            payload.put("crop_id", cropId);
+
+                            OutputStream os = conn.getOutputStream();
+                            os.write(payload.toString().getBytes("UTF-8"));
+                            os.close();
+                            conn.getResponseCode();
+                        } catch (Exception ignored) {}
+
+                        new Handler(Looper.getMainLooper()).post(() -> {
+                            Toast.makeText(this, "🔥 फ़सल को टॉप पर बूस्ट कर दिया गया!", Toast.LENGTH_SHORT).show();
+                            loadMyCrops();
+                        });
+                    });
+                })
+                .setNegativeButton("रद्द करें", null)
+                .show();
+        }
 }
