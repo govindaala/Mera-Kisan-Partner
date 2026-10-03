@@ -120,6 +120,7 @@ public class MainActivity extends AppCompatActivity {
         edtCropName = findViewById(R.id.edtCropName);
         edtCropPrice = findViewById(R.id.edtCropPrice);
         edtCropStock = findViewById(R.id.edtCropStock);
+        edtCropDesc = findViewById(R.id.edtCropDesc);
         spnCategory = findViewById(R.id.spnCategory);
         chkIsOrganic = findViewById(R.id.chkIsOrganic);
         btnSubmitCrop = findViewById(R.id.btnSubmitCrop);
