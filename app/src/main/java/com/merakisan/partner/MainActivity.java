@@ -284,10 +284,11 @@ public class MainActivity extends AppCompatActivity {
         containerFarmerCrops.addView(card);
     }
 
-    private void submitNewCrop() {
+        private void submitNewCrop() {
         String name = edtCropName.getText().toString().trim();
         String pStr = edtCropPrice.getText().toString().trim();
         String sStr = edtCropStock.getText().toString().trim();
+        String desc = edtCropDesc.getText().toString().trim();
         String cat = spnCategory != null ? spnCategory.getSelectedItem().toString() : CATEGORIES[0];
         boolean isOrg = chkIsOrganic.isChecked();
 
@@ -305,18 +306,21 @@ public class MainActivity extends AppCompatActivity {
         double lng = prefs.getFloat("lng", 75.58f);
 
         Executors.newSingleThreadExecutor().execute(() -> {
+            boolean success = false;
             try {
-                URL url = new URL("https://mera-kisan-backend.vercel.app/api/crops");
+                URL url = new URL("https://mera-kisan-backend.vercel.app/api/admin");
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
                 conn.setRequestProperty("Content-Type", "application/json");
                 conn.setDoOutput(true);
 
                 JSONObject payload = new JSONObject();
+                payload.put("action", "add_crop");
                 payload.put("farmer_phone", farmerPhone);
                 payload.put("farmer_name", farmerName);
                 payload.put("crop_name", name);
                 payload.put("category", cat);
+                payload.put("description", desc);
                 payload.put("price_per_kg", Double.parseDouble(pStr));
                 payload.put("stock_qty_kg", Double.parseDouble(sStr));
                 payload.put("village", village);
@@ -327,20 +331,30 @@ public class MainActivity extends AppCompatActivity {
                 OutputStream os = conn.getOutputStream();
                 os.write(payload.toString().getBytes("UTF-8"));
                 os.close();
-                conn.getResponseCode();
+
+                if (conn.getResponseCode() == 200) {
+                    success = true;
+                }
             } catch (Exception ignored) {}
 
+            final boolean isOk = success;
             new Handler(Looper.getMainLooper()).post(() -> {
                 addCropProgressBar.setVisibility(View.GONE);
-                Toast.makeText(this, "✅ उत्पाद मंडी में लाइव हो गया!", Toast.LENGTH_SHORT).show();
-                edtCropName.setText("");
-                edtCropPrice.setText("");
-                edtCropStock.setText("");
-                switchTab(viewCrops, btnNavCrops);
-                loadMyCrops();
+                if (isOk) {
+                    Toast.makeText(this, "✅ उत्पाद मंडी में लाइव हो गया!", Toast.LENGTH_SHORT).show();
+                    edtCropName.setText("");
+                    edtCropPrice.setText("");
+                    edtCropStock.setText("");
+                    edtCropDesc.setText("");
+                    switchTab(viewCrops, btnNavCrops);
+                    loadMyCrops();
+                } else {
+                    Toast.makeText(this, "फ़सल सेव नहीं हो सकी, इंटरनेट चेक करें", Toast.LENGTH_LONG).show();
+                }
             });
         });
     }
+
 
     private void saveFarmerProfile() {
         String land = edtProfileLand.getText().toString().trim();
