@@ -40,14 +40,15 @@ import org.json.JSONObject;
 
 public class LoginActivity extends AppCompatActivity {
 
-    private CardView cardGoogleLogin, cardRegisterDetails, cardPinLogin;
-    private TextView txtGoogleAccountEmail, txtLocationStatus, txtWelcomeBack;
-    private EditText edtFarmerName, edtVillage, edtWhatsAppNumber, edtPin, edtLoginPin;
-    private Button btnGoogleSignIn, btnDetectVillage, btnSubmitRegister, btnLoginWithPin;
+    private CardView cardGoogleLogin, cardRegisterDetails, cardPinLogin, cardResetPinSection;
+    private TextView txtGoogleAccountEmail, txtLocationStatus, txtWelcomeBack, btnForgotPin;
+    private EditText edtFarmerName, edtVillage, edtWhatsAppNumber, edtPin, edtLoginPin, edtNewResetPin;
+    private Button btnGoogleSignIn, btnDetectVillage, btnSubmitRegister, btnLoginWithPin, btnSaveNewPin;
     private ProgressBar loginProgressBar;
 
     private static final String PREF_NAME = "MeraKisanPartnerPrefs";
     private static final int RC_GOOGLE_SIGN_IN = 9001;
+    private static final int RC_GOOGLE_FORGOT_PIN = 9002;
     private static final int LOCATION_PERMISSION_REQ = 201;
 
     private GoogleSignInClient mGoogleSignInClient;
@@ -62,24 +63,27 @@ public class LoginActivity extends AppCompatActivity {
         cardGoogleLogin = findViewById(R.id.cardGoogleLogin);
         cardRegisterDetails = findViewById(R.id.cardRegisterDetails);
         cardPinLogin = findViewById(R.id.cardPinLogin);
+        cardResetPinSection = findViewById(R.id.cardResetPinSection);
 
         txtGoogleAccountEmail = findViewById(R.id.txtGoogleAccountEmail);
         txtLocationStatus = findViewById(R.id.txtLocationStatus);
         txtWelcomeBack = findViewById(R.id.txtWelcomeBack);
+        btnForgotPin = findViewById(R.id.btnForgotPin);
 
         edtFarmerName = findViewById(R.id.edtFarmerName);
         edtVillage = findViewById(R.id.edtVillage);
         edtWhatsAppNumber = findViewById(R.id.edtWhatsAppNumber);
         edtPin = findViewById(R.id.edtPin);
         edtLoginPin = findViewById(R.id.edtLoginPin);
+        edtNewResetPin = findViewById(R.id.edtNewResetPin);
 
         btnGoogleSignIn = findViewById(R.id.btnGoogleSignIn);
         btnDetectVillage = findViewById(R.id.btnDetectVillage);
         btnSubmitRegister = findViewById(R.id.btnSubmitRegister);
         btnLoginWithPin = findViewById(R.id.btnLoginWithPin);
+        btnSaveNewPin = findViewById(R.id.btnSaveNewPin);
         loginProgressBar = findViewById(R.id.loginProgressBar);
 
-        // Real Google Sign-In Setup
         GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                 .requestEmail()
                 .requestProfile()
@@ -93,7 +97,7 @@ public class LoginActivity extends AppCompatActivity {
             cardGoogleLogin.setVisibility(View.GONE);
             cardRegisterDetails.setVisibility(View.GONE);
             cardPinLogin.setVisibility(View.VISIBLE);
-            txtWelcomeBack.setText("Namaste " + prefs.getString("farmer_name", "Kisan") + " ji (" + prefs.getString("village", "") + ")\nApna 6-ankon ka PIN daalein:");
+            txtWelcomeBack.setText("नमस्ते " + prefs.getString("farmer_name", "किसान") + " जी (" + prefs.getString("village", "") + ")\nअपना 6-अंकों का PIN डालें:");
         } else {
             cardGoogleLogin.setVisibility(View.VISIBLE);
         }
@@ -103,43 +107,103 @@ public class LoginActivity extends AppCompatActivity {
             startActivityForResult(signInIntent, RC_GOOGLE_SIGN_IN);
         });
 
+        // 1-Tap Google Re-auth for PIN Reset
+        btnForgotPin.setOnClickListener(v -> {
+            Intent signInIntent = mGoogleSignInClient.getSignInIntent();
+            startActivityForResult(signInIntent, RC_GOOGLE_FORGOT_PIN);
+        });
+
         btnDetectVillage.setOnClickListener(v -> requestLocation());
         btnSubmitRegister.setOnClickListener(v -> handleRegistration());
         btnLoginWithPin.setOnClickListener(v -> handlePinLogin());
+        btnSaveNewPin.setOnClickListener(v -> handleResetPinSubmit());
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
 
+        // Normal Login
         if (requestCode == RC_GOOGLE_SIGN_IN) {
             Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(data);
             try {
                 GoogleSignInAccount account = task.getResult(ApiException.class);
                 if (account != null) {
-                    // Phone ke real Google account se data fetch hua
                     String realName = account.getDisplayName();
                     String realEmail = account.getEmail();
 
                     cardGoogleLogin.setVisibility(View.GONE);
                     cardRegisterDetails.setVisibility(View.VISIBLE);
 
-                    txtGoogleAccountEmail.setText("Google Khata: " + realEmail);
+                    txtGoogleAccountEmail.setText("Google: " + realEmail);
                     if (realName != null && !realName.isEmpty()) {
-                        edtFarmerName.setText(realName); // Auto-fill real name
+                        edtFarmerName.setText(realName);
                     }
-
-                    Toast.makeText(this, "Google khata jud gaya! Naam zaroorat anusaar badal sakte hain.", Toast.LENGTH_SHORT).show();
                     requestLocation();
                 }
             } catch (ApiException e) {
-                // Agar user cancel kare ya play services na ho
-                Toast.makeText(this, "Google sign-in radd hua. Vivran manually bharein.", Toast.LENGTH_SHORT).show();
                 cardGoogleLogin.setVisibility(View.GONE);
                 cardRegisterDetails.setVisibility(View.VISIBLE);
                 requestLocation();
             }
         }
+
+        // Forgot PIN: Google identity verified
+        if (requestCode == RC_GOOGLE_FORGOT_PIN) {
+            Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(data);
+            try {
+                GoogleSignInAccount account = task.getResult(ApiException.class);
+                if (account != null) {
+                    Toast.makeText(this, "पहचान सत्यापित! नया PIN दर्ज करें।", Toast.LENGTH_SHORT).show();
+                    cardPinLogin.setVisibility(View.GONE);
+                    cardResetPinSection.setVisibility(View.VISIBLE);
+                }
+            } catch (ApiException e) {
+                Toast.makeText(this, "Google सत्यापन असफल रहा।", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    private void handleResetPinSubmit() {
+        String newPin = edtNewResetPin.getText().toString().trim();
+        if (newPin.length() != 6) {
+            Toast.makeText(this, "कृपया ठीक 6 अंकों का नया PIN दर्ज करें!", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        SharedPreferences prefs = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
+        String phone = prefs.getString("farmer_phone", "");
+
+        loginProgressBar.setVisibility(View.VISIBLE);
+        prefs.edit().putString("secret_pin", newPin).apply();
+
+        // Sync new PIN with backend
+        Executors.newSingleThreadExecutor().execute(() -> {
+            try {
+                URL url = new URL("https://mera-kisan-backend.vercel.app/api/admin");
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setDoOutput(true);
+
+                JSONObject payload = new JSONObject();
+                payload.put("action", "user_reset_pin");
+                payload.put("phone", phone);
+                payload.put("new_pin", newPin);
+
+                OutputStream os = conn.getOutputStream();
+                os.write(payload.toString().getBytes("UTF-8"));
+                os.close();
+                conn.getResponseCode();
+            } catch (Exception ignored) {}
+
+            new Handler(Looper.getMainLooper()).post(() -> {
+                loginProgressBar.setVisibility(View.GONE);
+                Toast.makeText(this, "नया PIN सेट हो गया!", Toast.LENGTH_SHORT).show();
+                startActivity(new Intent(this, MainActivity.class));
+                finish();
+            });
+        });
     }
 
     private void requestLocation() {
@@ -161,7 +225,7 @@ public class LoginActivity extends AppCompatActivity {
     }
 
     private void fetchLocation() {
-        txtLocationStatus.setText("📍 GPS se gaon khoja ja raha hai...");
+        txtLocationStatus.setText("📍 GPS से गाँव खोजा जा रहा है...");
         LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         if (lm == null) return;
 
@@ -199,7 +263,7 @@ public class LoginActivity extends AppCompatActivity {
 
                     new Handler(Looper.getMainLooper()).post(() -> {
                         edtVillage.setText(finalAddress.trim());
-                        txtLocationStatus.setText("✅ Sateek gaon mil gaya");
+                        txtLocationStatus.setText("✅ सटीक गाँव मिल गया");
                     });
                 }
             } catch (Exception ignored) {}
@@ -213,7 +277,7 @@ public class LoginActivity extends AppCompatActivity {
         String pin = edtPin.getText().toString().trim();
 
         if (name.isEmpty() || village.isEmpty() || phone.length() != 10 || pin.length() != 6) {
-            Toast.makeText(this, "Kripya Naam, Gaon, 10-digit Phone aur 6-digit PIN bharein!", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "कृपया नाम, गाँव, 10-अंकों का फ़ोन और 6-अंकों का PIN भरें!", Toast.LENGTH_LONG).show();
             return;
         }
 
@@ -255,7 +319,7 @@ public class LoginActivity extends AppCompatActivity {
 
             new Handler(Looper.getMainLooper()).post(() -> {
                 loginProgressBar.setVisibility(View.GONE);
-                Toast.makeText(this, "Khata safaltapoorvak ban gaya!", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "खाता सफलतापूर्वक बन गया!", Toast.LENGTH_SHORT).show();
                 startActivity(new Intent(this, MainActivity.class));
                 finish();
             });
@@ -271,7 +335,7 @@ public class LoginActivity extends AppCompatActivity {
             startActivity(new Intent(this, MainActivity.class));
             finish();
         } else {
-            Toast.makeText(this, "Galat PIN! Sahi 6-ankon ka PIN daalein.", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "गलत PIN! सही 6-अंकों का PIN डालें।", Toast.LENGTH_SHORT).show();
         }
     }
 }
