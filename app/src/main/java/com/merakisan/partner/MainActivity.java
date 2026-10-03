@@ -57,7 +57,7 @@ public class MainActivity extends AppCompatActivity {
     private ProgressBar cropsProgressBar;
 
     // नई फ़सल/उत्पाद जोड़ने का फ़ॉर्म
-    private EditText edtCropName, edtCropPrice, edtCropStock;
+    private EditText edtCropName, edtCropPrice, edtCropStock, edtCropDesc;
     private Spinner spnCategory;
     private CheckBox chkIsOrganic;
     private Button btnSubmitCrop;
