@@ -279,6 +279,33 @@ public class MainActivity extends AppCompatActivity {
         btnPoster.setTextSize(12);
         btnPoster.setOnClickListener(v -> generateAndSharePoster(name, price, stock, isOrganic, category));
         box.addView(btnPoster);
+                // विवरण (Description) दिखाना
+        String desc = crop.optString("description", "");
+        if (!desc.isEmpty()) {
+            TextView descView = new TextView(this);
+            descView.setText("📝 विवरण: " + desc);
+            descView.setTextSize(12);
+            descView.setTextColor(Color.parseColor("#475569"));
+            descView.setPadding(0, 6, 0, 6);
+            box.addView(descView);
+        }
+
+        // 🚀 फ़सल बूस्ट बटन
+        boolean isPromoted = crop.optBoolean("is_promoted", false);
+        String cropId = crop.optString("crop_id", crop.optString("id", ""));
+
+        Button btnBoost = new Button(this);
+        btnBoost.setText(isPromoted ? "🔥 यह फ़सल टॉप बूस्ट पर है" : "🚀 फ़सल बूस्ट करें (Top Promotion)");
+        btnBoost.setBackgroundColor(isPromoted ? Color.parseColor("#FEF3C7") : Color.parseColor("#F59E0B"));
+        btnBoost.setTextColor(isPromoted ? Color.parseColor("#92400E") : Color.WHITE);
+        btnBoost.setTextSize(12);
+        LinearLayout.LayoutParams bLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        bLp.setMargins(0, 8, 0, 0);
+        btnBoost.setLayoutParams(bLp);
+        btnBoost.setOnClickListener(v -> handleBoostCrop(cropId, name, isPromoted));
+        box.addView(btnBoost);
+
 
         card.addView(box);
         containerFarmerCrops.addView(card);
