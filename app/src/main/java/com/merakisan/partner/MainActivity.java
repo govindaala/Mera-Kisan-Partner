@@ -95,7 +95,7 @@ public class MainActivity extends AppCompatActivity {
         setupTabs();
         setupCategorySpinner();
         loadFarmerProfileData();
-        checkSystemConfig(); // बूस्ट अर्निंग स्थिति की जांच (अभी बंद रहेगा)
+        checkSystemConfig();
         loadMyCrops();
 
         btnSubmitCrop.setOnClickListener(v -> submitNewCrop());
@@ -195,7 +195,6 @@ public class MainActivity extends AppCompatActivity {
         progressProfileCompletion.setProgress(score);
     }
 
-    // बैकएंड से सिस्टम कॉन्फिग जांचना (भविष्य में बूस्ट ऑन होने पर ही बटन आएगा)
     private void checkSystemConfig() {
         Executors.newSingleThreadExecutor().execute(() -> {
             try {
@@ -283,7 +282,7 @@ public class MainActivity extends AppCompatActivity {
         String name = crop.optString("crop_name", "");
         double price = crop.optDouble("price_per_kg", 0);
         double stock = crop.optDouble("stock_qty_kg", 0);
-        String category = crop.optString("category", "अनाज व दालें");
+        String category = crop.optString("category", "🌾 अनाज, दालें व मिलेट्स");
         boolean isOrganic = "organic".equalsIgnoreCase(crop.optString("farming_type"));
         String desc = crop.optString("description", "");
 
@@ -312,8 +311,9 @@ public class MainActivity extends AppCompatActivity {
         catView.setTextColor(Color.parseColor("#0284C7"));
         box.addView(catView);
 
+        // शुद्ध 'रुपये प्रति किलो' भाव (क्विंटल पूरी तरह हटाया गया)
         TextView details = new TextView(this);
-        details.setText("💰 भाव: ₹" + (int)price + "/kg (₹" + (int)(price * 100) + "/क्विंटल)  |  📦 स्टॉक: " + (int)stock + " किलो");
+        details.setText("💰 भाव: ₹" + (int)price + "/किलो  |  📦 उपलब्ध स्टॉक: " + (int)stock + " किलो");
         details.setTextSize(13);
         details.setTextColor(Color.parseColor("#334155"));
         details.setPadding(0, 4, 0, 6);
@@ -335,10 +335,10 @@ public class MainActivity extends AppCompatActivity {
         btnPoster.setBackgroundColor(Color.parseColor("#166534"));
         btnPoster.setTextColor(Color.WHITE);
         btnPoster.setTextSize(12);
-        btnPoster.setOnClickListener(v -> generateAndSharePoster(name, price, stock, isOrganic, category));
+        btnPoster.setOnClickListener(v -> generateAndSharePoster(name, price, stock, isOrganic, category, desc));
         box.addView(btnPoster);
 
-        // 🔥 भविष्य का बूस्ट सिस्टम (अभी मुफ़्त है तो कोई बटन नहीं दिखेगा)
+        // 🔥 बूस्ट स्थिति (अभी मुफ़्त मोड में सुरक्षित रहेगा)
         boolean isPromoted = crop.optBoolean("is_promoted", false);
         int rank = crop.optInt("boost_priority", 1);
         String cropId = crop.optString("crop_id", crop.optString("id", ""));
@@ -357,7 +357,6 @@ public class MainActivity extends AppCompatActivity {
             promotedBadge.setLayoutParams(pLp);
             box.addView(promotedBadge);
         } else if (isBoostSystemActive) {
-            // केवल तभी दिखेगा जब एडमिन सेटिंग्स से बूस्ट अर्निंग ऑन करेंगे
             Button btnBoost = new Button(this);
             btnBoost.setText("🚀 फ़सल टॉप बूस्ट करें (₹" + boostPrice + " / " + boostDays + " दिन)");
             btnBoost.setBackgroundColor(Color.parseColor("#F59E0B"));
@@ -439,7 +438,7 @@ public class MainActivity extends AppCompatActivity {
                     edtCropStock.setText("");
                     edtCropDesc.setText("");
                     switchTab(viewCrops, btnNavCrops);
-                    loadMyCrops(); // तुरंत चीना के नीचे लोड करेगा
+                    loadMyCrops(); // Cheena ke niche nayi fasal turant dikhayega
                 } else {
                     Toast.makeText(this, "फ़सल सेव नहीं हो सकी, इंटरनेट चेक करें", Toast.LENGTH_LONG).show();
                 }
@@ -450,7 +449,7 @@ public class MainActivity extends AppCompatActivity {
     private void handleBoostCrop(String cropId, String cropName) {
         new AlertDialog.Builder(this)
                 .setTitle("🚀 फ़सल बूस्ट अनुरोध")
-                .setMessage("फ़सल: " + cropName + "\nशुल्क: ₹" + boostPrice + " (" + boostDays + " दिन के लिए)\n\nभुगतान गेटवे से सत्यापन के बाद यह मंडी में सबसे ऊपर Rank में दिखेगी। क्या आप आगे बढ़ना चाहते हैं?")
+                .setMessage("फ़सल: " + cropName + "\nशुल्क: ₹" + boostPrice + " (" + boostDays + " दिन के लिए)\n\nभुगतान सत्यापन के बाद यह मंडी में सबसे ऊपर रैंक में दिखेगी।")
                 .setPositiveButton("आगे बढ़ें 💳", (dialog, which) -> {
                     Executors.newSingleThreadExecutor().execute(() -> {
                         try {
@@ -529,26 +528,27 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // =========================================================================
-    // 🎨 AI ग्राफ़िक पोस्टर जनरेटर (इंटरनेट से असली फ़ोटो + मार्केटिंग मिर्च-मसाला)
+    // 🎨 HIGH-DEFINITION AI पोस्टर जनरेटर (12s टाइमआउट + विवरण/डिस्क्रिप्शन सपोर्ट)
     // =========================================================================
-    private void generateAndSharePoster(String cropName, double price, double stock, boolean isOrganic, String category) {
-        Toast.makeText(this, "🎨 इंटरनेट से '" + cropName + "' का AI बैकग्राउंड व पोस्टर तैयार हो रहा है...", Toast.LENGTH_SHORT).show();
+    private void generateAndSharePoster(String cropName, double price, double stock, boolean isOrganic, String category, String desc) {
+        Toast.makeText(this, "🎨 '" + cropName + "' का HD बैकग्राउंड व विवरण पोस्टर तैयार हो रहा है (कृपया 5 सेकंड रुकें)...", Toast.LENGTH_LONG).show();
 
         Executors.newSingleThreadExecutor().execute(() -> {
             Bitmap finalPoster = null;
             try {
-                String searchKeyword = getSmartSearchKeyword(cropName, category);
+                // 1. नाम, श्रेणी और विवरण को मिलाकर बुद्धिमान सर्च कीवर्ड बनाना
+                String searchKeyword = getSmartSearchKeyword(cropName, category, desc);
 
-                String aiImageUrl = "https://image.pollinations.ai/prompt/cinematic%20golden%20harvest%20field%20of%20" 
+                String aiImageUrl = "https://image.pollinations.ai/prompt/cinematic%20photorealistic%20close%20up%20of%20" 
                         + URLEncoder.encode(searchKeyword, "UTF-8") 
-                        + "%20fresh%20crop%20indian%20agriculture%20farm%20sunset?width=1080&height=1080&nologo=true";
+                        + "%20golden%20lighting%20rural%20indian%20farm%20harvest%20hyperrealistic%204k?width=1080&height=1080&nologo=true";
 
                 Bitmap bgBitmap = null;
                 try {
                     URL url = new URL(aiImageUrl);
                     HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                    conn.setConnectTimeout(6500);
-                    conn.setReadTimeout(6500);
+                    conn.setConnectTimeout(12000); // 12 सेकंड का समय ताकी HD फोटो पूरी तरह डाउनलोड हो सके
+                    conn.setReadTimeout(12000);
                     conn.connect();
                     if (conn.getResponseCode() == 200) {
                         bgBitmap = BitmapFactory.decodeStream(conn.getInputStream());
@@ -557,6 +557,7 @@ public class MainActivity extends AppCompatActivity {
                     bgBitmap = null;
                 }
 
+                // 2. मुख्य 1080x1080 कैनवास तैयार करना
                 finalPoster = Bitmap.createBitmap(1080, 1080, Bitmap.Config.ARGB_8888);
                 Canvas canvas = new Canvas(finalPoster);
 
@@ -564,15 +565,17 @@ public class MainActivity extends AppCompatActivity {
                     Bitmap scaledBg = Bitmap.createScaledBitmap(bgBitmap, 1080, 1080, true);
                     canvas.drawBitmap(scaledBg, 0, 0, null);
                 } else {
-                    canvas.drawColor(Color.parseColor("#064E3B"));
+                    canvas.drawColor(Color.parseColor("#064E3B")); // समृद्ध गहरा हरा बैकग्राउंड
                 }
 
                 Paint paint = new Paint();
                 paint.setAntiAlias(true);
 
+                // 3. ग्लास शेड डार्क ओवरले
                 paint.setColor(Color.argb(175, 15, 23, 42));
                 canvas.drawRect(0, 0, 1080, 1080, paint);
 
+                // 4. सुनहरा व हरा डबल बॉर्डर
                 paint.setStyle(Paint.Style.STROKE);
                 paint.setStrokeWidth(12);
                 paint.setColor(Color.parseColor("#EAB308"));
@@ -584,7 +587,7 @@ public class MainActivity extends AppCompatActivity {
 
                 paint.setStyle(Paint.Style.FILL);
 
-                // हेडर बैनर
+                // 5. हेडर बैनर
                 paint.setColor(Color.parseColor("#15803D"));
                 canvas.drawRoundRect(new RectF(50, 50, 1030, 170), 16, 16, paint);
 
@@ -594,59 +597,59 @@ public class MainActivity extends AppCompatActivity {
                 canvas.drawText("🌱 MERA KISAN DIRECT • सीधे खेत से शुद्ध पैदावार", 80, 95, paint);
 
                 paint.setColor(Color.WHITE);
-                paint.setTextSize(44);
+                paint.setTextSize(42);
                 paint.setFakeBoldText(true);
                 canvas.drawText("खेत से सीधी खरीद • 0% बिचौलिया दलाली", 80, 145, paint);
 
-                // मुख्य उत्पाद कार्ड
-                paint.setColor(Color.argb(240, 255, 255, 255));
+                // 6. मुख्य उत्पाद कार्ड
+                paint.setColor(Color.argb(245, 255, 255, 255));
                 canvas.drawRoundRect(new RectF(50, 190, 1030, 440), 20, 20, paint);
 
                 paint.setColor(Color.parseColor("#0F172A"));
-                paint.setTextSize(50);
+                paint.setTextSize(48);
                 paint.setFakeBoldText(true);
-                canvas.drawText("🌾 " + cropName, 80, 258, paint);
+                canvas.drawText("🌾 " + cropName, 80, 255, paint);
 
                 if (isOrganic) {
                     paint.setColor(Color.parseColor("#15803D"));
                     paint.setTextSize(24);
-                    canvas.drawText("🛡️ 100% शुद्ध प्राकृतिक देशी खाद से तैयार जैविक उत्पाद", 80, 302, paint);
+                    canvas.drawText("🛡️ 100% शुद्ध प्राकृतिक देशी खाद से तैयार जैविक उत्पाद", 80, 300, paint);
                 } else {
                     paint.setColor(Color.parseColor("#B45309"));
                     paint.setTextSize(24);
-                    canvas.drawText("⭐ सुपर प्रीमियम ग्रेड-1 • खेत का सीधा ताज़ा स्टॉक", 80, 302, paint);
+                    canvas.drawText("⭐ सुपर प्रीमियम ग्रेड-1 • खेत का सीधा ताज़ा स्टॉक", 80, 300, paint);
                 }
 
-                // भाव व स्टॉक स्ट्रिप
+                // भाव व स्टॉक स्ट्रिप (शुद्ध प्रति किलो भाव)
                 paint.setColor(Color.parseColor("#FEF3C7"));
                 canvas.drawRoundRect(new RectF(80, 330, 1000, 415), 12, 12, paint);
 
                 paint.setColor(Color.parseColor("#92400E"));
                 paint.setTextSize(32);
                 paint.setFakeBoldText(true);
-                canvas.drawText("💰 भाव: ₹" + (int)(price * 100) + "/क्विंटल (₹" + (int)price + "/kg)  |  📦 स्टॉक: " + (int)stock + " किलो", 100, 385, paint);
+                canvas.drawText("💰 भाव: ₹" + (int)price + " प्रति किलो  |  📦 कुल स्टॉक: " + (int)stock + " किलो", 100, 385, paint);
 
-                // खासियत व स्वास्थ्य लाभ
-                paint.setColor(Color.argb(235, 241, 245, 249));
+                // 7. फ़सल विशेषताएँ व किसान का लिखा विवरण
+                paint.setColor(Color.argb(240, 241, 245, 249));
                 canvas.drawRoundRect(new RectF(50, 460, 1030, 755), 20, 20, paint);
 
                 paint.setColor(Color.parseColor("#1E293B"));
-                paint.setTextSize(28);
+                paint.setTextSize(26);
                 paint.setFakeBoldText(true);
-                canvas.drawText("✨ इस माल की खासियत एवं स्वास्थ्य लाभ (Quality & Purity Guarantee):", 80, 505, paint);
+                canvas.drawText("✨ उत्पाद विशेषताएँ व गुणवत्ता (Quality & Purity Guarantee):", 80, 505, paint);
 
-                String[] benefits = generateMarketingHighlights(cropName, category, isOrganic);
+                String[] benefits = generateMarketingHighlights(cropName, category, desc, isOrganic);
                 paint.setColor(Color.parseColor("#334155"));
-                paint.setTextSize(24);
+                paint.setTextSize(23);
                 paint.setFakeBoldText(false);
                 canvas.drawText("• " + benefits[0], 80, 555, paint);
                 canvas.drawText("• " + benefits[1], 80, 605, paint);
                 canvas.drawText("• " + benefits[2], 80, 655, paint);
                 canvas.drawText("• " + benefits[3], 80, 705, paint);
 
-                // किसान संपर्क कार्ड
+                // 8. किसान पहचान व सीधा संपर्क कार्ड
                 SharedPreferences prefs = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
-                String farmerName = prefs.getString("farmer_name", "गोविंद पाटीदार");
+                String farmerName = prefs.getString("farmer_name", "किसान साथी");
                 String village = prefs.getString("village", "बर्दि‍या अमरा (मंदसौर)");
                 String phone = prefs.getString("farmer_phone", prefs.getString("phone", "8871291126"));
 
@@ -656,14 +659,14 @@ public class MainActivity extends AppCompatActivity {
                 paint.setColor(Color.parseColor("#BBF7D0"));
                 paint.setTextSize(28);
                 paint.setFakeBoldText(true);
-                canvas.drawText("👨‍🌾 उत्पादक किसान: " + farmerName + "  |  📍 " + village, 80, 830, paint);
+                canvas.drawText("👨‍🌾 उत्पादक किसान: " + farmerName + "  |  📍 गाँव: " + village, 80, 830, paint);
 
                 paint.setColor(Color.WHITE);
                 paint.setTextSize(38);
                 paint.setFakeBoldText(true);
                 canvas.drawText("📞 सीधा कॉल / WhatsApp: +91 " + phone, 80, 900, paint);
 
-                // फ़ुटर गारंटी
+                // 9. फ़ुटर गारंटी
                 paint.setColor(Color.parseColor("#D97706"));
                 canvas.drawRoundRect(new RectF(50, 965, 1030, 1025), 12, 12, paint);
 
@@ -677,7 +680,7 @@ public class MainActivity extends AppCompatActivity {
             final Bitmap shareBmp = finalPoster;
             new Handler(Looper.getMainLooper()).post(() -> {
                 if (shareBmp != null) {
-                    sharePosterToWhatsApp(shareBmp, cropName, price, stock);
+                    sharePosterToWhatsApp(shareBmp, cropName, price, stock, desc);
                 } else {
                     Toast.makeText(this, "पोस्टर तैयार नहीं हो सका", Toast.LENGTH_SHORT).show();
                 }
@@ -685,75 +688,65 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private String getSmartSearchKeyword(String name, String cat) {
-        String n = name.toLowerCase();
-        if (n.contains("मिलेट") || n.contains("चीना") || n.contains("पोसो")) return "proso millet golden grains harvest";
-        if (n.contains("लहसुन") || n.contains("garlic")) return "fresh white garlic bulbs harvest farm";
-        if (n.contains("तेल") || cat.contains("तेल")) return "traditional cold pressed mustard groundnut oil farm";
-        if (n.contains("गुड़") || cat.contains("गुड़")) return "traditional indian sugarcane jaggery gur making";
-        if (n.contains("मसाले") || cat.contains("मसाले") || n.contains("धनिया") || n.contains("मेथी")) return "indian whole spices coriander seeds red chilli farm";
-        if (n.contains("गेहूँ") || n.contains("wheat")) return "golden ripe wheat grains field harvest";
-        if (n.contains("सोयाबीन") || n.contains("soyabean")) return "golden soybean farm harvest pods";
-        if (n.contains("चना") || n.contains("दाल")) return "chickpea gram legumes harvest field";
-        return "indian golden agriculture crops farm harvest";
+    private String getSmartSearchKeyword(String name, String cat, String desc) {
+        String combined = (name + " " + cat + " " + desc).toLowerCase();
+        if (combined.contains("मिलेट") || combined.contains("चीना") || combined.contains("पोसो")) return "golden proso millet grains harvest bowl";
+        if (combined.contains("लहसुन") || combined.contains("garlic")) return "fresh dried white garlic bulbs harvest";
+        if (combined.contains("तेल") || cat.contains("तेल")) return "cold pressed mustard seed oil bottle traditional kohlu";
+        if (combined.contains("गुड़") || cat.contains("गुड़")) return "traditional natural sugarcane jaggery block gur";
+        if (combined.contains("मसाले") || combined.contains("धनिया") || combined.contains("मेथी")) return "whole dried coriander seeds fenugreek indian spices";
+        if (combined.contains("गेहूँ") || combined.contains("wheat")) return "golden ripe wheat grains field harvest";
+        if (combined.contains("सोयाबीन") || combined.contains("soyabean")) return "yellow soybean grains harvest bowl";
+        if (combined.contains("चना") || combined.contains("दाल")) return "desi chickpea legumes harvest";
+        if (combined.contains("घी") || combined.contains("डेयरी")) return "traditional earthen bilona pure desi ghee pot";
+        return "pure natural indian agriculture farm harvest crop";
     }
 
-    private String[] generateMarketingHighlights(String name, String cat, boolean isOrganic) {
+    private String generateMarketingHighlights(String name, String cat, String desc, boolean isOrganic) {
         String n = name.toLowerCase();
+        String customPoint = desc.trim().isEmpty() ? 
+                "दाने की छँटाई: हाथ से साफ किया हुआ बोल्ड दाना, कंकड़-मिट्टी व कचरा रहित ग्रेड-1 माल।" :
+                "विशेषता: " + (desc.length() > 68 ? desc.substring(0, 65) + "..." : desc);
 
         if (n.contains("मिलेट") || n.contains("चीना") || n.contains("पोसो") || n.contains("कोदो") || n.contains("रागी")) {
             return new String[]{
-                    "दाना: प्राकृतिक धूप में सुखाया हुआ, बोल्ड दाना, कंकड़-मिट्टी व कचरा रहित साफ़।",
-                    "पोषण: 100% ग्लूटेन-फ्री (Gluten-Free), हाई फ़ाइबर और प्रोटीन का प्राकृतिक खजाना।",
-                    "स्वास्थ्य लाभ: शुगर (डायबिटीज) कंट्रोल, हृदय स्वास्थ्य और मोटापा घटाने में सर्वोत्तम सुपरफ़ूड।",
-                    "गारंटी: मंदसौर के खेतों की शुद्ध देशी पैदावार, बिना किसी केमिकल पॉलिश के।"
+                    customPoint,
+                    "पोषण: 100% ग्लूटेन-फ्री (Gluten-Free), हाई फ़ाइबर और प्रोटीन से भरपूर सुपरफ़ूड।",
+                    "स्वास्थ्य लाभ: शुगर (डायबिटीज) व कोलेस्ट्रॉल नियंत्रण में अत्यंत गुणकारी।",
+                    "गारंटी: सीधे खेत की शुद्ध देशी पैदावार, बिना किसी केमिकल पॉलिश के।"
             };
         } else if (n.contains("तेल") || cat.contains("तेल")) {
             return new String[]{
-                    "प्रक्रिया: 100% शुद्ध लकड़ी/कच्ची घानी (Cold Pressed), बिना केमिकल, बिना किसी मिलावट।",
-                    "ताज़गी: बीजों का मूल प्राकृतिक स्वाद, तेज़ सुगंध और असली पोषक तत्व पूरी तरह सुरक्षित।",
-                    "स्वास्थ्य लाभ: ज़ीरो कोलेस्ट्रॉल, दिल के लिए अत्यंत लाभकारी और पाचन में हल्का।",
-                    "शुद्धता: बाज़ार के रिफ़ाइंड तेल से 10 गुना बेहतर, सीधे गाँव के कोहलू से निकाला शुद्ध तेल।"
+                    customPoint,
+                    "प्रक्रिया: 100% शुद्ध लकड़ी/कच्ची घानी (Cold Pressed), बिना केमिकल, बिना मिलावट।",
+                    "ताज़गी: बीजों का मूल प्राकृतिक स्वाद, तेज़ सुगंध व पौष्टिकता पूरी तरह सुरक्षित।",
+                    "स्वास्थ्य लाभ: ज़ीरो कोलेस्ट्रॉल, दिल के लिए लाभकारी और बाज़ार के तेल से 10 गुना शुद्ध।"
             };
-        } else if (n.contains("गुड़") || cat.contains("गुड़") || cat.contains("मीठा")) {
+        } else if (n.contains("गुड़") || cat.contains("गुड़")) {
             return new String[]{
-                    "उत्पादन: पारंपरिक देशी भट्टी पर पकाया गया, बिना हाइड्रो/केमिकल रंग के शुद्ध काला-लाल गुड़।",
-                    "पोषक तत्व: प्राकृतिक आयरन, कैल्शियम, पोटेशियम और मिनरल्स से परिपूर्ण देशी मिठास।",
-                    "स्वास्थ्य लाभ: भोजन पचाने, खून की कमी दूर करने और फेफड़ों को साफ़ रखने में रामबाण।",
-                    "स्वाद: असली देशी गन्ने का सोंधा स्वाद, चाय व दूध में डालने पर फटने की कोई शिकायत नहीं।"
+                    customPoint,
+                    "उत्पादन: पारंपरिक देशी भट्टी पर पकाया गया, बिना हाइड्रो/केमिकल रंग का शुद्ध गुड़।",
+                    "पोषक तत्व: प्राकृतिक आयरन व कैल्शियम से परिपूर्ण, पाचन व स्फूर्ति हेतु श्रेष्ठ।",
+                    "स्वाद: असली देशी गन्ने का सोंधा स्वाद, दूध में डालने पर फटने की कोई शिकायत नहीं।"
             };
         } else if (n.contains("लहसुन") || n.contains("garlic")) {
             return new String[]{
-                    "क्वालिटी: ठोस, सफ़ेद व वज़नदार कंद (जी-2 / देशी किस्म), बड़े पर्दे और बोल्ड कलियाँ।",
-                    "सुगंध व तीखापन: तेज़ प्राकृतिक तीखापन और गाढ़ा औषधीय रस, लंबे समय तक भंडारण योग्य।",
-                    "स्वास्थ्य लाभ: कोलेस्ट्रॉल कम करने, हाई बीपी नियंत्रित रखने और इम्युनिटी बढ़ाने में रामबाण।",
-                    "सीधी खरीद: विश्वविख्यात मंदसौर लहसुन मंडी क्षेत्र के खेत से सीधा माल, बिना बिचौलिए के।"
-            };
-        } else if (n.contains("मसाले") || cat.contains("मसाले") || n.contains("धनिया") || n.contains("मेथी") || n.contains("मिर्च")) {
-            return new String[]{
-                    "गुणवत्ता: खेत से हाथ से चुने गए खड़े मसाले, बिना लकड़ी-डंठल या धूल के साफ़ ग्रेडिंग।",
-                    "स्वाद व सुगंध: असली प्राकृतिक तेल और तीखी भीनी सुगंध, बाज़ार के पिसे मसालों से दोगुना स्वाद।",
-                    "शुद्धता: बिना किसी कृत्रिम रंग, स्टार्च या मिलावट के सीधे किसान के खलिहान से।",
-                    "सौदा: थोक भाव में उपलब्ध, चाहे घरेलू इस्तेमाल के लिए लें या व्यापार के लिए।"
-            };
-        } else if (n.contains("गेहूँ") || n.contains("wheat") || n.contains("शरबती")) {
-            return new String[]{
-                    "किस्म: सुनहरे चमकदार और वज़नदार बोल्ड दाने, बिना घुन या कीड़े के सूखा सुरक्षित माल।",
-                    "रोटी की खूबी: रोटियां अत्यंत नरम, फूली हुई और प्राकृतिक देशी मिठास से भरपूर।",
-                    "पोषण: रिच डाइटरी फ़ाइबर और विटामिन्स, जो पेट को रखे एकदम दुरुस्त।",
-                    "भंडारण: सालभर घर में स्टोर करने हेतु प्राकृतिक धूप में सुखाया हुआ सूखा सुरक्षित अनाज।"
+                    customPoint,
+                    "क्वालिटी: ठोस, सफ़ेद कंद (देशी/G-2 किस्म), बड़े पर्दे और मोटे बोल्ड दाने।",
+                    "सुगंध व रस: गाढ़ा औषधीय रस, तेज़ तीखापन व लंबे समय तक सुरक्षित रहने वाला माल।",
+                    "सीधी खरीद: प्रसिद्ध मंदसौर लहसुन मंडी क्षेत्र के खेत से सीधी सप्लाई।"
             };
         } else {
             return new String[]{
-                    "ग्रेडिंग: किसान द्वारा हाथ से छँटाई किया हुआ उच्च गुणवत्ता वाला ए-ग्रेड माल।",
-                    "स्वास्थ्य लाभ: प्राकृतिक स्वाद और ताज़गी, पोषक तत्वों और विटामिन्स से भरपूर।",
-                    "शुद्धता: " + (isOrganic ? "100% देशी गोबर खाद से तैयार प्रमाणित जैविक उपज।" : "खेत की ताज़ा उपज, बिना किसी कृत्रिम स्प्रे या मिलावट के।"),
+                    customPoint,
+                    "ग्रेडिंग: किसान द्वारा स्वयं तैयार किया हुआ उच्च गुणवत्ता वाला ताज़ा माल।",
+                    "शुद्धता: " + (isOrganic ? "100% देशी गोबर खाद से तैयार प्रमाणित जैविक उपज।" : "खेत की सीधी ताज़ा उपज, बिना किसी कृत्रिम रंग या मिलावट के।"),
                     "भरोसा: खेत पर स्वयं आकर माल चेक करने और अपनी मौजूदगी में तौल कराने की पूरी आज़ादी।"
             };
         }
     }
 
-    private void sharePosterToWhatsApp(Bitmap bitmap, String cropName, double price, double stock) {
+    private void sharePosterToWhatsApp(Bitmap bitmap, String cropName, double price, double stock, String desc) {
         SharedPreferences prefs = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
         String farmerName = prefs.getString("farmer_name", "किसान साथी");
         String village = prefs.getString("village", "बर्दि‍या अमरा");
@@ -763,16 +756,24 @@ public class MainActivity extends AppCompatActivity {
             String path = MediaStore.Images.Media.insertImage(getContentResolver(), bitmap, "mandi_poster_" + System.currentTimeMillis(), "Mera Kisan Poster");
             Uri uri = Uri.parse(path);
 
+            StringBuilder msg = new StringBuilder();
+            msg.append("🌾 *Mera Kisan Direct - ताज़ा उपज उपलब्ध!*\n\n")
+               .append("उत्पाद: *").append(cropName).append("*\n")
+               .append("भाव: *₹").append((int)price).append("/किलो*\n")
+               .append("उपलब्ध स्टॉक: *").append((int)stock).append(" किलो*\n");
+
+            if (!desc.trim().isEmpty()) {
+                msg.append("📝 विवरण: ").append(desc.trim()).append("\n");
+            }
+
+            msg.append("किसान: ").append(farmerName).append(" (").append(village).append(")\n")
+               .append("📞 सीधा संपर्क करें: +91 ").append(phone).append("\n\n")
+               .append("खेत से सीधी खरीद • 0% बिचौलिया दलाली!");
+
             Intent share = new Intent(Intent.ACTION_SEND);
             share.setType("image/*");
             share.putExtra(Intent.EXTRA_STREAM, uri);
-            share.putExtra(Intent.EXTRA_TEXT, "🌾 *Mera Kisan Direct - ताज़ा उपज उपलब्ध!*\n\n" +
-                    "उत्पाद: *" + cropName + "*\n" +
-                    "भाव: ₹" + (int)price + "/kg (₹" + (int)(price * 100) + "/क्विंटल)\n" +
-                    "उपलब्ध: " + (int)stock + " किलो\n" +
-                    "किसान: " + farmerName + " (" + village + ")\n" +
-                    "📞 सीधा संपर्क करें: +91 " + phone + "\n\n" +
-                    "खेत से सीधी खरीद, 0% बिचौलिया दलाली!");
+            share.putExtra(Intent.EXTRA_TEXT, msg.toString());
             startActivity(Intent.createChooser(share, "मंडी पोस्टर WhatsApp पर शेयर करें"));
         } catch (Exception e) {
             Toast.makeText(this, "पोस्टर शेयर नहीं हो सका", Toast.LENGTH_SHORT).show();
