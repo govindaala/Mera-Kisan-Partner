@@ -311,6 +311,7 @@ public class MainActivity extends AppCompatActivity {
         catView.setTextColor(Color.parseColor("#0284C7"));
         box.addView(catView);
 
+        // शुद्ध 'रुपये प्रति किलो' भाव (क्विंटल पूरी तरह हटाया गया)
         TextView details = new TextView(this);
         details.setText("💰 भाव: ₹" + (int)price + "/किलो  |  📦 उपलब्ध स्टॉक: " + (int)stock + " किलो");
         details.setTextSize(13);
@@ -318,7 +319,7 @@ public class MainActivity extends AppCompatActivity {
         details.setPadding(0, 4, 0, 6);
         box.addView(details);
 
-        // 📝 फ़सल का विवरण
+        // 📝 फ़सल का विवरण (Description)
         if (!desc.isEmpty()) {
             TextView descView = new TextView(this);
             descView.setText("📝 विवरण: " + desc);
@@ -545,7 +546,7 @@ public class MainActivity extends AppCompatActivity {
                 try {
                     URL url = new URL(aiImageUrl);
                     HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                    conn.setConnectTimeout(12000);
+                    conn.setConnectTimeout(12000); // 12 सेकंड का टाइमआउट HD इमेज के लिए
                     conn.setReadTimeout(12000);
                     conn.connect();
                     if (conn.getResponseCode() == 200) {
@@ -615,7 +616,7 @@ public class MainActivity extends AppCompatActivity {
                     canvas.drawText("⭐ सुपर प्रीमियम ग्रेड-1 • खेत का सीधा ताज़ा स्टॉक", 80, 300, paint);
                 }
 
-                // भाव व स्टॉक स्ट्रिप
+                // भाव व स्टॉक स्ट्रिप (शुद्ध प्रति किलो भाव)
                 paint.setColor(Color.parseColor("#FEF3C7"));
                 canvas.drawRoundRect(new RectF(80, 330, 1000, 415), 12, 12, paint);
 
@@ -697,22 +698,67 @@ public class MainActivity extends AppCompatActivity {
         return "pure natural indian agriculture farm harvest crop";
     }
 
-    // किसान के लिखे विवरण के आधार पर 4 मुख्य बिंदु (सटीक String[] रिटर्न टाइप)
+    // =========================================================================
+    // 🌟 बुद्धिमान कॉपीराइटिंग इंजन (किसान का विवरण + श्रेणी के वास्तविक लाभ)
+    // =========================================================================
     private String[] generateMarketingHighlights(String name, String cat, String desc, boolean isOrganic) {
+        String n = name.toLowerCase();
+        
+        // पॉइंट 1: हमेशा किसान द्वारा डाला गया विवरण प्राथमिकता पर रहेगा
         String customPoint = desc.trim().isEmpty() 
-                ? "उत्पाद: किसान द्वारा सीधे खेत से लाया गया उत्तम ग्रेड माल।" 
-                : "विशेषता: " + desc.trim();
+                ? "दाने की छँटाई: हाथ से साफ किया हुआ बोल्ड दाना, कंकड़-मिट्टी व कचरा रहित ए-ग्रेड माल।" 
+                : "विवरण: " + desc.trim();
 
-        String qualityPoint = isOrganic 
-                ? "शुद्धता: 100% प्राकृतिक एवं जैविक (Organic) खाद से तैयार उपज।" 
-                : "गुणवत्ता: खेत का सीधा ताज़ा स्टॉक, बिना किसी केमिकल मिलावट के।";
-
-        return new String[]{
-                customPoint,
-                qualityPoint,
-                "सौदा: सीधे किसान से खरीद, 0% बिचौलिया दलाली की गारंटी।",
-                "सुविधा: खेत पर आकर खुद माल परखें और अपनी मौजूदगी में तौल कराएं।"
-        };
+        if (n.contains("मिलेट") || n.contains("चीना") || n.contains("पोसो") || n.contains("कोदो") || n.contains("रागी")) {
+            return new String[]{
+                    customPoint,
+                    "पोषण: 100% ग्लूटेन-फ्री (Gluten-Free), हाई फ़ाइबर और प्रोटीन से भरपूर सुपरफ़ूड।",
+                    "स्वास्थ्य लाभ: शुगर (डायबिटीज) व कोलेस्ट्रॉल नियंत्रण में अत्यंत गुणकारी।",
+                    "गारंटी: सीधे मंदसौर के खेत की शुद्ध देशी पैदावार, बिना किसी केमिकल पॉलिश के।"
+            };
+        } else if (n.contains("तेल") || cat.contains("तेल")) {
+            return new String[]{
+                    customPoint,
+                    "प्रक्रिया: 100% शुद्ध लकड़ी/कच्ची घानी (Cold Pressed), बिना केमिकल, बिना मिलावट।",
+                    "ताज़गी: बीजों का मूल प्राकृतिक स्वाद, तेज़ भीनी सुगंध व पौष्टिकता पूरी तरह सुरक्षित।",
+                    "स्वास्थ्य लाभ: ज़ीरो कोलेस्ट्रॉल, दिल के लिए लाभकारी और बाज़ार के तेल से 10 गुना शुद्ध।"
+            };
+        } else if (n.contains("गुड़") || cat.contains("गुड़") || cat.contains("मीठा")) {
+            return new String[]{
+                    customPoint,
+                    "उत्पादन: पारंपरिक देशी भट्टी पर पकाया गया, बिना हाइड्रो/केमिकल रंग का शुद्ध देशी गुड़।",
+                    "पोषक तत्व: प्राकृतिक आयरन, कैल्शियम व मिनरल्स से परिपूर्ण देशी मिठास।",
+                    "स्वाद: असली देशी गन्ने का सोंधा स्वाद, दूध व चाय में डालने पर फटने की कोई शिकायत नहीं।"
+            };
+        } else if (n.contains("लहसुन") || n.contains("garlic")) {
+            return new String[]{
+                    customPoint,
+                    "क्वालिटी: ठोस, सफ़ेद कंद (देशी/G-2 किस्म), बड़े कड़क पर्दे और मोटे बोल्ड दाने।",
+                    "सुगंध व रस: गाढ़ा औषधीय रस, तेज़ तीखापन व लंबे समय तक सुरक्षित रहने वाला माल।",
+                    "सीधी खरीद: विश्वविख्यात मंदसौर लहसुन मंडी क्षेत्र के खेत से सीधी सप्लाई।"
+            };
+        } else if (n.contains("मसाले") || cat.contains("मसाले") || n.contains("धनिया") || n.contains("मेथी") || n.contains("मिर्च")) {
+            return new String[]{
+                    customPoint,
+                    "गुणवत्ता: खेत से हाथ से चुने गए खड़े मसाले, बिना लकड़ी-डंठल या धूल के साफ़ ग्रेडिंग।",
+                    "स्वाद व सुगंध: प्राकृतिक तेल और भीनी तेज़ सुगंध, पिसे बाज़ारी मसालों से दोगुना स्वाद।",
+                    "शुद्धता: बिना किसी कृत्रिम रंग, स्टार्च या मिलावट के सीधे किसान के खलिहान से।"
+            };
+        } else if (n.contains("गेहूँ") || n.contains("wheat") || n.contains("शरबती")) {
+            return new String[]{
+                    customPoint,
+                    "किस्म: सुनहरे चमकदार और वज़नदार बोल्ड दाने, बिना घुन या कीड़े के सूखा सुरक्षित माल।",
+                    "रोटी की खूबी: रोटियां अत्यंत नरम, फूली हुई और प्राकृतिक देशी मिठास से भरपूर।",
+                    "भंडारण: सालभर घर में स्टोर करने हेतु प्राकृतिक धूप में सुखाया हुआ सूखा सुरक्षित अनाज।"
+            };
+        } else {
+            return new String[]{
+                    customPoint,
+                    "ग्रेडिंग: किसान द्वारा स्वयं तैयार किया हुआ उच्च गुणवत्ता वाला ताज़ा माल।",
+                    "शुद्धता: " + (isOrganic ? "100% देशी गोबर खाद से तैयार प्रमाणित जैविक उपज।" : "खेत की सीधी ताज़ा उपज, बिना किसी कृत्रिम स्प्रे या मिलावट के।"),
+                    "भरोसा: खेत पर स्वयं आकर माल चेक करने और अपनी मौजूदगी में तौल कराने की पूरी आज़ादी।"
+            };
+        }
     }
 
     private void sharePosterToWhatsApp(Bitmap bitmap, String cropName, double price, double stock, String desc) {
