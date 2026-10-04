@@ -70,6 +70,11 @@ public class MainActivity extends AppCompatActivity {
     // सहायता व विवाद टिकट
     private Button btnHelpDispute;
 
+    // भविष्य का बूस्ट अर्निंग खाका (डिफ़ॉल्ट बंद - 100% मुफ़्त ऐप)
+    private boolean isBoostSystemActive = false;
+    private int boostPrice = 99;
+    private int boostDays = 3;
+
     // 7 प्रामाणिक श्रेणियाँ
     private final String[] CATEGORIES = {
             "🌾 अनाज, दालें व मिलेट्स",
@@ -90,6 +95,7 @@ public class MainActivity extends AppCompatActivity {
         setupTabs();
         setupCategorySpinner();
         loadFarmerProfileData();
+        checkSystemConfig(); // बूस्ट अर्निंग स्थिति की जांच (अभी बंद रहेगा)
         loadMyCrops();
 
         btnSubmitCrop.setOnClickListener(v -> submitNewCrop());
@@ -189,12 +195,50 @@ public class MainActivity extends AppCompatActivity {
         progressProfileCompletion.setProgress(score);
     }
 
+    // बैकएंड से सिस्टम कॉन्फिग जांचना (भविष्य में बूस्ट ऑन होने पर ही बटन आएगा)
+    private void checkSystemConfig() {
+        Executors.newSingleThreadExecutor().execute(() -> {
+            try {
+                URL url = new URL("https://mera-kisan-backend.vercel.app/api/admin?action=get_public_config");
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("GET");
+                conn.setConnectTimeout(6000);
+                conn.setReadTimeout(6000);
+                if (conn.getResponseCode() == 200) {
+                    BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    while ((line = br.readLine()) != null) sb.append(line);
+                    br.close();
+
+                    JSONObject res = new JSONObject(sb.toString());
+                    JSONObject bf = res.optJSONObject("boost_feature");
+                    if (bf != null) {
+                        isBoostSystemActive = bf.optBoolean("is_active", false);
+                        boostPrice = bf.optInt("price", 99);
+                        boostDays = bf.optInt("days", 3);
+                    }
+                }
+            } catch (Exception ignored) {}
+        });
+    }
+
+    private boolean isMatchingPhone(String p1, String p2) {
+        if (p1 == null || p2 == null) return false;
+        String s1 = p1.replaceAll("\\D+", "");
+        String s2 = p2.replaceAll("\\D+", "");
+        if (s1.isEmpty() || s2.isEmpty()) return true;
+        if (s1.length() >= 10) s1 = s1.substring(s1.length() - 10);
+        if (s2.length() >= 10) s2 = s2.substring(s2.length() - 10);
+        return s1.equals(s2);
+    }
+
     private void loadMyCrops() {
         cropsProgressBar.setVisibility(View.VISIBLE);
         containerFarmerCrops.removeAllViews();
 
         SharedPreferences prefs = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
-        String myPhone = prefs.getString("farmer_phone", "");
+        String myPhone = prefs.getString("farmer_phone", prefs.getString("phone", "8871291126"));
 
         Executors.newSingleThreadExecutor().execute(() -> {
             List<JSONObject> myList = new ArrayList<>();
@@ -202,6 +246,8 @@ public class MainActivity extends AppCompatActivity {
                 URL url = new URL("https://mera-kisan-backend.vercel.app/api/crops");
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("GET");
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(8000);
                 if (conn.getResponseCode() == 200) {
                     BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
                     StringBuilder sb = new StringBuilder();
@@ -214,7 +260,8 @@ public class MainActivity extends AppCompatActivity {
                     if (arr != null) {
                         for (int i = 0; i < arr.length(); i++) {
                             JSONObject c = arr.getJSONObject(i);
-                            if (myPhone.equals(c.optString("farmer_phone", ""))) {
+                            String cPhone = c.optString("farmer_phone", "");
+                            if (isMatchingPhone(myPhone, cPhone)) {
                                 myList.add(c);
                             }
                         }
@@ -238,6 +285,7 @@ public class MainActivity extends AppCompatActivity {
         double stock = crop.optDouble("stock_qty_kg", 0);
         String category = crop.optString("category", "अनाज व दालें");
         boolean isOrganic = "organic".equalsIgnoreCase(crop.optString("farming_type"));
+        String desc = crop.optString("description", "");
 
         CardView card = new CardView(this);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
@@ -268,8 +316,18 @@ public class MainActivity extends AppCompatActivity {
         details.setText("💰 भाव: ₹" + (int)price + "/kg (₹" + (int)(price * 100) + "/क्विंटल)  |  📦 स्टॉक: " + (int)stock + " किलो");
         details.setTextSize(13);
         details.setTextColor(Color.parseColor("#334155"));
-        details.setPadding(0, 4, 0, 10);
+        details.setPadding(0, 4, 0, 6);
         box.addView(details);
+
+        // 📝 फ़सल का विवरण (Description)
+        if (!desc.isEmpty()) {
+            TextView descView = new TextView(this);
+            descView.setText("📝 विवरण: " + desc);
+            descView.setTextSize(12);
+            descView.setTextColor(Color.parseColor("#475569"));
+            descView.setPadding(0, 0, 0, 8);
+            box.addView(descView);
+        }
 
         // 🎨 AI ग्राफ़िक पोस्टर शेयर बटन
         Button btnPoster = new Button(this);
@@ -279,39 +337,45 @@ public class MainActivity extends AppCompatActivity {
         btnPoster.setTextSize(12);
         btnPoster.setOnClickListener(v -> generateAndSharePoster(name, price, stock, isOrganic, category));
         box.addView(btnPoster);
-                // विवरण (Description) दिखाना
-        String desc = crop.optString("description", "");
-        if (!desc.isEmpty()) {
-            TextView descView = new TextView(this);
-            descView.setText("📝 विवरण: " + desc);
-            descView.setTextSize(12);
-            descView.setTextColor(Color.parseColor("#475569"));
-            descView.setPadding(0, 6, 0, 6);
-            box.addView(descView);
-        }
 
-        // 🚀 फ़सल बूस्ट बटन
+        // 🔥 भविष्य का बूस्ट सिस्टम (अभी मुफ़्त है तो कोई बटन नहीं दिखेगा)
         boolean isPromoted = crop.optBoolean("is_promoted", false);
+        int rank = crop.optInt("boost_priority", 1);
         String cropId = crop.optString("crop_id", crop.optString("id", ""));
 
-        Button btnBoost = new Button(this);
-        btnBoost.setText(isPromoted ? "🔥 यह फ़सल टॉप बूस्ट पर है" : "🚀 फ़सल बूस्ट करें (Top Promotion)");
-        btnBoost.setBackgroundColor(isPromoted ? Color.parseColor("#FEF3C7") : Color.parseColor("#F59E0B"));
-        btnBoost.setTextColor(isPromoted ? Color.parseColor("#92400E") : Color.WHITE);
-        btnBoost.setTextSize(12);
-        LinearLayout.LayoutParams bLp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        bLp.setMargins(0, 8, 0, 0);
-        btnBoost.setLayoutParams(bLp);
-        btnBoost.setOnClickListener(v -> handleBoostCrop(cropId, name, isPromoted));
-        box.addView(btnBoost);
-
+        if (isPromoted) {
+            TextView promotedBadge = new TextView(this);
+            promotedBadge.setText("🔥 टॉप मंडी प्रमोटेड (रैंक #" + (rank <= 4 ? rank : "टॉप") + ")");
+            promotedBadge.setTextSize(12);
+            promotedBadge.setTextColor(Color.parseColor("#92400E"));
+            promotedBadge.setBackgroundColor(Color.parseColor("#FEF3C7"));
+            promotedBadge.setPadding(12, 6, 12, 6);
+            promotedBadge.setTypeface(null, android.graphics.Typeface.BOLD);
+            LinearLayout.LayoutParams pLp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            pLp.setMargins(0, 8, 0, 0);
+            promotedBadge.setLayoutParams(pLp);
+            box.addView(promotedBadge);
+        } else if (isBoostSystemActive) {
+            // केवल तभी दिखेगा जब एडमिन सेटिंग्स से बूस्ट अर्निंग ऑन करेंगे
+            Button btnBoost = new Button(this);
+            btnBoost.setText("🚀 फ़सल टॉप बूस्ट करें (₹" + boostPrice + " / " + boostDays + " दिन)");
+            btnBoost.setBackgroundColor(Color.parseColor("#F59E0B"));
+            btnBoost.setTextColor(Color.WHITE);
+            btnBoost.setTextSize(12);
+            LinearLayout.LayoutParams bLp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            bLp.setMargins(0, 8, 0, 0);
+            btnBoost.setLayoutParams(bLp);
+            btnBoost.setOnClickListener(v -> handleBoostCrop(cropId, name));
+            box.addView(btnBoost);
+        }
 
         card.addView(box);
         containerFarmerCrops.addView(card);
     }
 
-        private void submitNewCrop() {
+    private void submitNewCrop() {
         String name = edtCropName.getText().toString().trim();
         String pStr = edtCropPrice.getText().toString().trim();
         String sStr = edtCropStock.getText().toString().trim();
@@ -327,7 +391,7 @@ public class MainActivity extends AppCompatActivity {
         addCropProgressBar.setVisibility(View.VISIBLE);
         SharedPreferences prefs = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
         String farmerName = prefs.getString("farmer_name", "किसान साथी");
-        String farmerPhone = prefs.getString("farmer_phone", "");
+        String farmerPhone = prefs.getString("farmer_phone", prefs.getString("phone", "8871291126"));
         String village = prefs.getString("village", "बर्दि‍या अमरा");
         double lat = prefs.getFloat("lat", 24.12f);
         double lng = prefs.getFloat("lng", 75.58f);
@@ -339,6 +403,7 @@ public class MainActivity extends AppCompatActivity {
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
                 conn.setRequestProperty("Content-Type", "application/json");
+                conn.setConnectTimeout(8000);
                 conn.setDoOutput(true);
 
                 JSONObject payload = new JSONObject();
@@ -374,7 +439,7 @@ public class MainActivity extends AppCompatActivity {
                     edtCropStock.setText("");
                     edtCropDesc.setText("");
                     switchTab(viewCrops, btnNavCrops);
-                    loadMyCrops();
+                    loadMyCrops(); // तुरंत चीना के नीचे लोड करेगा
                 } else {
                     Toast.makeText(this, "फ़सल सेव नहीं हो सकी, इंटरनेट चेक करें", Toast.LENGTH_LONG).show();
                 }
@@ -382,6 +447,42 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    private void handleBoostCrop(String cropId, String cropName) {
+        new AlertDialog.Builder(this)
+                .setTitle("🚀 फ़सल बूस्ट अनुरोध")
+                .setMessage("फ़सल: " + cropName + "\nशुल्क: ₹" + boostPrice + " (" + boostDays + " दिन के लिए)\n\nभुगतान गेटवे से सत्यापन के बाद यह मंडी में सबसे ऊपर Rank में दिखेगी। क्या आप आगे बढ़ना चाहते हैं?")
+                .setPositiveButton("आगे बढ़ें 💳", (dialog, which) -> {
+                    Executors.newSingleThreadExecutor().execute(() -> {
+                        try {
+                            URL url = new URL("https://mera-kisan-backend.vercel.app/api/admin");
+                            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                            conn.setRequestMethod("POST");
+                            conn.setRequestProperty("Content-Type", "application/json");
+                            conn.setDoOutput(true);
+
+                            SharedPreferences prefs = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
+                            String phone = prefs.getString("farmer_phone", prefs.getString("phone", "8871291126"));
+
+                            JSONObject payload = new JSONObject();
+                            payload.put("action", "request_crop_boost");
+                            payload.put("crop_id", cropId);
+                            payload.put("farmer_phone", phone);
+
+                            OutputStream os = conn.getOutputStream();
+                            os.write(payload.toString().getBytes("UTF-8"));
+                            os.close();
+                            conn.getResponseCode();
+                        } catch (Exception ignored) {}
+
+                        new Handler(Looper.getMainLooper()).post(() -> {
+                            Toast.makeText(this, "⏳ बूस्ट अनुरोध दर्ज हो गया है।", Toast.LENGTH_LONG).show();
+                            loadMyCrops();
+                        });
+                    });
+                })
+                .setNegativeButton("रद्द करें", null)
+                .show();
+    }
 
     private void saveFarmerProfile() {
         String land = edtProfileLand.getText().toString().trim();
@@ -389,7 +490,7 @@ public class MainActivity extends AppCompatActivity {
         String cert = edtProfileCert.getText().toString().trim();
 
         SharedPreferences prefs = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
-        String phone = prefs.getString("farmer_phone", "");
+        String phone = prefs.getString("farmer_phone", prefs.getString("phone", "8871291126"));
 
         prefs.edit().putString("land_acres", land).putString("farmer_upi", upi).putString("organic_cert", cert).apply();
 
@@ -436,7 +537,6 @@ public class MainActivity extends AppCompatActivity {
         Executors.newSingleThreadExecutor().execute(() -> {
             Bitmap finalPoster = null;
             try {
-                // 1. फ़सल और श्रेणी के अनुसार AI सर्च प्रॉम्प्ट तैयार करना
                 String searchKeyword = getSmartSearchKeyword(cropName, category);
 
                 String aiImageUrl = "https://image.pollinations.ai/prompt/cinematic%20golden%20harvest%20field%20of%20" 
@@ -454,10 +554,9 @@ public class MainActivity extends AppCompatActivity {
                         bgBitmap = BitmapFactory.decodeStream(conn.getInputStream());
                     }
                 } catch (Exception e) {
-                    bgBitmap = null; // इंटरनेट स्लो होने पर फॉलबैक
+                    bgBitmap = null;
                 }
 
-                // 2. मुख्य 1080x1080 कैनवास तैयार करना
                 finalPoster = Bitmap.createBitmap(1080, 1080, Bitmap.Config.ARGB_8888);
                 Canvas canvas = new Canvas(finalPoster);
 
@@ -465,29 +564,27 @@ public class MainActivity extends AppCompatActivity {
                     Bitmap scaledBg = Bitmap.createScaledBitmap(bgBitmap, 1080, 1080, true);
                     canvas.drawBitmap(scaledBg, 0, 0, null);
                 } else {
-                    canvas.drawColor(Color.parseColor("#064E3B")); // समृद्ध गहरा हरा बैकग्राउंड
+                    canvas.drawColor(Color.parseColor("#064E3B"));
                 }
 
                 Paint paint = new Paint();
                 paint.setAntiAlias(true);
 
-                // 3. ग्लास शेड डार्क ओवरले (ताकि सारा टेक्स्ट एकदम साफ और उभर कर दिखे)
                 paint.setColor(Color.argb(175, 15, 23, 42));
                 canvas.drawRect(0, 0, 1080, 1080, paint);
 
-                // 4. सुनहरा व हरा डबल शाही बॉर्डर
                 paint.setStyle(Paint.Style.STROKE);
                 paint.setStrokeWidth(12);
-                paint.setColor(Color.parseColor("#EAB308")); // चमकीला गोल्ड
+                paint.setColor(Color.parseColor("#EAB308"));
                 canvas.drawRect(20, 20, 1060, 1060, paint);
 
                 paint.setStrokeWidth(4);
-                paint.setColor(Color.parseColor("#22C55E")); // एमराल्ड ग्रीन
+                paint.setColor(Color.parseColor("#22C55E"));
                 canvas.drawRect(34, 34, 1046, 1046, paint);
 
                 paint.setStyle(Paint.Style.FILL);
 
-                // 5. हेडर बैनर (Mera Kisan Direct)
+                // हेडर बैनर
                 paint.setColor(Color.parseColor("#15803D"));
                 canvas.drawRoundRect(new RectF(50, 50, 1030, 170), 16, 16, paint);
 
@@ -501,7 +598,7 @@ public class MainActivity extends AppCompatActivity {
                 paint.setFakeBoldText(true);
                 canvas.drawText("खेत से सीधी खरीद • 0% बिचौलिया दलाली", 80, 145, paint);
 
-                // 6. मुख्य उत्पाद कार्ड (व्हाइट ग्लास इफ़ेक्ट)
+                // मुख्य उत्पाद कार्ड
                 paint.setColor(Color.argb(240, 255, 255, 255));
                 canvas.drawRoundRect(new RectF(50, 190, 1030, 440), 20, 20, paint);
 
@@ -529,7 +626,7 @@ public class MainActivity extends AppCompatActivity {
                 paint.setFakeBoldText(true);
                 canvas.drawText("💰 भाव: ₹" + (int)(price * 100) + "/क्विंटल (₹" + (int)price + "/kg)  |  📦 स्टॉक: " + (int)stock + " किलो", 100, 385, paint);
 
-                // 7. 🔥 मिर्च-मसाला सेक्शन: फ़सल विशेषताएँ, दाने की क्वालिटी और स्वास्थ्य लाभ
+                // खासियत व स्वास्थ्य लाभ
                 paint.setColor(Color.argb(235, 241, 245, 249));
                 canvas.drawRoundRect(new RectF(50, 460, 1030, 755), 20, 20, paint);
 
@@ -547,11 +644,11 @@ public class MainActivity extends AppCompatActivity {
                 canvas.drawText("• " + benefits[2], 80, 655, paint);
                 canvas.drawText("• " + benefits[3], 80, 705, paint);
 
-                // 8. किसान पहचान व सीधा संपर्क कार्ड
+                // किसान संपर्क कार्ड
                 SharedPreferences prefs = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
                 String farmerName = prefs.getString("farmer_name", "गोविंद पाटीदार");
                 String village = prefs.getString("village", "बर्दि‍या अमरा (मंदसौर)");
-                String phone = prefs.getString("farmer_phone", "8871291126");
+                String phone = prefs.getString("farmer_phone", prefs.getString("phone", "8871291126"));
 
                 paint.setColor(Color.parseColor("#064E3B"));
                 canvas.drawRoundRect(new RectF(50, 775, 1030, 945), 20, 20, paint);
@@ -566,7 +663,7 @@ public class MainActivity extends AppCompatActivity {
                 paint.setFakeBoldText(true);
                 canvas.drawText("📞 सीधा कॉल / WhatsApp: +91 " + phone, 80, 900, paint);
 
-                // 9. फ़ुटर गारंटी
+                // फ़ुटर गारंटी
                 paint.setColor(Color.parseColor("#D97706"));
                 canvas.drawRoundRect(new RectF(50, 965, 1030, 1025), 12, 12, paint);
 
@@ -588,7 +685,6 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // इंटरनेट AI इमेज सर्च के लिए सटीक कीवर्ड
     private String getSmartSearchKeyword(String name, String cat) {
         String n = name.toLowerCase();
         if (n.contains("मिलेट") || n.contains("चीना") || n.contains("पोसो")) return "proso millet golden grains harvest";
@@ -602,7 +698,6 @@ public class MainActivity extends AppCompatActivity {
         return "indian golden agriculture crops farm harvest";
     }
 
-    // मार्केटिंग और मिर्च-मसाला कॉपीराइटिंग इंजन
     private String[] generateMarketingHighlights(String name, String cat, boolean isOrganic) {
         String n = name.toLowerCase();
 
@@ -662,7 +757,7 @@ public class MainActivity extends AppCompatActivity {
         SharedPreferences prefs = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
         String farmerName = prefs.getString("farmer_name", "किसान साथी");
         String village = prefs.getString("village", "बर्दि‍या अमरा");
-        String phone = prefs.getString("farmer_phone", "");
+        String phone = prefs.getString("farmer_phone", prefs.getString("phone", "8871291126"));
 
         try {
             String path = MediaStore.Images.Media.insertImage(getContentResolver(), bitmap, "mandi_poster_" + System.currentTimeMillis(), "Mera Kisan Poster");
@@ -697,7 +792,7 @@ public class MainActivity extends AppCompatActivity {
             if (!msg.isEmpty()) {
                 SharedPreferences prefs = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
                 String name = prefs.getString("farmer_name", "किसान साथी");
-                String phone = prefs.getString("farmer_phone", "");
+                String phone = prefs.getString("farmer_phone", prefs.getString("phone", "8871291126"));
 
                 Executors.newSingleThreadExecutor().execute(() -> {
                     try {
@@ -726,41 +821,4 @@ public class MainActivity extends AppCompatActivity {
         b.setNegativeButton("रद्द करें", null);
         b.show();
     }
-        private void handleBoostCrop(String cropId, String cropName, boolean isAlreadyBoosted) {
-        if (isAlreadyBoosted) {
-            Toast.makeText(this, "यह फ़सल पहले से ही सबसे ऊपर प्रमोटेड है!", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        new AlertDialog.Builder(this)
-                .setTitle("🚀 फ़सल बूस्ट करें")
-                .setMessage("क्या आप '" + cropName + "' को मंडी में सबसे ऊपर (Top Deal) दिखाना चाहते हैं?")
-                .setPositiveButton("हाँ, बूस्ट करें", (dialog, which) -> {
-                    Executors.newSingleThreadExecutor().execute(() -> {
-                        try {
-                            URL url = new URL("https://mera-kisan-backend.vercel.app/api/admin");
-                            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                            conn.setRequestMethod("POST");
-                            conn.setRequestProperty("Content-Type", "application/json");
-                            conn.setDoOutput(true);
-
-                            JSONObject payload = new JSONObject();
-                            payload.put("action", "boost_crop");
-                            payload.put("crop_id", cropId);
-
-                            OutputStream os = conn.getOutputStream();
-                            os.write(payload.toString().getBytes("UTF-8"));
-                            os.close();
-                            conn.getResponseCode();
-                        } catch (Exception ignored) {}
-
-                        new Handler(Looper.getMainLooper()).post(() -> {
-                            Toast.makeText(this, "🔥 फ़सल को टॉप पर बूस्ट कर दिया गया!", Toast.LENGTH_SHORT).show();
-                            loadMyCrops();
-                        });
-                    });
-                })
-                .setNegativeButton("रद्द करें", null)
-                .show();
-        }
 }
