@@ -761,18 +761,21 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+        // =========================================================================
+    // 📲 सोशल मीडिया शेयर इंजन (WhatsApp, Facebook + ऑटो लिंक व क्लिपबोर्ड)
+    // =========================================================================
     private void sharePosterToWhatsApp(Bitmap bitmap, String cropName, double price, double stock, String desc) {
         SharedPreferences prefs = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
         String farmerName = prefs.getString("farmer_name", "किसान साथी");
         String village = prefs.getString("village", "बर्दि‍या अमरा");
         String phone = prefs.getString("farmer_phone", prefs.getString("phone", "8871291126"));
 
-        try {
-            String path = MediaStore.Images.Media.insertImage(getContentResolver(), bitmap, "mandi_poster_" + System.currentTimeMillis(), "Mera Kisan Poster");
-            Uri uri = Uri.parse(path);
+        String directWaLink = "https://wa.me/91" + phone + "?text=" + Uri.encode("नमस्ते, मुझे आपकी '" + cropName + "' खरीदनी है।");
 
+        try {
+            // 1. पूरा शेयर संदेश लिंक सहित तैयार करना
             StringBuilder msg = new StringBuilder();
-            msg.append("🌾 *Mera Kisan Direct - ताज़ा उपज उपलब्ध!*\n\n")
+            msg.append("🌾 *MERA KISAN DIRECT — ताज़ा मंडी उपज*\n\n")
                .append("उत्पाद: *").append(cropName).append("*\n")
                .append("भाव: *₹").append((int)price).append("/किलो*\n")
                .append("उपलब्ध स्टॉक: *").append((int)stock).append(" किलो*\n");
@@ -781,17 +784,36 @@ public class MainActivity extends AppCompatActivity {
                 msg.append("📝 विवरण: ").append(desc.trim()).append("\n");
             }
 
-            msg.append("किसान: ").append(farmerName).append(" (").append(village).append(")\n")
-               .append("📞 सीधा संपर्क करें: +91 ").append(phone).append("\n\n")
-               .append("खेत से सीधी खरीद • 0% बिचौलिया दलाली!");
+            msg.append("📍 गाँव: ").append(village).append("\n")
+               .append("👨‍🌾 किसान: ").append(farmerName).append("\n")
+               .append("📞 सीधा कॉल / WhatsApp: +91 ").append(phone).append("\n\n")
+               .append("💬 1-क्लिक में किसान से सीधे चैट करें:\n").append(directWaLink).append("\n\n")
+               .append("📲 सीधे खेत से खरीदने हेतु 'Mera Kisan' ग्राहक ऐप डाउनलोड करें:\n")
+               .append("https://tinyurl.com/mera-kisan-grahak\n\n")
+               .append("🤝 खेत से सीधी खरीद • 0% बिचौलिया दलाली!");
 
+            // 2. Facebook सपोर्ट: टेक्स्ट को क्लिपबोर्ड पर ऑटो-कॉपी करना
+            android.content.ClipboardManager clipboard = (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            android.content.ClipData clip = android.content.ClipData.newPlainText("Mera Kisan Deal", msg.toString());
+            if (clipboard != null) {
+                clipboard.setPrimaryClip(clip);
+                Toast.makeText(this, "📋 विवरण व लिंक कॉपी हो गए हैं! Facebook पर Paste करें।", Toast.LENGTH_LONG).show();
+            }
+
+            // 3. पोस्टर इमेज को MediaStore में सेव करके URI लेना
+            String path = MediaStore.Images.Media.insertImage(getContentResolver(), bitmap, "mandi_poster_" + System.currentTimeMillis(), "Mera Kisan Poster");
+            Uri uri = Uri.parse(path);
+
+            // 4. यूनिवर्सल शेयर शीट (WhatsApp, Facebook, Telegram, आदि)
             Intent share = new Intent(Intent.ACTION_SEND);
             share.setType("image/*");
             share.putExtra(Intent.EXTRA_STREAM, uri);
             share.putExtra(Intent.EXTRA_TEXT, msg.toString());
-            startActivity(Intent.createChooser(share, "मंडी पोस्टर WhatsApp पर शेयर करें"));
+            share.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+            startActivity(Intent.createChooser(share, "मंडी पोस्टर शेयर करें (WhatsApp, Facebook, आदि)"));
         } catch (Exception e) {
-            Toast.makeText(this, "पोस्टर शेयर नहीं हो सका", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "पोस्टर शेयर नहीं हो सका: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
 
