@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- app/src/main/res/navigation/nav_graph.xml -->
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/splashFragment">
+
+    <!-- 1. Splash Screen -->
+    <fragment
+        android:id="@+id/splashFragment"
+        android:name="in.merakisan.app.ui.auth.SplashFragment"
+        android:label="Splash"
+        tools:layout="@layout/fragment_splash">
+        <action
+            android:id="@+id/action_splash_to_roleSelection"
+            app:destination="@id/roleSelectionFragment"
+            app:popUpTo="@id/splashFragment"
+            app:popUpToInclusive="true" />
+        <action
+            android:id="@+id/action_splash_to_home"
+            app:destination="@id/nav_home"
+            app:popUpTo="@id/splashFragment"
+            app:popUpToInclusive="true" />
+    </fragment>
+
+    <!-- 2. Role Selection (Farmer / Buyer / Both) -->
+    <fragment
+        android:id="@+id/roleSelectionFragment"
+        android:name="in.merakisan.app.ui.auth.RoleSelectionFragment"
+        android:label="भूमिका चयन"
+        tools:layout="@layout/fragment_role_selection">
+        <action
+            android:id="@+id/action_roleSelection_to_home"
+            app:destination="@id/nav_home"
+            app:popUpTo="@id/roleSelectionFragment"
+            app:popUpToInclusive="true" />
+    </fragment>
+
+    <!-- 3. Bottom Nav Destinations -->
+    <fragment
+        android:id="@+id/nav_home"
+        android:name="in.merakisan.app.ui.home.HomeFragment"
+        android:label="MERA KISAN"
+        tools:layout="@layout/fragment_home">
+        <action
+            android:id="@+id/action_home_to_productDetail"
+            app:destination="@id/productDetailFragment" />
+        <action
+            android:id="@+id/action_home_to_addProduct"
+            app:destination="@id/addProductFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/nav_marketplace"
+        android:name="in.merakisan.app.ui.marketplace.MarketplaceFragment"
+        android:label="बाज़ार"
+        tools:layout="@layout/fragment_marketplace">
+        <action
+            android:id="@+id/action_marketplace_to_productDetail"
+            app:destination="@id/productDetailFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/nav_buyer_requests"
+        android:name="in.merakisan.app.ui.requests.BuyerRequestsFragment"
+        android:label="मुझे चाहिए"
+        tools:layout="@layout/fragment_buyer_requests" />
+
+    <fragment
+        android:id="@+id/nav_orders"
+        android:name="in.merakisan.app.ui.orders.OrdersFragment"
+        android:label="मेरे ऑर्डर्स"
+        tools:layout="@layout/fragment_orders" />
+
+    <fragment
+        android:id="@+id/nav_profile"
+        android:name="in.merakisan.app.ui.profile.ProfileFragment"
+        android:label="मेरी प्रोफ़ाइल"
+        tools:layout="@layout/fragment_profile" />
+
+    <!-- 4. Secondary Core Screens -->
+    <fragment
+        android:id="@+id/productDetailFragment"
+        android:name="in.merakisan.app.ui.marketplace.ProductDetailFragment"
+        android:label="फसल विवरण"
+        tools:layout="@layout/fragment_product_detail">
+        <argument
+            android:name="productId"
+            app:argType="string" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/addProductFragment"
+        android:name="in.merakisan.app.ui.farmer.AddProductFragment"
+        android:label="नई फसल जोड़ें"
+        tools:layout="@layout/fragment_add_product" />
+
+</navigation>
