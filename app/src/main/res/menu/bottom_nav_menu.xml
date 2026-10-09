@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- app/src/main/res/menu/bottom_nav_menu.xml -->
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/nav_home"
+        android:icon="@android:drawable/ic_menu_compass"
+        android:title="होम" />
+
+    <item
+        android:id="@+id/nav_marketplace"
+        android:icon="@android:drawable/ic_menu_search"
+        android:title="फसलें" />
+
+    <item
+        android:id="@+id/nav_buyer_requests"
+        android:icon="@android:drawable/ic_menu_agenda"
+        android:title="मुझे चाहिए" />
+
+    <item
+        android:id="@+id/nav_orders"
+        android:icon="@android:drawable/ic_menu_view"
+        android:title="ऑर्डर्स" />
+
+    <item
+        android:id="@+id/nav_profile"
+        android:icon="@android:drawable/ic_menu_myplaces"
+        android:title="प्रोफ़ाइल" />
+
+</menu>
