@@ -4,81 +4,60 @@ package in.merakisan.app.core.network.model
 import com.google.gson.annotations.SerializedName
 
 /**
- * MERA KISAN Favorites & Follow Data Models
+ * MERA KISAN Favorites & Follows Data Model
+ */
+data class FavoriteDto(
+    @SerializedName("favorite_id")
+    val favoriteId: String = "",
+
+    @SerializedName("user_uid")
+    val userUid: String = "",
+
+    @SerializedName("target_id")
+    val targetId: String = "",
+
+    @SerializedName("type")
+    val type: String = "product", // product, farmer
+
+    @SerializedName("created_at")
+    val createdAt: String = ""
+)
+
+/**
+ * पसंदीदा फसल कार्ड्स के UI एडॉप्टर हेतु पूर्ण मॉडल
+ * वित्तीय सुरक्षा: price_paise (Long)
  */
 data class FavoriteProductDto(
     @SerializedName("favorite_id")
-    val favoriteId: String,
+    val favoriteId: String = "",
 
     @SerializedName("product_id")
-    val productId: String,
+    val productId: String = "",
 
     @SerializedName("name")
-    val name: String,
-
-    @SerializedName("category")
-    val category: String,
+    val name: String = "",
 
     @SerializedName("variety")
-    val variety: String?,
+    val variety: String? = null,
 
-    // वित्तीय सुरक्षा: पूर्णांक पैसे (Integer Paise)
     @SerializedName("price_paise")
-    val pricePaise: Long,
+    val pricePaise: Long = 0L,
 
     @SerializedName("unit")
-    val unit: String,
+    val unit: String = "kg",
 
     @SerializedName("stock_quantity")
-    val stockQuantity: Double,
+    val stockQuantity: Double = 0.0,
 
     @SerializedName("seller_name")
-    val sellerName: String,
+    val sellerName: String = "",
 
     @SerializedName("village")
-    val village: String?,
+    val village: String? = null,
 
     @SerializedName("district")
-    val district: String,
+    val district: String = "",
 
-    @SerializedName("photo_url")
-    val photoUrl: String?,
-
-    @SerializedName("verification_status")
-    val verificationStatus: String,
-
-    @SerializedName("saved_at")
-    val savedAt: String
-)
-
-data class FollowedFarmerDto(
-    @SerializedName("follow_id")
-    val followId: String,
-
-    @SerializedName("farmer_uid")
-    val farmerUid: String,
-
-    @SerializedName("name")
-    val name: String,
-
-    @SerializedName("phone")
-    val phone: String?,
-
-    @SerializedName("village")
-    val village: String?,
-
-    @SerializedName("district")
-    val district: String,
-
-    @SerializedName("active_crops_count")
-    val activeCropsCount: Int,
-
-    @SerializedName("rating")
-    val rating: Double,
-
-    @SerializedName("verification_status")
-    val verificationStatus: String,
-
-    @SerializedName("followed_at")
-    val followedAt: String
+    @SerializedName("image_url")
+    val imageUrl: String? = null
 )
