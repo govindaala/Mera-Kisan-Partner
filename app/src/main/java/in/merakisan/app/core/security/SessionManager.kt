@@ -1,5 +1,5 @@
 // app/src/main/java/in/merakisan/app/core/security/SessionManager.kt
-package in.merakisan.app.core.security
+package `in`.merakisan.app.core.security
 
 import android.content.Context
 import android.content.SharedPreferences
@@ -13,7 +13,7 @@ object SessionManager {
     private const val KEY_AUTH_TOKEN = "auth_token"
     private const val KEY_USER_UID = "user_uid"
     private const val KEY_USER_PHONE = "user_phone"
-    private const val KEY_USER_ROLE = "user_role" // FARMER, BUYER, BOTH
+    private const val KEY_USER_ROLE = "user_role"
     private const val KEY_FCM_TOKEN = "fcm_token"
     private const val KEY_IS_LOGGED_IN = "is_logged_in"
 
@@ -21,7 +21,6 @@ object SessionManager {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
     }
 
-    // AuthViewModel, RoleSelectionFragment और ProfileViewModel द्वारा कॉल किया जाने वाला मुख्य फ़ंक्शन
     fun saveSession(context: Context, token: String, uid: String, role: String, phone: String? = null) {
         getPrefs(context).edit().apply {
             putString(KEY_AUTH_TOKEN, token)
