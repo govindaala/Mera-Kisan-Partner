@@ -94,7 +94,11 @@
         android:id="@+id/nav_orders"
         android:name="in.merakisan.app.ui.orders.OrdersFragment"
         android:label="मेरे ऑर्डर्स"
-        tools:layout="@layout/fragment_orders" />
+        tools:layout="@layout/fragment_orders">
+        <action
+            android:id="@+id/action_orders_to_orderDetail"
+            app:destination="@id/orderDetailFragment" />
+    </fragment>
 
     <fragment
         android:id="@+id/nav_profile"
@@ -118,5 +122,15 @@
         android:name="in.merakisan.app.ui.farmer.AddProductFragment"
         android:label="नई फसल जोड़ें"
         tools:layout="@layout/fragment_add_product" />
+
+    <fragment
+        android:id="@+id/orderDetailFragment"
+        android:name="in.merakisan.app.ui.orders.OrderDetailFragment"
+        android:label="ऑर्डर स्थिति"
+        tools:layout="@layout/fragment_order_detail">
+        <argument
+            android:name="orderId"
+            app:argType="string" />
+    </fragment>
 
 </navigation>
