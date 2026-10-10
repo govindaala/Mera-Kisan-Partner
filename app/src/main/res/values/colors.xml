@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- app/src/main/res/values/colors.xml -->
+<resources>
+    <!-- Agro-Green Palette -->
+    <color name="primary_green">#1B5E20</color>
+    <color name="primary_green_light">#2E7D32</color>
+    <color name="primary_green_pale">#E8F5E9</color>
+    <color name="primary_green_border">#C8E6C9</color>
+
+    <!-- Accents & Alerts -->
+    <color name="accent_orange">#E65100</color>
+    <color name="alert_red">#D32F2F</color>
+    <color name="alert_red_pale">#FFEBEE</color>
+    <color name="info_blue">#0D47A1</color>
+    <color name="info_blue_pale">#E3F2FD</color>
+
+    <!-- Neutrals -->
+    <color name="background_light">#F8FAF8</color>
+    <color name="surface_white">#FFFFFF</color>
+    <color name="text_primary">#212121</color>
+    <color name="text_secondary">#616161</color>
+    <color name="text_hint">#9E9E9E</color>
+    <color name="divider_line">#E0E0E0</color>
+</resources>
