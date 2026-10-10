@@ -1,100 +1,109 @@
-// app/src/main/java/in/merakisan/app/core/network/model/ProductDto.kt
-package `in`.merakisan.app.core.network.model
+// app/src/main/java/in/merakisan/app/data/local/entity/ProductEntity.kt
+package `in`.merakisan.app.data.local.entity
 
-import com.google.gson.annotations.SerializedName
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+import `in`.merakisan.app.core.network.model.ProductDto
 
 /**
- * MERA KISAN Core Marketplace Produce Data Model
+ * MERA KISAN Offline-First Cache Entity
+ * Room Database के लिए पूर्णतः टाइप-सुरक्षित मॉडल
  */
-data class ProductDto(
-    @SerializedName("product_id")
-    val productId: String = "",
-
-    @SerializedName("seller_uid")
+@Entity(tableName = "products")
+data class ProductEntity(
+    @PrimaryKey
+    val productId: String,
     val sellerUid: String = "",
-
-    @SerializedName("seller_name")
     val sellerName: String = "",
-
-    @SerializedName("seller_phone")
     val sellerPhone: String? = null,
-
-    @SerializedName("name")
     val name: String = "",
-
-    @SerializedName("category")
     val category: String = "",
-
-    @SerializedName("variety")
     val variety: String = "",
-
-    @SerializedName("description")
     val description: String = "",
-
-    // वित्तीय सुरक्षा: पूर्णांक पैसे (Integer Paise)
-    @SerializedName("price_paise")
     val pricePaise: Long = 0L,
-
-    @SerializedName("unit")
     val unit: String = "kg",
-
-    @SerializedName("stock_quantity")
     val stockQuantity: Double = 0.0,
-
-    @SerializedName("min_order_quantity")
     val minOrderQuantity: Double = 1.0,
-
-    @SerializedName("village")
     val village: String = "",
-
-    @SerializedName("district")
     val district: String = "",
-
-    @SerializedName("state")
     val state: String = "Madhya Pradesh",
-
-    @SerializedName("approx_lat")
     val approxLat: Double? = null,
-
-    @SerializedName("approx_lng")
     val approxLng: Double? = null,
-
-    @SerializedName("latitudeApprox")
-    val latitudeApprox: Double? = null,
-
-    @SerializedName("longitudeApprox")
-    val longitudeApprox: Double? = null,
-
-    @SerializedName("photos")
     val photos: List<String> = emptyList(),
-
-    @SerializedName("image_urls")
-    val imageUrls: List<String> = emptyList(),
-
-    @SerializedName("video_url")
     val videoUrl: String? = null,
-
-    @SerializedName("harvest_date")
     val harvestDate: String = "",
-
-    @SerializedName("farming_type")
     val farmingType: String = "conventional",
-
-    @SerializedName("verification_status")
     val verificationStatus: String = "unverified",
-
-    @SerializedName("status")
     val status: String = "active",
-
-    @SerializedName("is_featured")
     val isFeatured: Boolean = false,
-
-    @SerializedName("boosted")
     val boosted: Boolean = false,
-
-    @SerializedName("created_at")
     val createdAt: String = "",
-
-    @SerializedName("updated_at")
     val updatedAt: String = ""
-)
+) {
+    fun toDto(): ProductDto = ProductDto(
+        productId = productId,
+        sellerUid = sellerUid,
+        sellerName = sellerName,
+        sellerPhone = sellerPhone,
+        name = name,
+        category = category,
+        variety = variety,
+        description = description,
+        pricePaise = pricePaise,
+        unit = unit,
+        stockQuantity = stockQuantity,
+        minOrderQuantity = minOrderQuantity,
+        village = village,
+        district = district,
+        state = state,
+        approxLat = approxLat,
+        approxLng = approxLng,
+        latitudeApprox = approxLat,
+        longitudeApprox = approxLng,
+        photos = photos,
+        imageUrls = photos,
+        videoUrl = videoUrl,
+        harvestDate = harvestDate,
+        farmingType = farmingType,
+        verificationStatus = verificationStatus,
+        status = status,
+        isFeatured = isFeatured,
+        boosted = boosted,
+        createdAt = createdAt,
+        updatedAt = updatedAt
+    )
+
+    companion object {
+        fun fromDto(dto: ProductDto): ProductEntity = ProductEntity(
+            productId = dto.productId,
+            sellerUid = dto.sellerUid,
+            sellerName = dto.sellerName,
+            sellerPhone = dto.sellerPhone,
+            name = dto.name,
+            category = dto.category,
+            variety = dto.variety ?: "",
+            description = dto.description ?: "",
+            pricePaise = dto.pricePaise,
+            unit = dto.unit,
+            stockQuantity = dto.stockQuantity,
+            minOrderQuantity = dto.minOrderQuantity,
+            village = dto.village ?: "",
+            district = dto.district ?: "",
+            state = dto.state ?: "Madhya Pradesh",
+            approxLat = dto.approxLat ?: dto.latitudeApprox,
+            approxLng = dto.approxLng ?: dto.longitudeApprox,
+            photos = (dto.photos.takeIf { it.isNotEmpty() } ?: dto.imageUrls) ?: emptyList(),
+            videoUrl = dto.videoUrl,
+            harvestDate = dto.harvestDate ?: "",
+            farmingType = dto.farmingType ?: "conventional",
+            verificationStatus = dto.verificationStatus ?: "unverified",
+            status = dto.status ?: "active",
+            isFeatured = dto.isFeatured,
+            boosted = dto.boosted,
+            createdAt = dto.createdAt ?: "",
+            updatedAt = dto.updatedAt ?: ""
+        )
+    }
+}
+
+fun ProductDto.toEntity(): ProductEntity = ProductEntity.fromDto(this)
