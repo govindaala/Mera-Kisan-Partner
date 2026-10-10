@@ -1,11 +1,10 @@
 // app/src/main/java/in/merakisan/app/core/network/model/OrderDto.kt
-package in.merakisan.app.core.network.model
+package `in`.merakisan.app.core.network.model
 
 import com.google.gson.annotations.SerializedName
 
 /**
  * MERA KISAN Single Source of Truth Order Model
- * वित्तीय सुरक्षा: total_amount_paise (Long)
  */
 data class OrderDto(
     @SerializedName("order_id")
@@ -41,7 +40,6 @@ data class OrderDto(
     @SerializedName("unit")
     val unit: String = "kg",
 
-    // वित्तीय सुरक्षा: पूर्णांक पैसे (Integer Paise)
     @SerializedName("total_amount_paise")
     val totalAmountPaise: Long = 0L,
 
