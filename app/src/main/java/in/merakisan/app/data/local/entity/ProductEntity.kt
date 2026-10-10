@@ -1,147 +1,100 @@
-// app/src/main/java/in/merakisan/app/data/local/entity/ProductEntity.kt
-package in.merakisan.app.data.local.entity
+// app/src/main/java/in/merakisan/app/core/network/model/ProductDto.kt
+package `in`.merakisan.app.core.network.model
 
-import androidx.room.ColumnInfo
-import androidx.room.Entity
-import androidx.room.PrimaryKey
-import in.merakisan.app.core.network.model.ProductDto
+import com.google.gson.annotations.SerializedName
 
 /**
- * MERA KISAN Offline Produce Entity
- * Local cache schema with integer paise and privacy-first coordinates
+ * MERA KISAN Core Marketplace Produce Data Model
  */
-@Entity(tableName = "cached_products")
-data class ProductEntity(
-    @PrimaryKey
-    @ColumnInfo(name = "product_id")
-    val productId: String,
+data class ProductDto(
+    @SerializedName("product_id")
+    val productId: String = "",
 
-    @ColumnInfo(name = "name")
-    val name: String,
+    @SerializedName("seller_uid")
+    val sellerUid: String = "",
 
-    @ColumnInfo(name = "category")
-    val category: String,
+    @SerializedName("seller_name")
+    val sellerName: String = "",
 
-    @ColumnInfo(name = "variety")
-    val variety: String?,
+    @SerializedName("seller_phone")
+    val sellerPhone: String? = null,
 
-    @ColumnInfo(name = "description")
-    val description: String?,
+    @SerializedName("name")
+    val name: String = "",
 
-    // Vittiye suraksha: Integer paise (Zero floating-point rounding error)
-    @ColumnInfo(name = "price_paise")
-    val pricePaise: Long,
+    @SerializedName("category")
+    val category: String = "",
 
-    @ColumnInfo(name = "stock_quantity")
-    val stockQuantity: Double,
+    @SerializedName("variety")
+    val variety: String = "",
 
-    @ColumnInfo(name = "unit")
-    val unit: String,
+    @SerializedName("description")
+    val description: String = "",
 
-    @ColumnInfo(name = "min_order_quantity")
-    val minOrderQuantity: Double,
+    // वित्तीय सुरक्षा: पूर्णांक पैसे (Integer Paise)
+    @SerializedName("price_paise")
+    val pricePaise: Long = 0L,
 
-    @ColumnInfo(name = "seller_uid")
-    val sellerUid: String,
+    @SerializedName("unit")
+    val unit: String = "kg",
 
-    @ColumnInfo(name = "seller_name")
-    val sellerName: String,
+    @SerializedName("stock_quantity")
+    val stockQuantity: Double = 0.0,
 
-    @ColumnInfo(name = "seller_phone")
-    val sellerPhone: String?,
+    @SerializedName("min_order_quantity")
+    val minOrderQuantity: Double = 1.0,
 
-    @ColumnInfo(name = "village")
-    val village: String?,
+    @SerializedName("village")
+    val village: String = "",
 
-    @ColumnInfo(name = "district")
-    val district: String,
+    @SerializedName("district")
+    val district: String = "",
 
-    @ColumnInfo(name = "state")
-    val state: String?,
+    @SerializedName("state")
+    val state: String = "Madhya Pradesh",
 
-    // Privacy-by-Design: Anumanit nirdeshank (Exact GPS never stored)
-    @ColumnInfo(name = "latitude_approx")
-    val latitudeApprox: Double?,
+    @SerializedName("approx_lat")
+    val approxLat: Double? = null,
 
-    @ColumnInfo(name = "longitude_approx")
-    val longitudeApprox: Double?,
+    @SerializedName("approx_lng")
+    val approxLng: Double? = null,
 
-    @ColumnInfo(name = "verification_status")
-    val verificationStatus: String,
+    @SerializedName("latitudeApprox")
+    val latitudeApprox: Double? = null,
 
-    @ColumnInfo(name = "harvest_date")
-    val harvestDate: String?,
+    @SerializedName("longitudeApprox")
+    val longitudeApprox: Double? = null,
 
-    @ColumnInfo(name = "photo_url")
-    val photoUrl: String?,
+    @SerializedName("photos")
+    val photos: List<String> = emptyList(),
 
-    @ColumnInfo(name = "is_featured")
-    val isFeatured: Boolean,
+    @SerializedName("image_urls")
+    val imageUrls: List<String> = emptyList(),
 
-    @ColumnInfo(name = "boosted")
-    val boosted: Boolean,
+    @SerializedName("video_url")
+    val videoUrl: String? = null,
 
-    @ColumnInfo(name = "status")
-    val status: String,
+    @SerializedName("harvest_date")
+    val harvestDate: String = "",
 
-    @ColumnInfo(name = "cached_at")
-    val cachedAt: Long = System.currentTimeMillis()
+    @SerializedName("farming_type")
+    val farmingType: String = "conventional",
+
+    @SerializedName("verification_status")
+    val verificationStatus: String = "unverified",
+
+    @SerializedName("status")
+    val status: String = "active",
+
+    @SerializedName("is_featured")
+    val isFeatured: Boolean = false,
+
+    @SerializedName("boosted")
+    val boosted: Boolean = false,
+
+    @SerializedName("created_at")
+    val createdAt: String = "",
+
+    @SerializedName("updated_at")
+    val updatedAt: String = ""
 )
-
-fun ProductEntity.toDto(): ProductDto {
-    return ProductDto(
-        productId = productId,
-        name = name,
-        category = category,
-        variety = variety,
-        description = description,
-        pricePaise = pricePaise,
-        stockQuantity = stockQuantity,
-        unit = unit,
-        minOrderQuantity = minOrderQuantity,
-        sellerUid = sellerUid,
-        sellerName = sellerName,
-        sellerPhone = sellerPhone,
-        village = village,
-        district = district,
-        state = state,
-        latitudeApprox = latitudeApprox,
-        longitudeApprox = longitudeApprox,
-        verificationStatus = verificationStatus,
-        harvestDate = harvestDate,
-        photos = if (!photoUrl.isNullOrBlank()) listOf(photoUrl) else emptyList(),
-        isFeatured = isFeatured,
-        boosted = boosted,
-        status = status,
-        createdAt = null
-    )
-}
-
-fun ProductDto.toEntity(): ProductEntity {
-    return ProductEntity(
-        productId = productId,
-        name = name,
-        category = category,
-        variety = variety,
-        description = description,
-        pricePaise = pricePaise,
-        stockQuantity = stockQuantity,
-        unit = unit,
-        minOrderQuantity = minOrderQuantity ?: 1.0,
-        sellerUid = sellerUid,
-        sellerName = sellerName,
-        sellerPhone = sellerPhone,
-        village = village,
-        district = district,
-        state = state,
-        latitudeApprox = latitudeApprox,
-        longitudeApprox = longitudeApprox,
-        verificationStatus = verificationStatus,
-        harvestDate = harvestDate,
-        photoUrl = photos.firstOrNull(),
-        isFeatured = isFeatured,
-        boosted = boosted,
-        status = status,
-        cachedAt = System.currentTimeMillis()
-    )
-}
