@@ -45,6 +45,9 @@ data class AppConfigResponse(
     val remoteConfig: Map<String, Any> = emptyMap()
 )
 
+/**
+ * चेकआउट स्क्रीन द्वारा ऑर्डर निर्माण का अनुरोध मॉडल
+ */
 data class CreateOrderRequest(
     @SerializedName("product_id")
     val productId: String = "",
@@ -55,9 +58,12 @@ data class CreateOrderRequest(
     @SerializedName("payment_method")
     val paymentMethod: String = "cod",
 
+    @SerializedName("delivery_type")
+    val deliveryType: String? = "pickup",
+
     @SerializedName("delivery_address")
-    val deliveryAddress: String = "",
+    val deliveryAddress: String? = null,
 
     @SerializedName("notes")
-    val notes: String = ""
+    val notes: String? = null
 )
