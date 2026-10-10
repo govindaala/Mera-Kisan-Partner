@@ -5,7 +5,7 @@ import com.google.gson.annotations.SerializedName
 
 /**
  * MERA KISAN Unified Produce Data Model
- * वित्तीय सुरक्षा: price_paise (Long) एवं दोनों वर्ज़न के फ़ील्ड्स का समेकन
+ * ProductEntity, AddProductViewModel और ApiService के साथ 100% टाइप-संगत
  */
 data class ProductDto(
     @SerializedName("product_id")
@@ -27,11 +27,12 @@ data class ProductDto(
     val category: String = "",
 
     @SerializedName("variety")
-    val variety: String = "",
+    val variety: String? = null,
 
     @SerializedName("description")
-    val description: String = "",
+    val description: String? = null,
 
+    // वित्तीय सुरक्षा: पूर्णांक पैसे (Integer Paise)
     @SerializedName("price_paise")
     val pricePaise: Long = 0L,
 
@@ -45,13 +46,13 @@ data class ProductDto(
     val minOrderQuantity: Double = 1.0,
 
     @SerializedName("village")
-    val village: String = "",
+    val village: String? = null,
 
     @SerializedName("district")
-    val district: String = "",
+    val district: String? = null,
 
     @SerializedName("state")
-    val state: String = "Madhya Pradesh",
+    val state: String? = "Madhya Pradesh",
 
     @SerializedName("approx_lat")
     val approxLat: Double? = null,
@@ -75,20 +76,26 @@ data class ProductDto(
     val videoUrl: String? = null,
 
     @SerializedName("harvest_date")
-    val harvestDate: String = "",
+    val harvestDate: String? = null,
 
     @SerializedName("farming_type")
-    val farmingType: String = "conventional",
+    val farmingType: String? = "conventional",
 
     @SerializedName("verification_status")
-    val verificationStatus: String = "unverified",
+    val verificationStatus: String? = "unverified",
 
     @SerializedName("status")
-    val status: String = "active",
+    val status: String? = "active",
+
+    @SerializedName("is_featured")
+    val isFeatured: Boolean = false,
+
+    @SerializedName("boosted")
+    val boosted: Boolean = false,
 
     @SerializedName("created_at")
-    val createdAt: String = "",
+    val createdAt: String? = "",
 
     @SerializedName("updated_at")
-    val updatedAt: String = ""
+    val updatedAt: String? = ""
 )
