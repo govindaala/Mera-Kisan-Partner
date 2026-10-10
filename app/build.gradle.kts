@@ -1,4 +1,3 @@
-// app/build.gradle.kts
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -19,6 +18,9 @@ android {
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Backend Base URL कॉन्फ़िगरेशन
+        buildConfigField("String", "BASE_URL", "\"https://mera-kisan-backend.vercel.app/\"")
     }
 
     buildTypes {
@@ -46,7 +48,8 @@ android {
 
     buildFeatures {
         viewBinding = true
-        dataBinding = false // DataBinding क्रैश और <Error module> को हमेशा के लिए बंद रखना
+        dataBinding = false
+        buildConfig = true // ApiClient के लिए BuildConfig जनरेशन सक्षम
     }
 }
 
@@ -62,6 +65,15 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
 
+    // Image Loading (Coil - UI कार्ड्स और थंबनेल्स के लिए)
+    implementation("io.coil-kt:coil:2.6.0")
+
+    // Google Sign-In Authentication
+    implementation("com.google.android.gms:play-services-auth:21.0.0")
+
+    // QR Code Generator (ZXing Core)
+    implementation("com.google.zxing:core:3.5.3")
+
     // Navigation Component
     implementation("androidx.navigation:navigation-fragment-ktx:2.7.7")
     implementation("androidx.navigation:navigation-ui-ktx:2.7.7")
@@ -71,18 +83,18 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
 
-    // Room Database (Offline Cache)
+    // Room Database
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
 
-    // Networking, Retrofit & Serialization
+    // Networking & Retrofit
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
     implementation("com.google.code.gson:gson:2.10.1")
 
-    // WorkManager (Background Upload & Sync)
+    // WorkManager (Background Sync)
     implementation("androidx.work:work-runtime-ktx:2.9.0")
 
     // Firebase BOM & Cloud Messaging
