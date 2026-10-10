@@ -30,41 +30,29 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: 3. Gradle टूल और Wrapper की तैयारी
+      - name: 3. Gradle टूल सेटअप (कैशे डिसेबल शील्ड)
         uses: gradle/actions/setup-gradle@v3
+        with:
+          cache-disabled: true
 
-      - name: 4. gradlew फ़ाइल और परमिशन की पुष्टि
+      - name: 4. Google Services व Gradlew पुष्टि
         run: |
-          echo "=== डायरेक्टरी और gradlew सत्यापन ==="
-          # यदि रूट में gradlew न हो तो सब-फ़ोल्डर में खोजें
           if [ ! -f "./gradlew" ]; then
-            echo "रूट में gradlew नहीं मिला, सब-डायरेक्टरी खोजी जा रही है..."
             FOUND_GRADLEW=$(find . -name "gradlew" | head -n 1)
-            if [ -n "$FOUND_GRADLEW" ]; then
-              cp "$FOUND_GRADLEW" ./gradlew
-            else
-              echo "नया gradlew बूटस्ट्रैप जनरेट किया जा रहा है..."
-              gradle wrapper --gradle-version 8.5 || true
-            fi
+            [ -n "$FOUND_GRADLEW" ] && cp "$FOUND_GRADLEW" ./gradlew || gradle wrapper --gradle-version 8.5 || true
           fi
-
-          if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
-            echo "gradlew तैयार और एक्ज़ीक्यूटेबल है।"
-          else
-            echo "gradlew नहीं बना, सीधे सिस्टम gradle से बिल्ड होगा।"
-          fi
+          [ -f "./gradlew" ] && chmod +x ./gradlew
 
       - name: 5. Android APK संकलन (Assemble Debug APK)
         id: assemble_gradle
         run: |
-          if [ -f "./gradlew" ]; then
-            ./gradlew assembleDebug --no-daemon --stacktrace
-          else
-            gradle assembleDebug --no-daemon --stacktrace
-          fi
+          # KAPT स्टब को साफ़ जानकारी देने और त्रुटि होने पर विस्तृत लॉग छापने के लिए
+          ./gradlew assembleDebug --no-daemon --stacktrace --info -x test -x lint || {
+            echo "::error::संकलन में त्रुटि आई। कंपाइलर विवरण नीचे दिया गया है:"
+            exit 1
+          }
 
-      - name: 6. APK फ़ाइल निकालना व नामकरण
+      - name: 6. APK फ़ाइल निष्कर्षण व नामकरण
         id: package_apk
         if: success()
         run: |
@@ -85,14 +73,13 @@ jobs:
           tag_name: v1.0.${{ github.run_number }}
           name: MERA KISAN Official APK (Build #${{ github.run_number }})
           body: |
-            🌾 MERA KISAN Android Application — आधिकारिक APK
+            🌾 **MERA KISAN Android Application — आधिकारिक APK**
 
             - बिल्ड संख्या: #${{ github.run_number }}
-            - कमिट: ${{ github.sha }}
             - स्थिति: सीधा इंस्टॉलेबल APK (बिना ZIP फ़ाइल के)
 
-            ⬇️ सीधा डाउनलोड लिंक:
-            नीचे Assets में MeraKisan-App.apk पर क्लिक करके अपने फोन में इंस्टॉल करें।
+            ⬇️ **सीधा डाउनलोड लिंक:**
+            नीचे Assets में `MeraKisan-App.apk` पर टैप करके इंस्टॉल करें।
           draft: false
           prerelease: false
           files: release_assets/MeraKisan-App.apk
