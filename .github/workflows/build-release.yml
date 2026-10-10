@@ -1,0 +1,81 @@
+# .github/workflows/build-release.yml
+name: Build & Release Mera Kisan APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'रिलीज़ टैग नाम (उदा. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+      release_title:
+        description: 'रिलीज़ शीर्षक'
+        required: true
+        default: 'MERA KISAN Official App APK'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-publish-apk:
+    name: Build & Direct Release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. रिपॉजिटरी चेकआउट
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 2. जावा JDK 17 एनवायरनमेंट सेटअप
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: 3. Gradle एक्ज़ीक्यूट अनुमति की पुष्टि
+        run: |
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+          else
+            echo "::warning::रूट डायरेक्टरी में gradlew नहीं मिला, सबडायरेक्टरी स्कैन की जा रही है..."
+            find . -name "gradlew" -exec chmod +x {} +
+          fi
+
+      - name: 4. मॉड्यूलर एरर डायग्नोस्टिक्स व पैच डिटेक्शन
+        run: |
+          echo "=== पर्यावरण व कोड संरचना सत्यापन ==="
+          java -version
+          # यदि भविष्य में बिना पुरानी फ़ाइल छेड़े कोई पैच स्क्रिप्ट जोड़ी जाए:
+          if [ -f "./ci-patch.sh" ]; then
+            echo "अतिरिक्त पैच फ़ाइल ci-patch.sh पाई गई, निष्पादित की जा रही है..."
+            chmod +x ./ci-patch.sh
+            ./ci-patch.sh
+          fi
+
+      - name: 5. Android APK संकलन (Assemble Debug APK)
+        id: assemble_gradle
+        run: |
+          ./gradlew assembleDebug --no-daemon --stacktrace --scan
+
+      - name: 6. APK फ़ाइल का निष्कर्षण व नामकरण
+        id: package_apk
+        if: success()
+        run: |
+          # जेनरेट हुई वास्तविक APK खोजें (मध्यवर्ती कैशे को छोड़कर)
+          FOUND_APK=$(find . -path "*/build/outputs/apk/*" -name "*.apk" | head -n 1)
+          if [ -z "$FOUND_APK" ]; then
+            echo "::error::संकलन के बाद कोई APK फ़ाइल नहीं मिली!"
+            exit 1
+          fi
+          echo "APK प्राप्त हुई: $FOUND_APK"
+          mkdir -p release_assets
+          # डायरेक्ट डाउनलोड के लिए स्पष्ट नामकरण
+          cp "$FOUND_APK" release_assets/MeraKisan
