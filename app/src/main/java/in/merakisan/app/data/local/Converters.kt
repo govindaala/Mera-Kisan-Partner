@@ -6,8 +6,8 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 
 /**
- * MERA KISAN Room Database Type Converters
- * फ़सलों की फ़ोटो सूची (List<String>) को सुरक्षित रूप से JSON String में बदलने हेतु
+ * MERA KISAN Room Type Converters
+ * List<String> को SQLite डेटाबेस में सुरक्षित JSON स्ट्रिंग में बदलने हेतु
  */
 class Converters {
 
