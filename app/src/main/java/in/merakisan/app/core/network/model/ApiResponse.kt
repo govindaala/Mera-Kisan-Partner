@@ -4,8 +4,7 @@ package in.merakisan.app.core.network.model
 import com.google.gson.annotations.SerializedName
 
 /**
- * MERA KISAN Standard API Response Envelope
- * बैकएंड से आने वाले हर JSON रिस्पॉन्स का बेस स्ट्रक्चर
+ * MERA KISAN Standardized REST API Envelope
  */
 data class ApiResponse<T>(
     @SerializedName("success")
@@ -17,8 +16,11 @@ data class ApiResponse<T>(
     @SerializedName("error")
     val error: ApiError? = null,
 
-    @SerializedName("timestamp")
-    val timestamp: String? = null
+    @SerializedName("message")
+    val message: String? = null,
+
+    @SerializedName("request_id")
+    val requestId: String? = null
 )
 
 data class ApiError(
@@ -30,135 +32,38 @@ data class ApiError(
 )
 
 /**
- * Public Remote Config & 40 Feature Flags Contract (/v1/config)
+ * FeatureManager और रिमोट कॉन्फिग हेतु प्रतिक्रिया मॉडल
  */
 data class AppConfigResponse(
-    @SerializedName("app_name")
-    val appName: String,
+    @SerializedName("payment_enabled")
+    val paymentEnabled: Boolean = false,
 
-    @SerializedName("tagline")
-    val tagline: String,
+    @SerializedName("boost_feature")
+    val boostFeature: Boolean = false,
 
-    @SerializedName("min_app_version")
-    val minAppVersion: String,
+    @SerializedName("feature_flags")
+    val featureFlags: Map<String, Any> = emptyMap(),
 
-    @SerializedName("maintenance_mode")
-    val maintenanceMode: MaintenanceModeConfig,
-
-    @SerializedName("features")
-    val features: Map<String, Boolean>
-)
-
-data class MaintenanceModeConfig(
-    @SerializedName("active")
-    val active: Boolean,
-
-    @SerializedName("message")
-    val message: String? = null
+    @SerializedName("remote_config")
+    val remoteConfig: Map<String, Any> = emptyMap()
 )
 
 /**
- * Product Data Model (Integer Paise per Master Spec)
- */
-data class ProductDto(
-    @SerializedName("product_id")
-    val productId: String,
-
-    @SerializedName("name")
-    val name: String,
-
-    @SerializedName("category")
-    val category: String,
-
-    @SerializedName("variety")
-    val variety: String? = null,
-
-    @SerializedName("description")
-    val description: String? = null,
-
-    // वित्तीय मान केवल पूर्णांक पैसे में (Floating-point त्रुटि शून्य)
-    @SerializedName("price_paise")
-    val pricePaise: Long,
-
-    @SerializedName("stock_quantity")
-    val stockQuantity: Double,
-
-    @SerializedName("unit")
-    val unit: String,
-
-    @SerializedName("min_order_quantity")
-    val minOrderQuantity: Double? = 1.0,
-
-    @SerializedName("seller_uid")
-    val sellerUid: String,
-
-    @SerializedName("seller_name")
-    val sellerName: String,
-
-    @SerializedName("seller_phone")
-    val sellerPhone: String? = null,
-
-    @SerializedName("village")
-    val village: String? = null,
-
-    @SerializedName("district")
-    val district: String,
-
-    @SerializedName("state")
-    val state: String? = null,
-
-    // प्राइवेसी नियम: किसान का सटीक GPS नहीं, अनुमानित निर्देशांक
-    @SerializedName("latitude_approx")
-    val latitudeApprox: Double? = null,
-
-    @SerializedName("longitude_approx")
-    val longitudeApprox: Double? = null,
-
-    @SerializedName("verification_status")
-    val verificationStatus: String, // unverified, farmer_declared, verified_farmer, organic_certified
-
-    @SerializedName("harvest_date")
-    val harvestDate: String? = null,
-
-    @SerializedName("photos")
-    val photos: List<String> = emptyList(),
-
-    @SerializedName("is_featured")
-    val isFeatured: Boolean = false,
-
-    @SerializedName("boosted")
-    val boosted: Boolean = false,
-
-    @SerializedName("status")
-    val status: String = "active",
-
-    @SerializedName("created_at")
-    val createdAt: String? = null
-)
-
-/**
- * Order Creation Request Body
+ * चेकआउट स्क्रीन द्वारा ऑर्डर निर्माण का अनुरोध मॉडल
  */
 data class CreateOrderRequest(
     @SerializedName("product_id")
-    val productId: String,
+    val productId: String = "",
 
     @SerializedName("quantity")
-    val quantity: Double,
-
-    @SerializedName("delivery_type")
-    val deliveryType: String, // farmer_delivery, buyer_pickup
+    val quantity: Double = 0.0,
 
     @SerializedName("payment_method")
-    val paymentMethod: String, // cod, online, token
+    val paymentMethod: String = "cod",
 
     @SerializedName("delivery_address")
-    val deliveryAddress: String? = null,
+    val deliveryAddress: String = "",
 
     @SerializedName("notes")
-    val notes: String? = null
+    val notes: String = ""
 )
-
-/**
- * Order Data Model
- */
