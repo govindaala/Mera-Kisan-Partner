@@ -11,13 +11,14 @@ import kotlinx.coroutines.launch
 
 /**
  * MERA KISAN Remote Feature Control Center
- * Admin Panel से फीचर्स को बिना APK री-रिलीज़ के ON/OFF करने का केंद्रीय प्रबंधक
+ * Admin Panel से फीचर्स व मेंटेनेंस को दूरस्थ रूप से नियंत्रित करने का केंद्रीय प्रबंधक
  */
 object FeatureManager {
 
     private const val PREFS_NAME = "mera_kisan_features"
+    private const val KEY_MAINTENANCE_MODE = "maintenance_mode"
+    private const val KEY_MAINTENANCE_MSG = "maintenance_message"
 
-    // डिफ़ॉल्ट रूप से संवेदनशील या आगामी फीचर्स OFF रहेंगे
     private val DEFAULT_FLAGS = mapOf(
         "payment" to false,
         "crop_boost" to false,
@@ -43,7 +44,8 @@ object FeatureManager {
         "premium_farmer" to false,
         "analytics" to true,
         "admob" to false,
-        "banner_enabled" to true
+        "banner_enabled" to true,
+        "maintenance_mode" to false
     )
 
     private fun getPrefs(context: Context): SharedPreferences {
@@ -59,10 +61,36 @@ object FeatureManager {
         getPrefs(context).edit().putBoolean(featureKey, enabled).apply()
     }
 
-    /**
-     * Vercel Backend से रिमोट कॉन्फ़िग लोड करके स्थानीय रूप से अपडेट करना
-     */
-    fun syncWithBackend(context: Context) {
+    // SplashFragment के लिए मेंटेनेंस मोड विधियाँ
+    fun isMaintenanceMode(context: Context? = null): Boolean {
+        return if (context != null) {
+            getPrefs(context).getBoolean(KEY_MAINTENANCE_MODE, false)
+        } else false
+    }
+
+    fun getMaintenanceMessage(context: Context? = null): String {
+        return if (context != null) {
+            getPrefs(context).getString(KEY_MAINTENANCE_MSG, null)
+                ?: "MERA KISAN पर रखरखाव (Maintenance) चल रहा है। कृपया कुछ समय बाद पुनः प्रयास करें।"
+        } else {
+            "MERA KISAN पर रखरखाव चल रहा है।"
+        }
+    }
+
+    fun setMaintenanceMode(context: Context, isMaintenance: Boolean, message: String? = null) {
+        getPrefs(context).edit().apply {
+            putBoolean(KEY_MAINTENANCE_MODE, isMaintenance)
+            if (message != null) putString(KEY_MAINTENANCE_MSG, message)
+            apply()
+        }
+    }
+
+    // SplashFragment व अन्य कॉलर हेतु रिमोट सिंक
+    fun syncRemoteConfig(context: Context, onComplete: (() -> Unit)? = null) {
+        syncWithBackend(context, onComplete)
+    }
+
+    fun syncWithBackend(context: Context, onComplete: (() -> Unit)? = null) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val apiService = ApiClient.getApiService(context)
@@ -76,7 +104,9 @@ object FeatureManager {
                     }
                 }
             } catch (_: Exception) {
-                // ऑफ़लाइन होने पर डिफ़ॉल्ट सुरक्षित स्थानीय फ्लैग्स पर काम जारी रखें
+                // ऑफ़लाइन होने पर डिफ़ॉल्ट स्थानीय कॉन्फ़िग सुरक्षित रखें
+            } finally {
+                onComplete?.invoke()
             }
         }
     }
