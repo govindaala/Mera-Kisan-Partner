@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- app/src/main/res/layout/dialog_create_buyer_request.xml -->
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    app:cardBackgroundColor="#FFFFFF"
+    app:cardCornerRadius="16dp"
+    app:cardElevation="6dp">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="📢 'मुझे यह चाहिए' — मांग दर्ज करें"
+                android:textColor="#1B5E20"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="अपनी जरूरत बताएं, आसपास के किसान सीधे आपसे संपर्क करेंगे।"
+                android:textColor="#616161"
+                android:textSize="12sp" />
+
+            <!-- Product Name -->
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/tilReqProductName"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:hint="फसल / उत्पाद का नाम (उदा. देशी गेहूं, मूंगफली तेल)"
+                app:boxStrokeColor="#1B5E20">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etReqProductName"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="text" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <!-- Variety / Quality Requirement -->
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/tilReqVariety"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:hint="किस्म / प्राथमिकता (उदा. शरबती, बिना पॉलिश, जैविक)"
+                app:boxStrokeColor="#1B5E20">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etReqVariety"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="text" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <!-- Quantity & Unit Grid -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:orientation="horizontal">
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/tilReqQuantity"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1.2"
+                    android:hint="मात्रा (Quantity)"
+                    app:boxStrokeColor="#1B5E20">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etReqQuantity"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="numberDecimal" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/tilReqUnit"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:hint="इकाई (Unit)"
+                    app:boxStrokeColor="#1B5E20">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etReqUnit"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="kg" />
+                </com.google.android.material.textfield.TextInputLayout>
+            </LinearLayout>
+
+            <!-- Target Price per Unit (Optional Budget) -->
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/tilReqTargetPrice"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:hint="अपेक्षित दर प्रति इकाई ₹ (वैकल्पिक)"
+                app:boxStrokeColor="#1B5E20">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etReqTargetPrice"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="numberDecimal" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <!-- District / Location -->
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/tilReqDistrict"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:hint="आपका ज़िला / तहसील"
+                app:boxStrokeColor="#1B5E20">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etReqDistrict"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="मंदसौर" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <!-- Additional Notes -->
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/tilReqNotes"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:hint="अन्य विवरण या डिलीवरी प्राथमिकता"
+                app:boxStrokeColor="#1B5E20">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etReqNotes"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:lines="2" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <!-- Action Buttons -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:gravity="end"
+                android:orientation="horizontal">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnCancelReq"
+                    style="@style/Widget.MaterialComponents.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="रद्द करें"
+                    android:textColor="#757575" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnSubmitReq"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:backgroundTint="#1B5E20"
+                    android:text="मांग पोस्ट करें"
+                    android:textColor="#FFFFFF" />
+            </LinearLayout>
+
+        </LinearLayout>
+    </ScrollView>
+
+</com.google.android.material.card.MaterialCardView>
