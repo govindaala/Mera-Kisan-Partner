@@ -13,6 +13,11 @@
         android:label="Splash"
         tools:layout="@layout/fragment_splash">
         <action
+            android:id="@+id/action_splash_to_login"
+            app:destination="@id/loginFragment"
+            app:popUpTo="@id/splashFragment"
+            app:popUpToInclusive="true" />
+        <action
             android:id="@+id/action_splash_to_roleSelection"
             app:destination="@id/roleSelectionFragment"
             app:popUpTo="@id/splashFragment"
@@ -24,7 +29,25 @@
             app:popUpToInclusive="true" />
     </fragment>
 
-    <!-- 2. Role Selection (Farmer / Buyer / Both) -->
+    <!-- 2. Login Screen (Google Sign-In + Trusted Mobile Input) -->
+    <fragment
+        android:id="@+id/loginFragment"
+        android:name="in.merakisan.app.ui.auth.LoginFragment"
+        android:label="लॉगिन"
+        tools:layout="@layout/fragment_login">
+        <action
+            android:id="@+id/action_login_to_roleSelection"
+            app:destination="@id/roleSelectionFragment"
+            app:popUpTo="@id/loginFragment"
+            app:popUpToInclusive="true" />
+        <action
+            android:id="@+id/action_login_to_home"
+            app:destination="@id/nav_home"
+            app:popUpTo="@id/loginFragment"
+            app:popUpToInclusive="true" />
+    </fragment>
+
+    <!-- 3. Role Selection (Farmer / Buyer / Both) -->
     <fragment
         android:id="@+id/roleSelectionFragment"
         android:name="in.merakisan.app.ui.auth.RoleSelectionFragment"
@@ -37,7 +60,7 @@
             app:popUpToInclusive="true" />
     </fragment>
 
-    <!-- 3. Bottom Nav Destinations -->
+    <!-- 4. Core Bottom Nav Destinations -->
     <fragment
         android:id="@+id/nav_home"
         android:name="in.merakisan.app.ui.home.HomeFragment"
@@ -79,7 +102,7 @@
         android:label="मेरी प्रोफ़ाइल"
         tools:layout="@layout/fragment_profile" />
 
-    <!-- 4. Secondary Core Screens -->
+    <!-- 5. Secondary Screens -->
     <fragment
         android:id="@+id/productDetailFragment"
         android:name="in.merakisan.app.ui.marketplace.ProductDetailFragment"
