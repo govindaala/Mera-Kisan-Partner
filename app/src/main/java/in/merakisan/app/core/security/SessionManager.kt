@@ -3,55 +3,72 @@ package in.merakisan.app.core.security
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 
 /**
- * MERA KISAN Security Engine
- * Android Keystore आधारित एन्क्रिप्टेड स्टोरेज (Zero plaintext credentials)
+ * MERA KISAN Secure Session & Identity Manager
+ * प्रमाणीकरण टोकन, यूज़र रोल, और FCM टोकन का सुरक्षित स्थानीय प्रबंधन
  */
 object SessionManager {
 
-    private const val PREF_FILE_NAME = "mera_kisan_secure_prefs"
+    private const val PREF_NAME = "mera_kisan_secure_session"
     private const val KEY_AUTH_TOKEN = "auth_token"
     private const val KEY_USER_UID = "user_uid"
+    private const val KEY_USER_PHONE = "user_phone"
     private const val KEY_USER_ROLE = "user_role" // FARMER, BUYER, BOTH
+    private const val KEY_FCM_TOKEN = "fcm_token"
+    private const val KEY_IS_LOGGED_IN = "is_logged_in"
 
-    private fun getEncryptedPrefs(context: Context): SharedPreferences {
-        val masterKey = MasterKey.Builder(context)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
-
-        return EncryptedSharedPreferences.create(
-            context,
-            PREF_FILE_NAME,
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
+    private fun getPrefs(context: Context): SharedPreferences {
+        return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
     }
 
-    fun saveSession(context: Context, token: String, uid: String, role: String) {
-        getEncryptedPrefs(context).edit()
-            .putString(KEY_AUTH_TOKEN, token)
-            .putString(KEY_USER_UID, uid)
-            .putString(KEY_USER_ROLE, role)
-            .apply()
+    fun saveAuthToken(context: Context, token: String) {
+        getPrefs(context).edit().putString(KEY_AUTH_TOKEN, token).apply()
     }
 
     fun getAuthToken(context: Context): String? {
-        return getEncryptedPrefs(context).getString(KEY_AUTH_TOKEN, null)
+        return getPrefs(context).getString(KEY_AUTH_TOKEN, null)
+    }
+
+    fun saveUserSession(context: Context, uid: String, phone: String?, role: String) {
+        getPrefs(context).edit().apply {
+            putString(KEY_USER_UID, uid)
+            putString(KEY_USER_PHONE, phone)
+            putString(KEY_USER_ROLE, role)
+            putBoolean(KEY_IS_LOGGED_IN, true)
+            apply()
+        }
     }
 
     fun getUserUid(context: Context): String? {
-        return getEncryptedPrefs(context).getString(KEY_USER_UID, null)
+        return getPrefs(context).getString(KEY_USER_UID, null)
+    }
+
+    fun getUserPhone(context: Context): String? {
+        return getPrefs(context).getString(KEY_USER_PHONE, null)
     }
 
     fun getUserRole(context: Context): String {
-        return getEncryptedPrefs(context).getString(KEY_USER_ROLE, "BUYER") ?: "BUYER"
+        return getPrefs(context).getString(KEY_USER_ROLE, "BUYER") ?: "BUYER"
+    }
+
+    fun setUserRole(context: Context, role: String) {
+        getPrefs(context).edit().putString(KEY_USER_ROLE, role).apply()
+    }
+
+    fun saveFcmToken(context: Context, token: String) {
+        getPrefs(context).edit().putString(KEY_FCM_TOKEN, token).apply()
+    }
+
+    fun getFcmToken(context: Context): String? {
+        return getPrefs(context).getString(KEY_FCM_TOKEN, null)
+    }
+
+    fun isLoggedIn(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_IS_LOGGED_IN, false)
     }
 
     fun clearSession(context: Context) {
-        getEncryptedPrefs(context).edit().clear().apply()
+        getPrefs(context).edit().clear().apply()
     }
 }
