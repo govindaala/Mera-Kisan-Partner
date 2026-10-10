@@ -6,7 +6,6 @@ import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import coil.load
 import in.merakisan.app.core.network.model.FavoriteProductDto
 import in.merakisan.app.databinding.ItemFavoriteProductCardBinding
 import java.util.Locale
@@ -48,11 +47,8 @@ class FavoriteProductAdapter(
             binding.tvFavProductSeller.text = loc
             binding.tvFavProductStock.text = "उपलब्ध: ${item.stockQuantity} ${item.unit}"
 
-            if (!item.photoUrl.isNullOrBlank()) {
-                binding.ivFavProductThumb.load(item.photoUrl) {
-                    crossfade(true)
-                }
-            }
+            // Standard fallback thumbnail (No missing Coil dependency)
+            binding.ivFavProductThumb.setImageResource(android.R.drawable.ic_menu_gallery)
 
             binding.root.setOnClickListener { onProductClick(item) }
             binding.btnRemoveFavorite.setOnClickListener { onRemoveClick(item) }
