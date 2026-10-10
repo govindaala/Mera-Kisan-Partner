@@ -1,14 +1,14 @@
 // app/src/main/java/in/merakisan/app/core/network/ApiService.kt
-package in.merakisan.app.core.network
+package `in`.merakisan.app.core.network
 
-import in.merakisan.app.core.network.model.ApiResponse
-import in.merakisan.app.core.network.model.AppConfigResponse
-import in.merakisan.app.core.network.model.BuyerRequestDto
-import in.merakisan.app.core.network.model.CreateOrderRequest
-import in.merakisan.app.core.network.model.MandiPriceDto
-import in.merakisan.app.core.network.model.MediaUploadResponse
-import in.merakisan.app.core.network.model.OrderDto
-import in.merakisan.app.core.network.model.ProductDto
+import `in`.merakisan.app.core.network.model.ApiResponse
+import `in`.merakisan.app.core.network.model.AppConfigResponse
+import `in`.merakisan.app.core.network.model.BuyerRequestDto
+import `in`.merakisan.app.core.network.model.CreateOrderRequest
+import `in`.merakisan.app.core.network.model.MandiPriceDto
+import `in`.merakisan.app.core.network.model.MediaUploadResponse
+import `in`.merakisan.app.core.network.model.OrderDto
+import `in`.merakisan.app.core.network.model.ProductDto
 import okhttp3.MultipartBody
 import retrofit2.Response
 import retrofit2.http.Body
@@ -26,7 +26,7 @@ import retrofit2.http.Query
  */
 interface ApiService {
 
-    // 1. Marketplace & Products (MarketplaceViewModel, ProductRepository, SyncWorker द्वारा कॉल किए गए सभी पैरामीटर्स)
+    // 1. Marketplace & Products
     @GET("/v1/products")
     suspend fun getProducts(
         @Query("category") category: String? = null,
@@ -61,7 +61,7 @@ interface ApiService {
         @Body request: BuyerRequestDto
     ): Response<ApiResponse<BuyerRequestDto>>
 
-    // 3. Orders & State Transitions (CheckoutBottomSheetFragment, OrdersViewModel द्वारा अपेक्षित सिग्नेचर्स)
+    // 3. Orders & State Transitions
     @GET("/v1/orders")
     suspend fun getOrders(): Response<ApiResponse<List<OrderDto>>>
 
@@ -103,7 +103,7 @@ interface ApiService {
         @Query("district") district: String
     ): Response<ApiResponse<List<MandiPriceDto>>>
 
-    // 6. Central Config & Remote Flags (FeatureManager द्वारा कॉल किया जाने वाला getAppConfig)
+    // 6. Central Config & Remote Flags
     @GET("/v1/config")
     suspend fun getAppConfig(): Response<ApiResponse<AppConfigResponse>>
 
