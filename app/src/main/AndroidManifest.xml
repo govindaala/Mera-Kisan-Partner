@@ -299,6 +299,15 @@
         android:elevation="12dp"
         android:orientation="horizontal"
         android:padding="12dp">
+        <!-- FCM Background Notification Service Registration -->
+<service
+    android:name=".core.notifications.MeraKisanFirebaseMessagingService"
+    android:exported="false">
+    <intent-filter>
+        <action android:name="com.google.firebase.MESSAGING_EVENT" />
+    </intent-filter>
+</service>
+        
 
         <!-- Farmer Primary Action (Accept / Dispatch) -->
         <com.google.android.material.button.MaterialButton
