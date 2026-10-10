@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.SharedPreferences
 
 /**
- * MERA KISAN Secure Session & Identity Manager
+ * MERA KISAN Central Session & Identity Manager
  * प्रमाणीकरण टोकन, यूज़र रोल, और FCM टोकन का सुरक्षित स्थानीय प्रबंधन
  */
 object SessionManager {
