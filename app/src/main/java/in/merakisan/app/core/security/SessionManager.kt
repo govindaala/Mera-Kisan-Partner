@@ -5,8 +5,7 @@ import android.content.Context
 import android.content.SharedPreferences
 
 /**
- * MERA KISAN Central Session & Identity Manager
- * प्रमाणीकरण टोकन, यूज़र रोल, और FCM टोकन का सुरक्षित स्थानीय प्रबंधन
+ * MERA KISAN Central Session Manager
  */
 object SessionManager {
 
@@ -22,6 +21,18 @@ object SessionManager {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
     }
 
+    // AuthViewModel, RoleSelectionFragment और ProfileViewModel द्वारा कॉल किया जाने वाला मुख्य फ़ंक्शन
+    fun saveSession(context: Context, token: String, uid: String, role: String, phone: String? = null) {
+        getPrefs(context).edit().apply {
+            putString(KEY_AUTH_TOKEN, token)
+            putString(KEY_USER_UID, uid)
+            putString(KEY_USER_ROLE, role)
+            if (phone != null) putString(KEY_USER_PHONE, phone)
+            putBoolean(KEY_IS_LOGGED_IN, true)
+            apply()
+        }
+    }
+
     fun saveAuthToken(context: Context, token: String) {
         getPrefs(context).edit().putString(KEY_AUTH_TOKEN, token).apply()
     }
@@ -31,13 +42,7 @@ object SessionManager {
     }
 
     fun saveUserSession(context: Context, uid: String, phone: String?, role: String) {
-        getPrefs(context).edit().apply {
-            putString(KEY_USER_UID, uid)
-            putString(KEY_USER_PHONE, phone)
-            putString(KEY_USER_ROLE, role)
-            putBoolean(KEY_IS_LOGGED_IN, true)
-            apply()
-        }
+        saveSession(context, getAuthToken(context) ?: "", uid, role, phone)
     }
 
     fun getUserUid(context: Context): String? {
