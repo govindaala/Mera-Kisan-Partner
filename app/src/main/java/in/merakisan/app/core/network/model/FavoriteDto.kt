@@ -4,7 +4,7 @@ package `in`.merakisan.app.core.network.model
 import com.google.gson.annotations.SerializedName
 
 /**
- * पसंदीदा फसल या किसान का रिमोट संदर्भ
+ * MERA KISAN Favorites & Follows Contract
  */
 data class FavoriteDto(
     @SerializedName("favorite_id")
@@ -36,9 +36,13 @@ data class FavoriteProductDto(
     @SerializedName("name")
     val name: String = "",
 
+    @SerializedName("category")
+    val category: String = "",
+
     @SerializedName("variety")
     val variety: String? = null,
 
+    // वित्तीय सुरक्षा: Integer Paise
     @SerializedName("price_paise")
     val pricePaise: Long = 0L,
 
@@ -58,14 +62,25 @@ data class FavoriteProductDto(
     val district: String = "",
 
     @SerializedName("image_url")
-    val imageUrl: String? = null
+    val imageUrl: String? = null,
+
+    @SerializedName("photo_url")
+    val photoUrl: String? = null,
+
+    @SerializedName("verification_status")
+    val verificationStatus: String = "unverified",
+
+    @SerializedName("saved_at")
+    val savedAt: String = ""
 )
 
 /**
- * अनुगमित किसान कार्ड्स हेतु पूर्ण डेटा मॉडल
- * FavoritesViewModel और FollowedFarmerAdapter के साथ 100% संगत
+ * अनुगमित किसान कार्ड्स हेतु पूर्ण मॉडल
  */
 data class FollowedFarmerDto(
+    @SerializedName("follow_id")
+    val followId: String = "",
+
     @SerializedName("farmer_id")
     val farmerId: String = "",
 
@@ -102,11 +117,17 @@ data class FollowedFarmerDto(
     @SerializedName("rating")
     val rating: Double = 5.0,
 
-    @SerializedName("total_products")
-    val totalProducts: Int = 0,
+    @SerializedName("active_crops_count")
+    val activeCropsCount: Int = 0,
 
     @SerializedName("active_products_count")
     val activeProductsCount: Int = 0,
+
+    @SerializedName("total_products")
+    val totalProducts: Int = 0,
+
+    @SerializedName("verification_status")
+    val verificationStatus: String = "unverified",
 
     @SerializedName("followed_at")
     val followedAt: String = ""
