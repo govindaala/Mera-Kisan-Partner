@@ -1,3 +1,4 @@
+# .github/workflows/build-release.yml
 name: Build & Release Mera Kisan APK
 
 on:
@@ -11,7 +12,6 @@ on:
 
 permissions:
   contents: write
-  actions: read
 
 jobs:
   build-and-publish-apk:
@@ -19,194 +19,63 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Repository Checkout
       - name: 1. Repository Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # 2. Java Setup
       - name: 2. Java JDK 17 Setup
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: 'temurin'
           java-version: '17'
 
-      # 3. Gradle Setup
       - name: 3. Gradle Tool Setup
         uses: gradle/actions/setup-gradle@v3
         with:
           cache-disabled: true
 
-      # 4. Gradle Wrapper और Properties की जाँच
-      - name: 4. Gradle Wrapper and Diagnostic Setup
-        shell: bash
+      - name: 4. Google Services व Gradlew पुष्टि
         run: |
-          set -e
-
           if [ ! -f "./gradlew" ]; then
-            echo "Gradle Wrapper नहीं मिला। Wrapper बनाने की कोशिश की जा रही है।"
-
-            if [ ! -f "build.gradle" ] && [ ! -f "build.gradle.kts" ] \
-               && [ ! -f "settings.gradle" ] && [ ! -f "settings.gradle.kts" ]; then
-              echo "::error::Repository root में Gradle build configuration नहीं मिली।"
-              exit 1
-            fi
-
-            gradle wrapper --gradle-version 8.5
+            gradle wrapper --gradle-version 8.5 --no-configuration-cache || true
           fi
+          [ -f "./gradlew" ] && chmod +x ./gradlew
 
-          chmod +x ./gradlew
+      - name: 5. सटीक Kotlin कंपाइलर डायग्नोस्टिक्स (KAPT बाईपास)
+        run: |
+          echo "=== शुद्ध Kotlin कंपाइलर चलाया जा रहा है ==="
+          ./gradlew compileDebugKotlin --no-daemon --stacktrace --no-configuration-cache
 
-          if [ ! -f "gradle.properties" ]; then
-            touch gradle.properties
-          fi
-
-          # पहले से मौजूद properties को सुरक्षित रखते हुए
-          # diagnostic properties को केवल एक बार लिखें।
-          for key in \
-            "kapt.verbose" \
-            "kapt.use.worker.api" \
-            "kotlin.compiler.execution.strategy" \
-            "org.gradle.configuration-cache"
-          do
-            sed -i "/^[[:space:]]*${key}[[:space:]]*=/d" gradle.properties
-          done
-
-          cat >> gradle.properties <<'PROPERTIES'
-          kapt.verbose=true
-          kapt.use.worker.api=false
-          kotlin.compiler.execution.strategy=in-process
-          org.gradle.configuration-cache=false
-          PROPERTIES
-
-          echo "Gradle diagnostic properties तैयार हैं।"
-          java -version
-          ./gradlew --version
-
-      # 5. Android APK Build और पूरा लॉग
-      - name: 5. Android APK Clean Assemble
+      - name: 6. Android APK संकलन (Assemble Debug APK)
         id: assemble_gradle
-        shell: bash
         run: |
-          set -o pipefail
+          ./gradlew assembleDebug --no-daemon --stacktrace --no-configuration-cache -x test -x lint
 
-          echo "===== BUILD START ====="
-
-          ./gradlew clean assembleDebug \
-            --no-daemon \
-            --stacktrace \
-            --info \
-            --no-configuration-cache \
-            --no-build-cache \
-            -Pkapt.verbose=true \
-            -x test \
-            -x lint \
-            2>&1 | tee build_run.log
-
-          echo "===== BUILD FINISHED ====="
-
-      # 6. Kotlin / KAPT Error Report
-      - name: 6. Kotlin and KAPT Error Report
-        if: always()
-        shell: bash
-        run: |
-          REPORT="diagnostic_report.txt"
-
-          {
-            echo "MERA KISAN - BUILD DIAGNOSTIC REPORT"
-            echo "===================================="
-            echo ""
-
-            if [ -f build_run.log ]; then
-              echo "1. COMPILER ERRORS"
-              echo "------------------"
-
-              grep -n -i -E \
-                '(^e: |error:|unresolved reference|redeclaration|type mismatch|cannot find symbol|could not load module|exception|caused by:|compilation error|kaptGenerateStubsDebugKotlin FAILED)' \
-                build_run.log | head -n 150 || true
-
-              echo ""
-              echo "2. CONTEXT AROUND KOTLIN/KAPT FAILURE"
-              echo "-------------------------------------"
-
-              grep -n -B 20 -A 35 -i -E \
-                'could not load module|kaptGenerateStubsDebugKotlin FAILED|compilation error|unresolved reference|type mismatch|redeclaration' \
-                build_run.log | head -n 250 || true
-
-              echo ""
-              echo "3. LAST 120 LINES OF BUILD LOG"
-              echo "------------------------------"
-
-              tail -n 120 build_run.log || true
-            else
-              echo "build_run.log नहीं मिला।"
-            fi
-
-            echo ""
-            echo "4. KAPT DIAGNOSTIC FILES"
-            echo "-----------------------"
-
-            if [ -d app/build/tmp/kapt3 ]; then
-              find app/build/tmp/kapt3 -type f \
-                \( -name "*.log" -o -iname "*error*" \) \
-                -print 2>/dev/null || true
-            else
-              echo "KAPT diagnostic directory नहीं मिली।"
-            fi
-          } > "$REPORT"
-
-          echo "डायग्नोस्टिक रिपोर्ट तैयार है।"
-          cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
-
-      # 7. Build Log और Report को डाउनलोड करने योग्य बनाएँ
-      - name: 7. Upload Build Diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: mera-kisan-build-diagnostics-${{ github.run_number }}
-          path: |
-            build_run.log
-            diagnostic_report.txt
-          if-no-files-found: warn
-          retention-days: 7
-
-      # 8. APK निकालें
-      - name: 8. APK Extraction
+      - name: 7. APK Extraction
+        id: package_apk
         if: success()
-        shell: bash
         run: |
-          set -e
-
-          FOUND_APK="$(find app/build/outputs/apk/debug \
-            -maxdepth 1 -type f -name "*.apk" 2>/dev/null | head -n 1)"
-
+          FOUND_APK=$(find . -path "*/build/outputs/apk/*" -name "*.apk" | head -n 1)
           if [ -z "$FOUND_APK" ]; then
-            echo "::error::कोई Debug APK फ़ाइल नहीं मिली!"
+            echo "::error::कोई APK फ़ाइल नहीं मिली!"
             exit 1
           fi
-
-          echo "APK मिली: $FOUND_APK"
-
           mkdir -p release_assets
           cp "$FOUND_APK" release_assets/MeraKisan-App.apk
+          echo "apk_path=release_assets/MeraKisan-App.apk" >> $GITHUB_OUTPUT
 
-          ls -lh release_assets/MeraKisan-App.apk
-
-      # 9. GitHub Release में APK प्रकाशित करें
-      - name: 9. Publish APK to GitHub Releases
-        if: success() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+      - name: 8. Direct Publish to GitHub Releases
         uses: softprops/action-gh-release@v2
+        if: success()
         with:
           tag_name: v1.0.${{ github.run_number }}
-          name: MERA KISAN APK - Build #${{ github.run_number }}
+          name: MERA KISAN Official APK (Build #${{ github.run_number }})
           body: |
-            MERA KISAN Android Application
+            🌾 **MERA KISAN Android Application — आधिकारिक APK**
 
-            Build Number: #${{ github.run_number }}
-
-            APK डाउनलोड करने के लिए नीचे Assets में
-            MeraKisan-App.apk पर टैप करें।
+            - बिल्ड संख्या: #${{ github.run_number }}
+            - स्थिति: सीधा इंस्टॉलेबल APK (बिना ZIP फ़ाइल के)
           draft: false
           prerelease: false
           files: release_assets/MeraKisan-App.apk
