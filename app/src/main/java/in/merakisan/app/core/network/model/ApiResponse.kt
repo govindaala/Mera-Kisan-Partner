@@ -1,5 +1,5 @@
 // app/src/main/java/in/merakisan/app/core/network/model/ApiResponse.kt
-package in.merakisan.app.core.network.model
+package `in`.merakisan.app.core.network.model
 
 import com.google.gson.annotations.SerializedName
 
@@ -31,9 +31,6 @@ data class ApiError(
     val message: String
 )
 
-/**
- * FeatureManager और रिमोट कॉन्फिग हेतु प्रतिक्रिया मॉडल
- */
 data class AppConfigResponse(
     @SerializedName("payment_enabled")
     val paymentEnabled: Boolean = false,
@@ -48,9 +45,6 @@ data class AppConfigResponse(
     val remoteConfig: Map<String, Any> = emptyMap()
 )
 
-/**
- * चेकआउट स्क्रीन द्वारा ऑर्डर निर्माण का अनुरोध मॉडल
- */
 data class CreateOrderRequest(
     @SerializedName("product_id")
     val productId: String = "",
