@@ -162,37 +162,3 @@ data class CreateOrderRequest(
 /**
  * Order Data Model
  */
-data class OrderDto(
-    @SerializedName("order_id")
-    val orderId: String,
-
-    @SerializedName("buyer_uid")
-    val buyerUid: String,
-
-    @SerializedName("seller_uid")
-    val sellerUid: String,
-
-    @SerializedName("product_id")
-    val productId: String,
-
-    @SerializedName("product_name")
-    val productName: String,
-
-    @SerializedName("quantity")
-    val quantity: Double,
-
-    @SerializedName("unit")
-    val unit: String,
-
-    @SerializedName("total_amount_paise")
-    val totalAmountPaise: Long,
-
-    @SerializedName("order_status")
-    val orderStatus: String, // DRAFT, PLACED, ACCEPTED, IN_TRANSIT, DELIVERED, COMPLETED, CANCELLED
-
-    @SerializedName("payment_status")
-    val paymentStatus: String, // PENDING, PAID, ESCROW_HELD, ESCROW_RELEASED_TO_FARMER, REFUNDED
-
-    @SerializedName("created_at")
-    val createdAt: String
-)
