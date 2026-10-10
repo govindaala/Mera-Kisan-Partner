@@ -10,8 +10,7 @@ import `in`.merakisan.app.data.local.dao.ProductDao
 import `in`.merakisan.app.data.local.entity.ProductEntity
 
 /**
- * MERA KISAN Local Cache Database
- * ऑफ़लाइन-फ़र्स्ट आर्किटेक्चर एवं सुरक्षित टाइप कनवर्टर बाइंडिंग
+ * MERA KISAN Offline Cache Database
  */
 @Database(
     entities = [ProductEntity::class],
