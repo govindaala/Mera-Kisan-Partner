@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- app/src/main/res/values/strings.xml -->
+<resources>
+    <string name="app_name">MERA KISAN</string>
+    <string name="tagline">किसान से सीधे आपकी जरूरत तक</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">होम</string>
+    <string name="nav_marketplace">फसलें</string>
+    <string name="nav_requests">मुझे चाहिए</string>
+    <string name="nav_orders">ऑर्डर्स</string>
+    <string name="nav_profile">प्रोफ़ाइल</string>
+
+    <!-- Marketplace -->
+    <string name="search_hint">फसल, किस्म या किसान खोजें...</string>
+    <string name="small_quantity_badge">1–25 kg छोटी मात्रा</string>
+    <string name="verified_farmer">✔ Mera Kisan Verified</string>
+    <string name="organic_certified">🌿 Organic Certified</string>
+    <string name="currency_symbol">₹</string>
+
+    <!-- Actions -->
+    <string name="action_call">कॉल</string>
+    <string name="action_whatsapp">व्हाट्सएप</string>
+    <string name="action_buy_now">अभी खरीदें</string>
+    <string name="action_make_offer">भाव प्रस्ताव</string>
+
+    <!-- Errors & States -->
+    <string name="error_network">नेटवर्क संपर्क विफल रहा। पुनः प्रयास करें।</string>
+    <string name="empty_products">कोई फसल उपलब्ध नहीं है</string>
+    <string name="maintenance_default">सिस्टम रखरखाव जारी है। कृपया कुछ समय बाद पुनः प्रयास करें।</string>
+</resources>
