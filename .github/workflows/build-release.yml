@@ -35,7 +35,7 @@ jobs:
         with:
           cache-disabled: true
 
-      - name: 4. Google Services व Gradle Wrapper बूटस्ट्रैप
+      - name: 4. Google Services व Gradlew पुष्टि
         run: |
           if [ ! -f "./gradlew" ]; then
             echo "Gradle wrapper generated without configuration cache..."
@@ -43,10 +43,23 @@ jobs:
           fi
           [ -f "./gradlew" ] && chmod +x ./gradlew
 
-      - name: 5. Android APK Clean Assemble
+          # KAPT को पूरी विस्तृत जानकारी (Verbose) टर्मिनल पर देने हेतु बाध्य करना
+          echo "kapt.verbose=true" >> gradle.properties
+          echo "kapt.use.worker.api=false" >> gradle.properties
+          echo "kotlin.compiler.execution.strategy=in-process" >> gradle.properties
+          echo "org.gradle.configuration-cache=false" >> gradle.properties
+
+      - name: 5. Android APK Clean Assemble (Detailed Log Capture)
         id: assemble_gradle
         run: |
-          ./gradlew assembleDebug --no-daemon --stacktrace --no-configuration-cache --no-build-cache -x test -x lint
+          # पूरे बिल्ड लॉग को build_run.log में सुरक्षित करते हुए संकलन चलाना
+          ./gradlew assembleDebug \
+            --no-daemon \
+            --stacktrace \
+            --no-configuration-cache \
+            --no-build-cache \
+            -Pkapt.verbose=true \
+            -x test -x lint 2>&1 | tee build_run.log
 
       - name: 6. APK Extraction
         id: package_apk
@@ -81,3 +94,26 @@ jobs:
           files: release_assets/MeraKisan-App.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 8. KAPT विफलता डायग्नोस्टिक्स एक्सट्रैक्टर (Summary Generator)
+        if: failure()
+        run: |
+          echo "## 🚨 MERA KISAN — KAPT कंपाइलर विफलता रिपोर्ट" >> $GITHUB_STEP_SUMMARY
+          echo "यह रिपोर्ट स्वचालित रूप से लॉग से त्रुटियों को निकालकर तैयार की गई है:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### 1. सटीक कंपाइलर एरर (Kotlin / Type Mismatches)" >> $GITHUB_STEP_SUMMARY
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          # केवल असली एरर लाइनों (e: या error:) को छांटना
+          grep -E "^(e: |error: |Unresolved reference|Cannot find|Could not load module)" build_run.log | head -n 35 >> $GITHUB_STEP_SUMMARY || echo "कोई सीधा e: एरर नहीं मिला।" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+          echo "### 2. KAPT स्टब जनरेशन संदर्भ (Surrounding Context)" >> $GITHUB_STEP_SUMMARY
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          grep -B 8 -A 15 -E "(kaptGenerateStubsDebugKotlin FAILED|Could not load module)" build_run.log | head -n 50 >> $GITHUB_STEP_SUMMARY || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+          echo "### 3. जनरेट हुई KAPT स्टब फाइलों की स्थिति" >> $GITHUB_STEP_SUMMARY
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          find app/build/tmp/kapt3 -name "*.log" -o -name "*error*" 2>/dev/null | xargs head -n 30 >> $GITHUB_STEP_SUMMARY \vert{}\vert{} echo "कोई आंतरिक KAPT लॉग फ़ाइल मौजूद नहीं है।" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
