@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- app/src/main/res/xml/file_paths.xml -->
+<paths>
+    <!-- पोस्टर और अस्थायी इमेज साझा करने हेतु सुरक्षित कैश पाथ -->
+    <cache-path name="shared_posters" path="." />
+</paths>
