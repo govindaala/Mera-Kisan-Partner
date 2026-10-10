@@ -19,23 +19,23 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 1. रिपॉजिटरी चेकआउट
+      - name: 1. Repository Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: 2. जावा JDK 17 सेटअप
+      - name: 2. Java JDK 17 Setup
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: 3. Gradle टूल सेटअप
+      - name: 3. Gradle Tool Setup
         uses: gradle/actions/setup-gradle@v3
         with:
           cache-disabled: true
 
-      - name: 4. Google Services व Gradlew पुष्टि
+      - name: 4. Google Services & Gradlew Validation
         run: |
           if [ ! -f "./gradlew" ]; then
             FOUND_GRADLEW=$(find . -name "gradlew" | head -n 1)
@@ -43,44 +43,40 @@ jobs:
           fi
           [ -f "./gradlew" ] && chmod +x ./gradlew
 
-      - name: 5. त्वरित Kotlin संकलन परीक्षण (Instant Kotlin Syntax Audit)
-        run: |
-          echo "=== केवल Kotlin कोड की शुद्धता जाँची जा रही है ==="
-          ./gradlew compileDebugKotlin --no-daemon --stacktrace
-
-      - name: 6. Android APK संकलन (Assemble Debug APK)
+      - name: 5. Android APK Clean Assemble (Fresh Stubs & Release)
         id: assemble_gradle
         run: |
-          ./gradlew assembleDebug --no-daemon --stacktrace -x test -x lint
+          ./gradlew assembleDebug --no-daemon --stacktrace --no-configuration-cache --no-build-cache -x test -x lint
 
-      - name: 7. APK फ़ाइल निष्कर्षण व नामकरण
+      - name: 6. APK Extraction
         id: package_apk
         if: success()
         run: |
           FOUND_APK=$(find . -path "*/build/outputs/apk/*" -name "*.apk" | head -n 1)
           if [ -z "$FOUND_APK" ]; then
-            echo "::error::कोई APK फ़ाइल नहीं मिली!"
+            echo "::error::Koi APK file nahi mili!"
             exit 1
           fi
-          echo "APK फ़ाइल मिली: $FOUND_APK"
+          echo "APK mili: $FOUND_APK"
           mkdir -p release_assets
           cp "$FOUND_APK" release_assets/MeraKisan-App.apk
           echo "apk_path=release_assets/MeraKisan-App.apk" >> $GITHUB_OUTPUT
 
-      - name: 8. GitHub Releases में डायरेक्ट APK पब्लिश
+      - name: 7. Direct Publish to GitHub Releases
         uses: softprops/action-gh-release@v2
         if: success()
         with:
           tag_name: v1.0.${{ github.run_number }}
           name: MERA KISAN Official APK (Build #${{ github.run_number }})
           body: |
-            🌾 **MERA KISAN Android Application — आधिकारिक APK**
+            🌾 **MERA KISAN Android Application — Official APK**
 
-            - बिल्ड संख्या: #${{ github.run_number }}
-            - स्थिति: सीधा इंस्टॉलेबल APK (बिना ZIP फ़ाइल के)
+            - Build: #${{ github.run_number }}
+            - Commit: ${{ github.sha }}
+            - Status: Direct installable APK (No ZIP)
 
-            ⬇️ **सीधा डाउनलोड लिंक:**
-            नीचे Assets में `MeraKisan-App.apk` पर टैप करके इंस्टॉल करें।
+            ⬇️ **Direct Download:**
+            Niche Assets section me `MeraKisan-App.apk` par tap karke download karein.
           draft: false
           prerelease: false
           files: release_assets/MeraKisan-App.apk
