@@ -24,13 +24,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: 2. जावा JDK 17 एनवायरनमेंट सेटअप
+      - name: 2. जावा JDK 17 सेटअप
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: 3. Gradle टूल सेटअप (कैशे डिसेबल शील्ड)
+      - name: 3. Gradle टूल सेटअप
         uses: gradle/actions/setup-gradle@v3
         with:
           cache-disabled: true
@@ -43,16 +43,17 @@ jobs:
           fi
           [ -f "./gradlew" ] && chmod +x ./gradlew
 
-      - name: 5. Android APK संकलन (Assemble Debug APK)
+      - name: 5. त्वरित Kotlin संकलन परीक्षण (Instant Kotlin Syntax Audit)
+        run: |
+          echo "=== केवल Kotlin कोड की शुद्धता जाँची जा रही है ==="
+          ./gradlew compileDebugKotlin --no-daemon --stacktrace
+
+      - name: 6. Android APK संकलन (Assemble Debug APK)
         id: assemble_gradle
         run: |
-          # KAPT स्टब को साफ़ जानकारी देने और त्रुटि होने पर विस्तृत लॉग छापने के लिए
-          ./gradlew assembleDebug --no-daemon --stacktrace --info -x test -x lint || {
-            echo "::error::संकलन में त्रुटि आई। कंपाइलर विवरण नीचे दिया गया है:"
-            exit 1
-          }
+          ./gradlew assembleDebug --no-daemon --stacktrace -x test -x lint
 
-      - name: 6. APK फ़ाइल निष्कर्षण व नामकरण
+      - name: 7. APK फ़ाइल निष्कर्षण व नामकरण
         id: package_apk
         if: success()
         run: |
@@ -66,7 +67,7 @@ jobs:
           cp "$FOUND_APK" release_assets/MeraKisan-App.apk
           echo "apk_path=release_assets/MeraKisan-App.apk" >> $GITHUB_OUTPUT
 
-      - name: 7. GitHub Releases में डायरेक्ट APK पब्लिश
+      - name: 8. GitHub Releases में डायरेक्ट APK पब्लिश
         uses: softprops/action-gh-release@v2
         if: success()
         with:
