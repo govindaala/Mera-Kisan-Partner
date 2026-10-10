@@ -42,10 +42,15 @@ jobs:
           fi
           [ -f "./gradlew" ] && chmod +x ./gradlew
 
-      - name: 5. सटीक Kotlin कंपाइलर डायग्नोस्टिक्स (KAPT बाईपास)
+      - name: 5. KAPT-Bypassed शुद्ध Kotlin कंपाइलेशन (Exact Error Visibility)
         run: |
-          echo "=== शुद्ध Kotlin कंपाइलर चलाया जा रहा है ==="
-          ./gradlew compileDebugKotlin --no-daemon --stacktrace --no-configuration-cache
+          echo "=== KAPT को छोड़कर सीधे शुद्ध Kotlin कंपाइलर चलाया जा रहा है ==="
+          ./gradlew compileDebugKotlin \
+            -x kaptGenerateStubsDebugKotlin \
+            -x kaptDebugKotlin \
+            --no-daemon \
+            --stacktrace \
+            --no-configuration-cache
 
       - name: 6. Android APK संकलन (Assemble Debug APK)
         id: assemble_gradle
@@ -61,6 +66,7 @@ jobs:
             echo "::error::कोई APK फ़ाइल नहीं मिली!"
             exit 1
           fi
+          echo "APK प्राप्त हुई: $FOUND_APK"
           mkdir -p release_assets
           cp "$FOUND_APK" release_assets/MeraKisan-App.apk
           echo "apk_path=release_assets/MeraKisan-App.apk" >> $GITHUB_OUTPUT
