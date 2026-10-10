@@ -1,11 +1,11 @@
 // app/src/main/java/in/merakisan/app/core/network/model/ProductDto.kt
-package in.merakisan.app.core.network.model
+package `in`.merakisan.app.core.network.model
 
 import com.google.gson.annotations.SerializedName
 
 /**
  * MERA KISAN Unified Produce Data Model
- * वित्तीय सुरक्षा: price_paise (Long) एवं व्यापक फ़ील्ड संरेखण
+ * वित्तीय सुरक्षा: price_paise (Long) एवं दोनों वर्ज़न के फ़ील्ड्स का समेकन
  */
 data class ProductDto(
     @SerializedName("product_id")
@@ -32,7 +32,6 @@ data class ProductDto(
     @SerializedName("description")
     val description: String = "",
 
-    // वित्तीय सुरक्षा: पूर्णांक पैसे (Integer Paise)
     @SerializedName("price_paise")
     val pricePaise: Long = 0L,
 
