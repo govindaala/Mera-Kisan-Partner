@@ -1,10 +1,10 @@
 // app/src/main/java/in/merakisan/app/core/network/model/FavoriteDto.kt
-package in.merakisan.app.core.network.model
+package `in`.merakisan.app.core.network.model
 
 import com.google.gson.annotations.SerializedName
 
 /**
- * MERA KISAN Favorites & Follows Data Model
+ * पसंदीदा फसल या किसान का रिमोट संदर्भ
  */
 data class FavoriteDto(
     @SerializedName("favorite_id")
@@ -24,8 +24,7 @@ data class FavoriteDto(
 )
 
 /**
- * पसंदीदा फसल कार्ड्स के UI एडॉप्टर हेतु पूर्ण मॉडल
- * वित्तीय सुरक्षा: price_paise (Long)
+ * पसंदीदा फसल कार्ड्स हेतु पूर्ण UI मॉडल
  */
 data class FavoriteProductDto(
     @SerializedName("favorite_id")
@@ -60,4 +59,55 @@ data class FavoriteProductDto(
 
     @SerializedName("image_url")
     val imageUrl: String? = null
+)
+
+/**
+ * अनुगमित किसान कार्ड्स हेतु पूर्ण डेटा मॉडल
+ * FavoritesViewModel और FollowedFarmerAdapter के साथ 100% संगत
+ */
+data class FollowedFarmerDto(
+    @SerializedName("farmer_id")
+    val farmerId: String = "",
+
+    @SerializedName("farmer_uid")
+    val farmerUid: String = "",
+
+    @SerializedName("name")
+    val name: String = "",
+
+    @SerializedName("farmer_name")
+    val farmerName: String = "",
+
+    @SerializedName("phone")
+    val phone: String? = null,
+
+    @SerializedName("farmer_phone")
+    val farmerPhone: String? = null,
+
+    @SerializedName("village")
+    val village: String? = null,
+
+    @SerializedName("district")
+    val district: String? = null,
+
+    @SerializedName("state")
+    val state: String? = "Madhya Pradesh",
+
+    @SerializedName("photo_url")
+    val photoUrl: String? = null,
+
+    @SerializedName("image_url")
+    val imageUrl: String? = null,
+
+    @SerializedName("rating")
+    val rating: Double = 5.0,
+
+    @SerializedName("total_products")
+    val totalProducts: Int = 0,
+
+    @SerializedName("active_products_count")
+    val activeProductsCount: Int = 0,
+
+    @SerializedName("followed_at")
+    val followedAt: String = ""
 )
