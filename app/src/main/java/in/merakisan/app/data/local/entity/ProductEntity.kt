@@ -6,10 +6,10 @@ import androidx.room.PrimaryKey
 import `in`.merakisan.app.core.network.model.ProductDto
 
 /**
- * MERA KISAN Offline-First Cache Entity
- * Room Database के लिए पूर्णतः टाइप-सुरक्षित मॉडल
+ * MERA KISAN Offline Cache Entity
+ * ProductDao के SQL अनुबंध के साथ 100% संगत (cached_products टेबल)
  */
-@Entity(tableName = "products")
+@Entity(tableName = "cached_products")
 data class ProductEntity(
     @PrimaryKey
     val productId: String,
