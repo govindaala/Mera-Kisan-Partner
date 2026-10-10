@@ -38,38 +38,53 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: 'gradle'
 
-      - name: 3. Gradle एक्ज़ीक्यूट अनुमति की पुष्टि
+      - name: 3. प्रोजेक्ट लोकेशन व Gradle Wrapper की स्वतः तैयारी
         run: |
+          echo "=== 1. Android प्रोजेक्ट डायरेक्टरी खोजना ==="
+          # build.gradle या build.gradle.kts की लोकेशन ढूंढना
+          BUILD_FILE=$(find . -maxdepth 3 -name "build.gradle" -o -name "build.gradle.kts" | head -n 1)
+          
+          if [ -z "$BUILD_FILE" ]; then
+            echo "::error::कोई build.gradle फ़ाइल नहीं मिली! रूट डायरेक्टरी का उपयोग किया जा रहा है।"
+            PROJECT_DIR="."
+          else
+            # रूट स्तर का फ़ोल्डर चुनना
+            PROJECT_DIR=$(dirname "$BUILD_FILE")
+            echo "Android प्रोजेक्ट मिला: $PROJECT_DIR"
+          fi
+          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+
+          cd "$PROJECT_DIR"
+
+          echo "=== 2. gradlew फ़ाइल की जांच ==="
+          if [ ! -f "./gradlew" ]; then
+            echo "::warning::gradlew नहीं मिला! स्वचालित रूप से Gradle Wrapper तैयार किया जा रहा है..."
+            # रनर में मौजूद Gradle टूल से wrapper तैयार करना
+            gradle wrapper --gradle-version 8.5 --distribution-type bin || true
+          fi
+
           if [ -f "./gradlew" ]; then
             chmod +x ./gradlew
+            echo "gradlew को एक्ज़ीक्यूट अनुमति प्रदान की गई।"
           else
-            echo "::warning::रूट डायरेक्टरी में gradlew नहीं मिला, सबडायरेक्टरी स्कैन की जा रही है..."
-            find . -name "gradlew" -exec chmod +x {} +
+            echo "::warning::gradlew जनरेट नहीं हो सका, डायरेक्ट सिस्टम Gradle का उपयोग किया जाएगा।"
           fi
 
-      - name: 4. मॉड्यूलर एरर डायग्नोस्टिक्स व पैच डिटेक्शन
-        run: |
-          echo "=== पर्यावरण व कोड संरचना सत्यापन ==="
-          java -version
-          # यदि भविष्य में बिना पुरानी फ़ाइल छेड़े कोई पैच स्क्रिप्ट जोड़ी जाए:
-          if [ -f "./ci-patch.sh" ]; then
-            echo "अतिरिक्त पैच फ़ाइल ci-patch.sh पाई गई, निष्पादित की जा रही है..."
-            chmod +x ./ci-patch.sh
-            ./ci-patch.sh
-          fi
-
-      - name: 5. Android APK संकलन (Assemble Debug APK)
+      - name: 4. Android APK संकलन (Assemble Debug APK)
         id: assemble_gradle
         run: |
-          ./gradlew assembleDebug --no-daemon --stacktrace --scan
+          cd "$PROJECT_DIR"
+          if [ -f "./gradlew" ]; then
+            ./gradlew assembleDebug --no-daemon --stacktrace
+          else
+            gradle assembleDebug --no-daemon --stacktrace
+          fi
 
-      - name: 6. APK फ़ाइल का निष्कर्षण व नामकरण
+      - name: 5. APK फ़ाइल का निष्कर्षण व नामकरण
         id: package_apk
         if: success()
         run: |
-          # जेनरेट हुई वास्तविक APK खोजें (मध्यवर्ती कैशे को छोड़कर)
           FOUND_APK=$(find . -path "*/build/outputs/apk/*" -name "*.apk" | head -n 1)
           if [ -z "$FOUND_APK" ]; then
             echo "::error::संकलन के बाद कोई APK फ़ाइल नहीं मिली!"
@@ -77,5 +92,32 @@ jobs:
           fi
           echo "APK प्राप्त हुई: $FOUND_APK"
           mkdir -p release_assets
-          # डायरेक्ट डाउनलोड के लिए स्पष्ट नामकरण
-          cp "$FOUND_APK" release_assets/MeraKisan
+          cp "$FOUND_APK" release_assets/MeraKisan-App.apk
+          echo "apk_path=release_assets/MeraKisan-App.apk" >> $GITHUB_OUTPUT
+
+      - name: 6. GitHub Releases में डायरेक्ट APK पब्लिश
+        uses: softprops/action-gh-release@v2
+        if: success()
+        with:
+          tag_name: ${{ github.event.inputs.release_tag || format('build-{0}', github.run_number) }}
+          name: ${{ github.event.inputs.release_title || format('MERA KISAN APK (Build #{0})', github.run_number) }}
+          body: |
+            🌾 **MERA KISAN Android Application — आधिकारिक APK**
+
+            - **बिल्ड संख्या:** `#${{ github.run_number }}`
+            - **कमिट:** `${{ github.sha }}`
+            - **स्थिति:** सीधा इंस्टॉलेबल APK (No ZIP)
+
+            ⬇️ **सीधा डाउनलोड लिंक:**
+            नीचे Assets में `MeraKisan-App.apk` पर क्लिक करके डाउनलोड करें।
+          draft: false
+          prerelease: false
+          files: release_assets/MeraKisan-App.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 7. विफलता स्थिति लॉगिंग (Error Diagnostic Capture)
+        if: failure()
+        run: |
+          echo "::error::बिल्ड विफल हुआ! नीचे दिए गए एरर लॉग की जाँच करें:"
+          find . -name "*.log" -o -name "*error*.txt" | xargs head -n 50 || true
