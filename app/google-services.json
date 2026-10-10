@@ -21,13 +21,6 @@
       "services": {
         "analytics_service": {
           "status": 1
-        },
-        "appinvite_service": {
-          "status": 1,
-          "other_platform_oauth_client": []
-        },
-        "ads_service": {
-          "status": 1
         }
       }
     },
@@ -35,7 +28,45 @@
       "client_info": {
         "mobilesdk_app_id": "1:100000000001:android:abcdef1234567891",
         "android_client_info": {
+          "package_name": "in.merakisan.app.debug"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDummyKeyForCICompilationOnly12345"
+        }
+      ],
+      "services": {
+        "analytics_service": {
+          "status": 1
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:100000000001:android:abcdef1234567892",
+        "android_client_info": {
           "package_name": "in.merakisan.partner"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDummyKeyForCICompilationOnly12345"
+        }
+      ],
+      "services": {
+        "analytics_service": {
+          "status": 1
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:100000000001:android:abcdef1234567893",
+        "android_client_info": {
+          "package_name": "in.merakisan.partner.debug"
         }
       },
       "oauth_client": [],
