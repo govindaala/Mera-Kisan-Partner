@@ -47,7 +47,7 @@ class FavoriteProductAdapter(
             binding.tvFavProductSeller.text = loc
             binding.tvFavProductStock.text = "उपलब्ध: ${item.stockQuantity} ${item.unit}"
 
-            // Standard fallback thumbnail (No missing Coil dependency)
+            // मानक सुरक्षित थंबनेल (बिना किसी बाहरी अनसुलझी डिपेंडेंसी के)
             binding.ivFavProductThumb.setImageResource(android.R.drawable.ic_menu_gallery)
 
             binding.root.setOnClickListener { onProductClick(item) }
