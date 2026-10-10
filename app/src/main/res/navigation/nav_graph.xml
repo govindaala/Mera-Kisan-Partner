@@ -72,6 +72,9 @@
         <action
             android:id="@+id/action_home_to_addProduct"
             app:destination="@id/addProductFragment" />
+        <action
+            android:id="@+id/action_home_to_mandiPrices"
+            app:destination="@id/mandiPricesFragment" />
     </fragment>
 
     <fragment
@@ -142,5 +145,12 @@
             android:name="orderId"
             app:argType="string" />
     </fragment>
+
+    <!-- 6. Mandi Prices Screen (Feature Flag Controlled) -->
+    <fragment
+        android:id="@+id/mandiPricesFragment"
+        android:name="in.merakisan.app.ui.mandi.MandiPricesFragment"
+        android:label="मंडी भाव"
+        tools:layout="@layout/fragment_mandi_prices" />
 
 </navigation>
