@@ -46,7 +46,7 @@ android {
 
     buildFeatures {
         viewBinding = true
-        dataBinding = false // KAPT <Error module> क्रैश को समाप्त रखने हेतु
+        dataBinding = false // DataBinding क्रैश और <Error module> को हमेशा के लिए बंद रखना
     }
 }
 
@@ -71,7 +71,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
 
-    // Room Database (Offline-First Architecture)
+    // Room Database (Offline Cache)
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
