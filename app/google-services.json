@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "100000000001",
+    "project_id": "mera-kisan-65967",
+    "storage_bucket": "mera-kisan-65967.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:100000000001:android:abcdef1234567890",
+        "android_client_info": {
+          "package_name": "in.merakisan.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDummyKeyForCICompilationOnly12345"
+        }
+      ],
+      "services": {
+        "analytics_service": {
+          "status": 1
+        },
+        "appinvite_service": {
+          "status": 1,
+          "other_platform_oauth_client": []
+        },
+        "ads_service": {
+          "status": 1
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:100000000001:android:abcdef1234567891",
+        "android_client_info": {
+          "package_name": "in.merakisan.partner"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDummyKeyForCICompilationOnly12345"
+        }
+      ],
+      "services": {
+        "analytics_service": {
+          "status": 1
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
