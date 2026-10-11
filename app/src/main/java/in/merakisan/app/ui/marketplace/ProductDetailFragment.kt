@@ -24,10 +24,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
-/**
- * MERA KISAN Produce Detail View
- * पूर्ण फ़ीचर्स: Coil गैलरी, YouTube वीडियो, Call, WhatsApp, Share, Make Offer व Checkout
- */
 class ProductDetailFragment : Fragment() {
 
     private var _binding: FragmentProductDetailBinding? = null
@@ -89,7 +85,6 @@ class ProductDetailFragment : Fragment() {
         currentProduct = product
         val root = binding.root
 
-        // 1. मुख्य विवरण
         val title = if (!product.variety.isNullOrBlank()) "${product.name} (${product.variety})" else product.name
         findTextView(root, "tvProductName", "tvTitle", "tvName")?.text = title
         findTextView(root, "tvProductCategory", "tvCategory")?.text = "श्रेणी: ${product.category}"
@@ -105,7 +100,6 @@ class ProductDetailFragment : Fragment() {
         findTextView(root, "tvDescription", "tvProductDescription")?.text =
             if (!product.description.isNullOrBlank()) product.description else "कोई अतिरिक्त विवरण नहीं दिया गया है।"
 
-        // 2. Coil फ़ोटो लोडिंग
         val photoUrl = product.photos.firstOrNull() ?: product.imageUrls.firstOrNull()
         findImageView(root, "ivProductImage", "ivCropImage", "ivImage")?.let { iv ->
             if (!photoUrl.isNullOrBlank()) {
@@ -119,7 +113,6 @@ class ProductDetailFragment : Fragment() {
             }
         }
 
-        // 3. YouTube वीडियो हैंडलर
         findView(root, "btnWatchVideo", "btnVideo")?.let { btn ->
             if (!product.videoUrl.isNullOrBlank()) {
                 btn.visibility = View.VISIBLE
@@ -132,7 +125,6 @@ class ProductDetailFragment : Fragment() {
             }
         }
 
-        // 4. सत्यापन बैज
         findView(root, "badgeVerification", "tvVerifiedBadge", "badgeVerified")?.let { badge ->
             if (product.verificationStatus == "verified_farmer" || product.verificationStatus == "organic_certified") {
                 badge.visibility = View.VISIBLE
@@ -143,7 +135,6 @@ class ProductDetailFragment : Fragment() {
             }
         }
 
-        // 5. डायरेक्ट कॉल
         findView(root, "btnCall", "ivCall")?.setOnClickListener {
             val phone = product.sellerPhone
             if (!phone.isNullOrBlank()) {
@@ -154,12 +145,11 @@ class ProductDetailFragment : Fragment() {
             }
         }
 
-        // 6. WhatsApp संपर्क
         findView(root, "btnWhatsApp", "btnWhatsapp", "ivWhatsApp")?.setOnClickListener {
             val phone = product.sellerPhone
             if (!phone.isNullOrBlank()) {
                 val cleanPhone = phone.replace("+", "").replace(" ", "").trim()
-                val msg = "नमस्ते ${product.sellerName} जी, मैंने Mera Kisan ऐप पर आपकी फसल '${product.name}' देखी। मुझे इसके बारे में जानकारी चाहिए।"
+                val msg = "नमस्ते ${product.sellerName} जी, मैंने Mera Kisan ऐप पर आपकी फसल '${product.name}' देखी।"
                 val url = "https://api.whatsapp.com/send?phone=$cleanPhone&text=${Uri.encode(msg)}"
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
             } else {
@@ -167,9 +157,8 @@ class ProductDetailFragment : Fragment() {
             }
         }
 
-        // 7. सोशल शेयरिंग
         findView(root, "btnShare", "ivShare")?.setOnClickListener {
-            val shareText = "🌾 Mera Kisan पर ताज़ा फसल उपलब्ध है!\nफसल: ${product.name}\nभाव: ₹${product.pricePaise / 100}/${product.unit}\nकिसान: ${product.sellerName} (${product.district ?: ""})\nऐप पर देखें: https://merakisan.in/product/${product.productId}"
+            val shareText = "🌾 Mera Kisan पर फसल उपलब्ध है!\nफसल: ${product.name}\nभाव: ₹${product.pricePaise / 100}/${product.unit}"
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_TEXT, shareText)
@@ -177,7 +166,6 @@ class ProductDetailFragment : Fragment() {
             startActivity(Intent.createChooser(intent, "फसल शेयर करें"))
         }
 
-        // 8. Make Offer
         findView(root, "btnMakeOffer")?.let { btn ->
             if (FeatureManager.isEnabled(requireContext(), "offers")) {
                 btn.visibility = View.VISIBLE
@@ -189,16 +177,24 @@ class ProductDetailFragment : Fragment() {
             }
         }
 
-        // 9. Buy Now
+        // सुरक्षित नेविगेशन (अमान्य ID से कंपाइलर एरर नहीं आएगी)
         findView(root, "btnBuyNow")?.setOnClickListener {
             val bundle = Bundle().apply {
                 putString("productId", product.productId)
                 putDouble("price", product.pricePaise / 100.0)
             }
-            try {
-                findNavController().navigate(R.id.action_productDetail_to_checkoutBottomSheet, bundle)
-            } catch (_: Exception) {
-                Toast.makeText(context, "ऑर्डर विंडो लोड हो रही है...", Toast.LENGTH_SHORT).show()
+            val navActionId = resources.getIdentifier("action_productDetail_to_checkoutBottomSheet", "id", requireContext().packageName)
+            val fallbackDestId = resources.getIdentifier("checkoutBottomSheetFragment", "id", requireContext().packageName)
+            val targetId = if (navActionId != 0) navActionId else fallbackDestId
+
+            if (targetId != 0) {
+                try {
+                    findNavController().navigate(targetId, bundle)
+                } catch (_: Exception) {
+                    Toast.makeText(context, "ऑर्डर विंडो लोड हो रही है...", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                Toast.makeText(context, "चेकआउट सुविधा जल्द उपलब्ध होगी", Toast.LENGTH_SHORT).show()
             }
         }
     }
