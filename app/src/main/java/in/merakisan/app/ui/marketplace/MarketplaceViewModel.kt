@@ -1,48 +1,49 @@
 // app/src/main/java/in/merakisan/app/ui/marketplace/MarketplaceViewModel.kt
-package in.merakisan.app.ui.marketplace
+package `in`.merakisan.app.ui.marketplace
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
-import in.merakisan.app.core.network.ApiClient
-import in.merakisan.app.core.network.model.ProductDto
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import `in`.merakisan.app.core.network.ApiClient
+import `in`.merakisan.app.core.network.model.ProductDto
+import `in`.merakisan.app.data.local.AppDatabase
+import `in`.merakisan.app.data.local.entity.toDto
+import `in`.merakisan.app.data.local.entity.toEntity
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
-
-sealed class MarketplaceUiState {
-    object Loading : MarketplaceUiState()
-    data class Success(val products: List<ProductDto>) : MarketplaceUiState()
-    data class Error(val message: String) : MarketplaceUiState()
-    object Empty : MarketplaceUiState()
-}
+import kotlinx.coroutines.withContext
 
 class MarketplaceViewModel(application: Application) : AndroidViewModel(application) {
 
     private val apiService = ApiClient.getApiService(application)
+    private val productDao = AppDatabase.getInstance(application).productDao()
 
-    private val _uiState = MutableStateFlow<MarketplaceUiState>(MarketplaceUiState.Loading)
-    val uiState: StateFlow<MarketplaceUiState> = _uiState.asStateFlow()
+    private val _products = MutableLiveData<List<ProductDto>>()
+    val products: LiveData<List<ProductDto>> get() = _products
 
-    private var allFetchedProducts: List<ProductDto> = emptyList()
+    private val _isLoading = MutableLiveData<Boolean>()
+    val isLoading: LiveData<Boolean> get() = _isLoading
 
-    // फ़िल्टर स्टेट्स
-    private var currentCategory: String? = null
-    private var isSmallQuantityOnly: Boolean = false
-    private var isOrganicOnly: Boolean = false
-    private var currentSearchQuery: String = ""
+    private val _error = MutableLiveData<String?>()
+    val error: LiveData<String?> get() = _error
 
-    init {
-        loadMarketplaceProducts()
-    }
+    private var allLoadedProducts: List<ProductDto> = emptyList()
 
-    fun loadMarketplaceProducts() {
-        viewModelScope.launch {
-            _uiState.value = MarketplaceUiState.Loading
+    fun loadProducts(
+        category: String? = null,
+        isSmallQuantityOnly: Boolean = false,
+        isOrganicOnly: Boolean = false
+    ) {
+        _isLoading.value = true
+        _error.value = null
+
+        viewModelScope.launch(Dispatchers.IO) {
             try {
                 val response = apiService.getProducts(
-                    category = currentCategory,
+                    category = category,
                     maxQuantity = if (isSmallQuantityOnly) 25.0 else null,
                     organicOnly = if (isOrganicOnly) true else null,
                     limit = 50,
@@ -50,54 +51,55 @@ class MarketplaceViewModel(application: Application) : AndroidViewModel(applicat
                 )
 
                 if (response.isSuccessful && response.body()?.success == true) {
-                    val products = response.body()?.data ?: emptyList()
-                    allFetchedProducts = products
-                    applyLocalFilters()
+                    val remoteProducts = response.body()?.data ?: emptyList()
+                    allLoadedProducts = remoteProducts
+                    
+                    productDao.insertProducts(remoteProducts.map { it.toEntity() })
+                    
+                    withContext(Dispatchers.Main) {
+                        _products.value = remoteProducts
+                        _isLoading.value = false
+                    }
                 } else {
-                    val errorMsg = response.body()?.error?.message ?: "फसलें लोड करने में त्रुटि (HTTP ${response.code()})"
-                    _uiState.value = MarketplaceUiState.Error(errorMsg)
+                    fallbackToCache()
                 }
-            } catch (e: Exception) {
-                _uiState.value = MarketplaceUiState.Error("नेटवर्क संपर्क विफल: ${e.localizedMessage}")
+            } catch (_: Exception) {
+                fallbackToCache()
             }
         }
     }
 
-    fun setSmallQuantityFilter(enabled: Boolean) {
-        isSmallQuantityOnly = enabled
-        loadMarketplaceProducts()
+    private suspend fun fallbackToCache() {
+        val cached = productDao.getAllProducts().firstOrNull()?.map { it.toDto() } ?: emptyList()
+        allLoadedProducts = cached
+        withContext(Dispatchers.Main) {
+            _products.value = cached
+            _isLoading.value = false
+            if (cached.isEmpty()) {
+                _error.value = "कोई उत्पाद उपलब्ध नहीं है।"
+            }
+        }
     }
 
-    fun setOrganicFilter(enabled: Boolean) {
-        isOrganicOnly = enabled
-        loadMarketplaceProducts()
-    }
-
-    fun setCategoryFilter(category: String?) {
-        currentCategory = category
-        loadMarketplaceProducts()
-    }
-
-    fun searchProducts(query: String) {
-        currentSearchQuery = query.trim().lowercase()
-        applyLocalFilters()
-    }
-
-    private fun applyLocalFilters() {
-        val filtered = allFetchedProducts.filter { product ->
-            val matchesQuery = currentSearchQuery.isBlank() ||
-                    product.name.lowercase().contains(currentSearchQuery) ||
-                    (product.variety?.lowercase()?.contains(currentSearchQuery) == true) ||
-                    product.sellerName.lowercase().contains(currentSearchQuery) ||
-                    product.district.lowercase().contains(currentSearchQuery)
-
-            matchesQuery
+    fun filterProducts(query: String) {
+        val q = query.trim().lowercase()
+        if (q.isBlank()) {
+            _products.value = allLoadedProducts
+            return
         }
 
-        if (filtered.isEmpty()) {
-            _uiState.value = MarketplaceUiState.Empty
-        } else {
-            _uiState.value = MarketplaceUiState.Success(filtered)
+        // लाइन 92 सेफ़्टी: सभी स्ट्रिंग्स पर .orEmpty() और सेफ़ कॉल
+        val filtered = allLoadedProducts.filter { product ->
+            val nameMatch = product.name.lowercase().contains(q)
+            val categoryMatch = product.category.lowercase().contains(q)
+            val varietyMatch = product.variety.orEmpty().lowercase().contains(q)
+            val districtMatch = product.district.orEmpty().lowercase().contains(q)
+            val villageMatch = product.village.orEmpty().lowercase().contains(q)
+            val statusMatch = product.status.orEmpty().lowercase() == "active"
+
+            statusMatch && (nameMatch || categoryMatch || varietyMatch || districtMatch || villageMatch)
         }
+
+        _products.value = filtered
     }
 }
