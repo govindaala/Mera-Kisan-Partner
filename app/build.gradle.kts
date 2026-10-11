@@ -31,7 +31,7 @@ android {
             )
         }
         debug {
-            // applicationIdSuffix = ".debug" हटा दिया गया है ताकि google-services.json से 100% मैच हो
+            // applicationIdSuffix hata diya gaya hai taaki google-services.json se 100% match ho
             isDebuggable = true
         }
     }
@@ -56,7 +56,8 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
-    implementation(libs.androidx.activity)
+    // Direct Maven coordinate - toml dependency bypass
+    implementation("androidx.activity:activity-ktx:1.9.3")
     implementation(libs.androidx.constraintlayout)
 
     // Navigation
@@ -80,18 +81,20 @@ dependencies {
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
-    implementation(libs.kotlinx.coroutines.core)
+    // Direct Maven coordinate
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
 
-    // Image Loading
-    implementation(libs.glide)
-    kapt(libs.glide.compiler)
+    // Image Loading (Glide) - Direct Maven coordinates
+    implementation("com.github.bumptech.glide:glide:4.16.0")
+    kapt("com.github.bumptech.glide:compiler:4.16.0")
 
     // Google Play Services & Firebase BoM
     implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-messaging")
-    implementation(libs.play.services.auth)
+    // Direct Maven coordinate Google Sign-In
+    implementation("com.google.android.gms:play-services-auth:21.3.0")
     implementation(libs.play.services.location)
 
     // WorkManager
@@ -100,8 +103,8 @@ dependencies {
     // Security Crypto
     implementation(libs.androidx.security.crypto)
 
-    // QR Code
-    implementation(libs.zxing.core)
+    // QR Code (ZXing) - Direct Maven coordinate
+    implementation("com.google.zxing:core:3.5.3")
 
     // Testing
     testImplementation(libs.junit)
