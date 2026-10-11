@@ -1,191 +1,118 @@
 // app/src/main/java/in/merakisan/app/core/utils/PosterGenerator.kt
-package in.merakisan.app.core.utils
+package `in`.merakisan.app.core.utils
 
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
-import in.merakisan.app.core.network.model.ProductDto
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.FileOutputStream
+import `in`.merakisan.app.core.network.model.ProductDto
 import java.util.Locale
 
-/**
- * MERA KISAN Evidence-Based Agro Poster Engine
- * कानूनी और तथ्य-सम्मत नियमों के तहत स्थानीय डिवाइस पर पोस्टर रेंडरर
- */
 object PosterGenerator {
 
-    private const val POSTER_WIDTH = 1080
-    private const val POSTER_HEIGHT = 1440
-
-    suspend fun generatePoster(
+    fun generateProductPoster(
         context: Context,
         product: ProductDto,
-        productBitmap: Bitmap?
-    ): Result<File> = withContext(Dispatchers.Default) {
-        try {
-            val bitmap = Bitmap.createBitmap(POSTER_WIDTH, POSTER_HEIGHT, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(bitmap)
+        productBitmap: Bitmap?,
+        qrBitmap: Bitmap?
+    ): Bitmap {
+        val width = 1080
+        val height = 1920
+        val poster = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(poster)
 
-            // 1. बैकग्राउंड (सफेद व एग्रो-पैटर्न)
-            canvas.drawColor(Color.parseColor("#F8FAF8"))
+        // 1. बैकग्राउंड
+        val bgPaint = Paint().apply { color = Color.parseColor("#F4F7F4") }
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
 
-            // 2. टॉप हेडर बैनर
-            val headerPaint = Paint().apply {
-                color = Color.parseColor("#1B5E20")
-                isAntiAlias = true
-            }
-            canvas.drawRect(0f, 0f, POSTER_WIDTH.toFloat(), 180f, headerPaint)
+        // 2. हेडर बैनर
+        val headerPaint = Paint().apply { color = Color.parseColor("#1B5E20") }
+        canvas.drawRect(0f, 0f, width.toFloat(), 220f, headerPaint)
 
-            val appTitlePaint = Paint().apply {
-                color = Color.WHITE
-                textSize = 58f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                isAntiAlias = true
-            }
-            canvas.drawText("MERA KISAN", 50f, 110f, appTitlePaint)
-
-            val taglinePaint = Paint().apply {
-                color = Color.parseColor("#C8E6C9")
-                textSize = 28f
-                isAntiAlias = true
-            }
-            canvas.drawText("किसान से सीधे आपकी जरूरत तक", 50f, 155f, taglinePaint)
-
-            // 3. प्रोडक्ट फ़ोटो फ्रेम
-            val imageRect = RectF(50f, 220f, (POSTER_WIDTH - 50).toFloat(), 720f)
-            val framePaint = Paint().apply {
-                color = Color.parseColor("#E8F5E9")
-                isAntiAlias = true
-            }
-            canvas.drawRoundRect(imageRect, 24f, 24f, framePaint)
-
-            if (productBitmap != null) {
-                val srcRect = Rect(0, 0, productBitmap.width, productBitmap.height)
-                canvas.drawBitmap(productBitmap, srcRect, imageRect, null)
-            } else {
-                val placeholderPaint = Paint().apply {
-                    color = Color.parseColor("#66BB6A")
-                    textSize = 48f
-                    textAlign = Paint.Align.CENTER
-                    isAntiAlias = true
-                }
-                canvas.drawText("🌾 ताज़ी देशी उपज", imageRect.centerX(), imageRect.centerY(), placeholderPaint)
-            }
-
-            // 4. फ़सल का नाम व दर
-            val titlePaint = Paint().apply {
-                color = Color.parseColor("#1B5E20")
-                textSize = 62f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                isAntiAlias = true
-            }
-            val displayName = if (!product.variety.isNullOrBlank()) "${product.name} (${product.variety})" else product.name
-            canvas.drawText(displayName, 50f, 800f, titlePaint)
-
-            val priceRupees = product.pricePaise / 100.0
-            val pricePaint = Paint().apply {
-                color = Color.parseColor("#2E7D32")
-                textSize = 52f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                isAntiAlias = true
-            }
-            val priceText = String.format(Locale.getDefault(), "दर: ₹%.0f / %s", priceRupees, product.unit)
-            canvas.drawText(priceText, 50f, 875f, pricePaint)
-
-            val stockPaint = Paint().apply {
-                color = Color.parseColor("#424242")
-                textSize = 34f
-                isAntiAlias = true
-            }
-            canvas.drawText("उपलब्ध मात्रा: ${product.stockQuantity} ${product.unit}", 50f, 930f, stockPaint)
-
-            // 5. सत्यापन स्थिति (सख्त तथ्य-आधारित लेबल)
-            val badgeText = when (product.verificationStatus) {
-                "organic_certified" -> "🌿 Organic Certified (जैविक प्रमाणित)"
-                "verified_farmer" -> "✔ Mera Kisan Verified Farmer"
-                else -> "🌾 किसान द्वारा स्व-घोषित (Farmer Declared)"
-            }
-            val badgePaint = Paint().apply {
-                color = Color.parseColor("#1B5E20")
-                textSize = 32f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                isAntiAlias = true
-            }
-            canvas.drawText(badgeText, 50f, 990f, badgePaint)
-
-            // 6. किसान व लोकेशन (सटीक GPS कभी नहीं, केवल गांव व ज़िला)
-            val locPaint = Paint().apply {
-                color = Color.parseColor("#616161")
-                textSize = 34f
-                isAntiAlias = true
-            }
-            val loc = if (!product.village.isNullOrBlank()) {
-                "किसान: ${product.sellerName} • ${product.village}, ${product.district}"
-            } else {
-                "किसान: ${product.sellerName} • ज़िला: ${product.district}"
-            }
-            canvas.drawText(loc, 50f, 1050f, locPaint)
-
-            // 7. QR कोड जेनरेशन और प्लेसमेंट
-            val productDeepLink = "https://merakisan.in/product/${product.productId}"
-            val qrResult = QrCodeGenerator.generateQrBitmap(productDeepLink, 280)
-            if (qrResult.isSuccess) {
-                val qrBitmap = qrResult.getOrNull()
-                if (qrBitmap != null) {
-                    canvas.drawBitmap(qrBitmap, (POSTER_WIDTH - 340).toFloat(), 1100f, null)
-
-                    val scanPaint = Paint().apply {
-                        color = Color.parseColor("#1B5E20")
-                        textSize = 26f
-                        textAlign = Paint.Align.CENTER
-                        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                        isAntiAlias = true
-                    }
-                    canvas.drawText("स्कैन करके खरीदें", (POSTER_WIDTH - 200).toFloat(), 1410f, scanPaint)
-                }
-            }
-
-            // 8. संपर्क व कॉल टू एक्शन
-            val callPaint = Paint().apply {
-                color = Color.parseColor("#E65100")
-                textSize = 36f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                isAntiAlias = true
-            }
-            canvas.drawText("सीधे किसान से खरीदने हेतु संपर्क करें", 50f, 1170f, callPaint)
-
-            val footerLinkPaint = Paint().apply {
-                color = Color.parseColor("#757575")
-                textSize = 30f
-                isAntiAlias = true
-            }
-            canvas.drawText(productDeepLink, 50f, 1220f, footerLinkPaint)
-
-            // 9. बॉटम स्ट्रिप
-            val footerPaint = Paint().apply {
-                color = Color.parseColor("#1B5E20")
-            }
-            canvas.drawRect(0f, 1420f, POSTER_WIDTH.toFloat(), POSTER_HEIGHT.toFloat(), footerPaint)
-
-            // 10. इमेज फ़ाइल में सेव करना (कम्प्रैस्ड JPEG)
-            val cacheFile = File(context.cacheDir, "poster_${product.productId}.jpg")
-            val fos = FileOutputStream(cacheFile)
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 90, fos)
-            fos.flush()
-            fos.close()
-            bitmap.recycle()
-
-            Result.success(cacheFile)
-        } catch (e: Exception) {
-            Result.failure(e)
+        val headerTextPaint = Paint().apply {
+            color = Color.WHITE
+            textSize = 64f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
         }
+        canvas.drawText("MERA KISAN — खेत से सीधे घर तक", (width / 2).toFloat(), 130f, headerTextPaint)
+
+        // 3. प्रोडक्ट इमेज
+        if (productBitmap != null) {
+            val destRect = RectF(60f, 260f, (width - 60).toFloat(), 960f)
+            canvas.drawBitmap(productBitmap, null, destRect, null)
+        }
+
+        // 4. प्रोडक्ट टाइटल व वैरायटी
+        val titlePaint = Paint().apply {
+            color = Color.parseColor("#1C1B1F")
+            textSize = 58f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val displayTitle = if (!product.variety.isNullOrBlank()) "${product.name} (${product.variety})" else product.name
+        canvas.drawText(displayTitle, 60f, 1050f, titlePaint)
+
+        // 5. मूल्य व स्टॉक (IntegerPaise से सुरक्षित गणना)
+        val priceRupees = product.pricePaise / 100.0
+        val pricePaint = Paint().apply {
+            color = Color.parseColor("#2E7D32")
+            textSize = 54f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        canvas.drawText(String.format(Locale.getDefault(), "भाव: ₹%.0f / %s", priceRupees, product.unit), 60f, 1140f, pricePaint)
+
+        val stockPaint = Paint().apply {
+            color = Color.parseColor("#49454F")
+            textSize = 42f
+        }
+        canvas.drawText("उपलब्ध मात्रा: ${product.stockQuantity}${product.unit}", 60f, 1210f, stockPaint)
+
+        // 6. साक्ष्य-आधारित सत्यापन बैज (Unsupported claims पूर्णतः समाप्त)
+        val badgeText = when (product.verificationStatus) {
+            "organic_certified" -> "प्रमाणित जैविक (Organic Certified)"
+            "verified_farmer" -> "सत्यापित किसान साथी"
+            "lab_tested" -> "प्रयोगशाला परीक्षित (Lab Tested)"
+            else -> "किसान द्वारा घोषित स्थानीय उपज (Farmer Declared)"
+        }
+        val badgePaint = Paint().apply {
+            color = Color.parseColor("#E8F5E9")
+        }
+        val badgeRect = RectF(60f, 1260f, (width - 60).toFloat(), 1350f)
+        canvas.drawRoundRect(badgeRect, 16f, 16f, badgePaint)
+
+        val badgeTextPaint = Paint().apply {
+            color = Color.parseColor("#1B5E20")
+            textSize = 38f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
+        canvas.drawText(badgeText, (width / 2).toFloat(), 1320f, badgeTextPaint)
+
+        // 7. किसान व स्थान
+        val loc = if (!product.village.isNullOrBlank()) "${product.village},${product.district}" else product.district.orEmpty()
+        canvas.drawText("किसान: ${product.sellerName} \vert{} क्षेत्र: $loc", 60f, 1430f, stockPaint)
+
+        // 8. QR कोड व स्कैन कॉल-टू-एक्शन
+        if (qrBitmap != null) {
+            val qrRect = RectF(740f, 1490f, 1000f, 1750f)
+            canvas.drawBitmap(qrBitmap, null, qrRect, null)
+        }
+
+        val ctaPaint = Paint().apply {
+            color = Color.parseColor("#1B5E20")
+            textSize = 42f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        canvas.drawText("QR स्कैन करें या संपर्क करें:", 60f, 1570f, ctaPaint)
+        canvas.drawText("Mera Kisan ऐप पर ऑर्डर करें", 60f, 1640f, stockPaint)
+
+        // 9. फुटर
+        val footerPaint = Paint().apply { color = Color.parseColor("#2E7D32") }
+        canvas.drawRect(0f, 1840f, width.toFloat(), height.toFloat(), footerPaint)
+
+        return poster
     }
 }
