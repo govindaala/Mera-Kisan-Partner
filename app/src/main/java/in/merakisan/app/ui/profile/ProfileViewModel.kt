@@ -1,78 +1,107 @@
 // app/src/main/java/in/merakisan/app/ui/profile/ProfileViewModel.kt
-package in.merakisan.app.ui.profile
+package `in`.merakisan.app.ui.profile
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
-import in.merakisan.app.core.security.SessionManager
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import `in`.merakisan.app.core.network.ApiClient
+import `in`.merakisan.app.core.security.SessionManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class UserProfileUiModel(
-    val uid: String,
-    val name: String,
-    val phone: String,
-    val currentRole: String, // FARMER, BUYER, BOTH
-    val district: String,
-    val village: String,
-    val verificationStatus: String
+    val uid: String = "",
+    val name: String = "",
+    val phone: String = "",
+    val email: String = "",
+    val role: String = "buyer",
+    val village: String = "",
+    val district: String = "",
+    val state: String = "Madhya Pradesh",
+    val verificationStatus: String = "unverified",
+    val isFarmer: Boolean = false,
+    val isBuyer: Boolean = true
 )
 
 class ProfileViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val _userProfile = MutableStateFlow<UserProfileUiModel?>(null)
-    val userProfile: StateFlow<UserProfileUiModel?> = _userProfile.asStateFlow()
+    private val sessionManager = SessionManager(application)
+    private val apiService = ApiClient.getApiService(application)
 
-    init {
-        loadUserProfile()
-    }
+    private val _profile = MutableLiveData<UserProfileUiModel>()
+    val profile: LiveData<UserProfileUiModel> get() = _profile
 
-    fun loadUserProfile() {
-        viewModelScope.launch {
-            val context = getApplication<Application>()
-            val uid = SessionManager.getUserUid(context) ?: "user_default"
-            val role = SessionManager.getUserRole(context)
+    private val _isLoading = MutableLiveData<Boolean>()
+    val isLoading: LiveData<Boolean> get() = _isLoading
 
-            // Keystore-backed सुरक्षित प्रोफ़ाइल स्थिति लोड करना
-            _userProfile.value = UserProfileUiModel(
-                uid = uid,
-                name = "किसान साथी",
-                phone = "+91 98260 00000",
-                currentRole = role,
-                district = "मंदसौर",
-                village = "गरोठ",
-                verificationStatus = "verified_farmer"
-            )
+    private val _errorMessage = MutableLiveData<String?>()
+    val errorMessage: LiveData<String?> get() = _errorMessage
+
+    fun loadProfile() {
+        val userSession = sessionManager.getUserSession()
+        if (userSession == null || userSession.uid.isBlank()) {
+            _profile.value = UserProfileUiModel(name = "अतिथि उपयोगकर्ता (लॉगिन करें)")
+            return
         }
-    }
 
-    /**
-     * बिना पुनः लॉगिन किए तुरंत भूमिका स्विच करना
-     */
-    fun updateRole(newRole: String) {
-        viewModelScope.launch {
-            val context = getApplication<Application>()
-            val currentToken = SessionManager.getAuthToken(context) ?: "active_token"
-            val currentUid = SessionManager.getUserUid(context) ?: "active_uid"
+        // स्थानीय सत्र से त्वरित लोड
+        _profile.value = UserProfileUiModel(
+            uid = userSession.uid,
+            name = userSession.name.ifBlank { "किसान साथी" },
+            phone = userSession.phone,
+            email = userSession.email,
+            role = userSession.role,
+            village = userSession.village,
+            district = userSession.district,
+            state = userSession.state,
+            verificationStatus = userSession.verificationStatus,
+            isFarmer = userSession.role.contains("farmer", ignoreCase = true) || userSession.role.contains("both", ignoreCase = true),
+            isBuyer = userSession.role.contains("buyer", ignoreCase = true) || userSession.role.contains("both", ignoreCase = true)
+        )
 
-            SessionManager.saveSession(
-                context = context,
-                token = currentToken,
-                uid = currentUid,
-                role = newRole
-            )
-
-            // स्थानीय स्टेट को ताज़ा करना
-            _userProfile.value = _userProfile.value?.copy(currentRole = newRole)
+        // बैकएंड API से नवीनतम डेटा सिंक
+        _isLoading.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val response = apiService.getCurrentUser()
+                if (response.isSuccessful && response.body()?.success == true) {
+                    val remoteData = response.body()?.data
+                    if (remoteData != null) {
+                        sessionManager.saveUserSession(remoteData)
+                        withContext(Dispatchers.Main) {
+                            _profile.value = UserProfileUiModel(
+                                uid = remoteData.uid,
+                                name = remoteData.name,
+                                phone = remoteData.phone.orEmpty(),
+                                email = remoteData.email.orEmpty(),
+                                role = remoteData.role,
+                                village = remoteData.village.orEmpty(),
+                                district = remoteData.district.orEmpty(),
+                                state = remoteData.state.orEmpty(),
+                                verificationStatus = remoteData.verificationStatus,
+                                isFarmer = remoteData.role.contains("farmer", true) || remoteData.role.contains("both", true),
+                                isBuyer = remoteData.role.contains("buyer", true) || remoteData.role.contains("both", true)
+                            )
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    _errorMessage.value = e.localizedMessage
+                }
+            } finally {
+                withContext(Dispatchers.Main) {
+                    _isLoading.value = false
+                }
+            }
         }
     }
 
     fun logout() {
-        viewModelScope.launch {
-            val context = getApplication<Application>()
-            SessionManager.clearSession(context)
-        }
+        sessionManager.clearSession()
+        _profile.value = UserProfileUiModel(name = "अतिथि उपयोगकर्ता (लॉगिन करें)")
     }
 }
