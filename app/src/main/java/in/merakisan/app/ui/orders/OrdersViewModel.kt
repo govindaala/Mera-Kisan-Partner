@@ -1,62 +1,103 @@
 // app/src/main/java/in/merakisan/app/ui/orders/OrdersViewModel.kt
-package in.merakisan.app.ui.orders
+package `in`.merakisan.app.ui.orders
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
-import in.merakisan.app.core.network.ApiClient
-import in.merakisan.app.core.network.model.OrderDto
-import in.merakisan.app.core.security.SessionManager
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import `in`.merakisan.app.core.network.ApiClient
+import `in`.merakisan.app.core.network.model.OrderDto
+import `in`.merakisan.app.core.network.model.UpdateOrderStatusRequest
+import `in`.merakisan.app.core.security.SessionManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-
-sealed class OrdersUiState {
-    object Loading : OrdersUiState()
-    data class Success(val orders: List<OrderDto>) : OrdersUiState()
-    data class Error(val message: String) : OrdersUiState()
-    object Empty : OrdersUiState()
-}
+import kotlinx.coroutines.withContext
 
 class OrdersViewModel(application: Application) : AndroidViewModel(application) {
 
     private val apiService = ApiClient.getApiService(application)
+    private val sessionManager = SessionManager(application)
 
-    private val _uiState = MutableStateFlow<OrdersUiState>(OrdersUiState.Loading)
-    val uiState: StateFlow<OrdersUiState> = _uiState.asStateFlow()
+    private val _orders = MutableLiveData<List<OrderDto>>()
+    val orders: LiveData<List<OrderDto>> get() = _orders
 
-    private var currentRole: String = "buyer"
+    private val _isLoading = MutableLiveData<Boolean>()
+    val isLoading: LiveData<Boolean> get() = _isLoading
 
-    init {
-        val userRole = SessionManager.getUserRole(application)
-        currentRole = if (userRole == "FARMER") "farmer" else "buyer"
-        loadOrders(currentRole)
-    }
+    private val _errorMessage = MutableLiveData<String?>()
+    val errorMessage: LiveData<String?> get() = _errorMessage
 
-    fun setRoleFilter(role: String) {
-        currentRole = role
-        loadOrders(currentRole)
-    }
+    private var allFetchedOrders: List<OrderDto> = emptyList()
 
-    fun loadOrders(role: String = currentRole) {
-        viewModelScope.launch {
-            _uiState.value = OrdersUiState.Loading
+    fun loadOrders() {
+        val user = sessionManager.getUserSession()
+        if (user == null || user.uid.isBlank()) {
+            _orders.value = emptyList()
+            _errorMessage.value = "ऑर्डर देखने के लिए कृपया लॉगिन करें।"
+            return
+        }
+
+        _isLoading.value = true
+        _errorMessage.value = null
+
+        viewModelScope.launch(Dispatchers.IO) {
             try {
-                val response = apiService.getUserOrders(role = role)
+                val response = apiService.getOrders()
                 if (response.isSuccessful && response.body()?.success == true) {
-                    val orders = response.body()?.data ?: emptyList()
-                    if (orders.isEmpty()) {
-                        _uiState.value = OrdersUiState.Empty
-                    } else {
-                        _uiState.value = OrdersUiState.Success(orders)
+                    val rawList = response.body()?.data ?: emptyList()
+                    // यूज़र की भूमिका के अनुसार प्रासंगिक ऑर्डर ही दिखाना (IDOR से सुरक्षा)
+                    val relevantList = rawList.filter { order ->
+                        order.buyerUid == user.uid || order.sellerUid == user.uid
+                    }
+                    allFetchedOrders = relevantList
+
+                    withContext(Dispatchers.Main) {
+                        _orders.value = relevantList
+                        _isLoading.value = false
+                        if (relevantList.isEmpty()) {
+                            _errorMessage.value = "कोई ऑर्डर उपलब्ध नहीं है।"
+                        }
                     }
                 } else {
-                    val msg = response.body()?.error?.message ?: "ऑर्डर्स लोड करने में त्रुटि (HTTP ${response.code()})"
-                    _uiState.value = OrdersUiState.Error(msg)
+                    withContext(Dispatchers.Main) {
+                        _orders.value = emptyList()
+                        _isLoading.value = false
+                        _errorMessage.value = "ऑर्डर सूची लोड करने में विफलता।"
+                    }
                 }
             } catch (e: Exception) {
-                _uiState.value = OrdersUiState.Error("नेटवर्क संपर्क विफल: ${e.localizedMessage}")
+                withContext(Dispatchers.Main) {
+                    _orders.value = emptyList()
+                    _isLoading.value = false
+                    _errorMessage.value = "नेटवर्क कनेक्शन त्रुटि: ${e.localizedMessage}"
+                }
+            }
+        }
+    }
+
+    fun updateOrderStatus(orderId: String, newStatus: String, notes: String = "") {
+        _isLoading.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val req = UpdateOrderStatusRequest(status = newStatus, notes = notes)
+                val response = apiService.updateOrderStatus(orderId, req)
+
+                if (response.isSuccessful && response.body()?.success == true) {
+                    withContext(Dispatchers.Main) {
+                        loadOrders()
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        _isLoading.value = false
+                        _errorMessage.value = "स्टेटस बदलने में विफलता।"
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    _isLoading.value = false
+                    _errorMessage.value = "नेटवर्क विफलता: ${e.localizedMessage}"
+                }
             }
         }
     }
