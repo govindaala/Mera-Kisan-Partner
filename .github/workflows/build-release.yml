@@ -37,19 +37,16 @@ jobs:
 
       - name: 4. ऑटो-सैनिटाइज़र व एनवायरनमेंट तैयारी
         run: |
-          echo "=== 1. सभी Kotlin फाइलों में package और import को ऑटो-फिक्स किया जा रहा है ==="
-          # रिपॉजिटरी की सभी फाइलों में package in. और import in. को सुरक्षित `in`. में बदलना
+          echo "=== 1. सभी Kotlin फाइलों में package और import को ऑटो-एस्केप किया जा रहा है ==="
           find app/src/main/java -type f -name "*.kt" -exec sed -i -E 's/^package[[:space:]]+in\./package `in`./g' {} +
           find app/src/main/java -type f -name "*.kt" -exec sed -i -E 's/^import[[:space:]]+in\./import `in`./g' {} +
-          echo "सभी 106 फाइलों का पैकेज सिंटैक्स सफलतापूर्वक संरेखित हुआ।"
 
-          echo "=== 2. gradlew व google-services.json की पुष्टि ==="
+          echo "=== 2. Gradlew Wrapper पुष्टि ==="
           if [ ! -f "./gradlew" ]; then
             gradle wrapper --gradle-version 8.5 --no-configuration-cache || true
           fi
           [ -f "./gradlew" ] && chmod +x ./gradlew
 
-          # KAPT व इन-प्रोसेस शील्ड
           echo "kapt.verbose=true" >> gradle.properties
           echo "kapt.use.worker.api=false" >> gradle.properties
           echo "kotlin.compiler.execution.strategy=in-process" >> gradle.properties
@@ -58,10 +55,8 @@ jobs:
       - name: 5. Android APK क्लीन संकलन (Assemble Debug APK)
         id: assemble_gradle
         run: |
-          # लॉग को कैप्चर करते हुए संकलन चलाना
           ./gradlew assembleDebug \
             --no-daemon \
-            --stacktrace \
             --no-configuration-cache \
             --no-build-cache \
             -x test -x lint 2>&1 | tee build_raw.log
@@ -90,22 +85,87 @@ jobs:
             🌾 **MERA KISAN Android Application — आधिकारिक APK**
 
             - बिल्ड संख्या: #${{ github.run_number }}
-            - कमिट: ${{ github.sha }}
             - स्थिति: सीधा इंस्टॉलेबल APK (बिना ZIP फ़ाइल के)
 
-            ⬇️ **डाउनलोड लिंक:**
-            नीचे Assets में `MeraKisan-App.apk` पर टैप करके फ़ोन में इंस्टॉल करें।
+            ⬇️ **सीधा डाउनलोड लिंक:**
+            नीचे Assets में `MeraKisan-App.apk` पर टैप करके इंस्टॉल करें।
           draft: false
           prerelease: false
           files: release_assets/MeraKisan-App.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 8. विफलता डायग्नोस्टिक्स (केवल सटीक एरर दिखाएगा)
+      - name: 8. विफलता डायग्नोस्टिक्स (सटीक लाइन, शब्द व सुधार सुझाव)
         if: failure()
         run: |
-          echo "=========================================================="
-          echo "🚨 MERA KISAN — सटीक कंपाइलर एरर (First 30 Errors):"
-          echo "=========================================================="
-          grep -E "(^e: |error: |Unresolved reference)" build_raw.log | head -n 30 || tail -n 30 build_raw.log
-          echo "=========================================================="
+          python3 - << 'EOF'
+          import re
+          import os
+
+          log_file = "build_raw.log"
+          if not os.path.exists(log_file):
+              print("लॉग फ़ाइल उपलब्ध नहीं है।")
+              exit(0)
+
+          error_pattern = re.compile(r"^e:\s+(?:file://)?(.*?):(\d+):(\d+)\s+(.*)")
+          errors = []
+
+          with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+              for line in f:
+                  m = error_pattern.match(line.strip())
+                  if m:
+                      errors.append({
+                          "file": m.group(1),
+                          "line": int(m.group(2)),
+                          "col": int(m.group(3)),
+                          "msg": m.group(4)
+                      })
+
+          print("=" * 80)
+          print("🚨 MERA KISAN — कंपाइलर त्रुटि विश्लेषण रिपोर्ट (LINE, WORD & FIX DETECTOR)")
+          print(f"कुल पाई गई त्रुटियाँ: {len(errors)}")
+          print("=" * 80)
+
+          if not errors:
+              print("कोई सीधी Kotlin कंपाइलर त्रुटि (e:) नहीं मिली।")
+              exit(0)
+
+          for idx, err in enumerate(errors[:25], 1):
+              fpath = err["file"]
+              l_num = err["line"]
+              c_num = err["col"]
+              msg = err["msg"]
+
+              print(f"\n[{idx}] 📁 फ़ाइल: {os.path.relpath(fpath, os.getcwd()) if os.path.isabs(fpath) else fpath}")
+              print(f"    📍 पंक्ति (Line): {l_num}, स्तंभ (Column): {c_num}")
+              print(f"    ⚠️  त्रुटि संदेश: {msg}")
+
+              if os.path.exists(fpath):
+                  try:
+                      with open(fpath, "r", encoding="utf-8", errors="ignore") as src:
+                          lines = src.readlines()
+                          if 0 < l_num <= len(lines):
+                              target_line = lines[l_num - 1].rstrip('\n')
+                              print(f"    📝 वास्तविक कोड पंक्ति:")
+                              print(f"       {target_line}")
+                              pointer = " " * (c_num - 1) + "^" * max(1, min(len(target_line) - c_num + 1, 15))
+                              print(f"       {pointer}")
+
+                              # संभावित शब्द व सुधार सुझाव
+                              if "Unresolved reference:" in msg:
+                                  missing_word = msg.split("Unresolved reference:")[-1].strip()
+                                  print(f"    ❌ ग़लत/अनुपस्थित शब्द: '{missing_word}'")
+                                  print(f"    💡 सुधार: यह शब्द क्लास या फ़ाइल में मौजूद नहीं है। इसे डिक्लेयर करें या सही स्पेलिंग लिखें।")
+                              elif "Type mismatch:" in msg:
+                                  print(f"    ❌ टाइप विसंगति (Type Mismatch)")
+                                  print(f"    💡 सुधार: नलेबल (String?) को सेफ़ कॉल (?.) या डिफ़ॉल्ट मान (?: \"\") दें।")
+                              elif "Cannot find a parameter with this name:" in msg:
+                                  missing_param = msg.split("name:")[-1].strip()
+                                  print(f"    ❌ अज्ञात पैरामीटर: '{missing_param}'")
+                                  print(f"    💡 सुधार: मॉडल क्लास के कंस्ट्रक्टर में यह फ़ील्ड जोड़ें।")
+                  except Exception as ex:
+                      print(f"    (फ़ाइल पढ़ने में त्रुटि: {ex})")
+              print("-" * 80)
+
+          print("=" * 80)
+          EOF
