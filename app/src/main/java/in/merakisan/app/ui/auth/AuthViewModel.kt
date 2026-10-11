@@ -1,92 +1,80 @@
 // app/src/main/java/in/merakisan/app/ui/auth/AuthViewModel.kt
-package in.merakisan.app.ui.auth
+package `in`.merakisan.app.ui.auth
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
-import in.merakisan.app.core.security.SessionManager
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import `in`.merakisan.app.core.network.ApiClient
+import `in`.merakisan.app.core.network.model.VerifyGoogleRequest
+import `in`.merakisan.app.core.security.SessionManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-sealed class AuthUiState {
-    object Idle : AuthUiState()
-    object Loading : AuthUiState()
-    data class GoogleLinked(val account: GoogleSignInAccount) : AuthUiState()
-    data class Success(val uid: String, val phone: String, val name: String) : AuthUiState()
-    data class Error(val message: String) : AuthUiState()
+sealed class AuthState {
+    object Idle : AuthState()
+    object Loading : AuthState()
+    data class Success(val role: String, val isNewUser: Boolean) : AuthState()
+    data class Error(val message: String) : AuthState()
 }
 
 class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val _uiState = MutableStateFlow<AuthUiState>(AuthUiState.Idle)
-    val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
+    private val sessionManager = SessionManager(application)
+    private val apiService = ApiClient.getApiService(application)
 
-    private var googleAccount: GoogleSignInAccount? = null
+    private val _authState = MutableLiveData<AuthState>(AuthState.Idle)
+    val authState: LiveData<AuthState> get() = _authState
 
-    fun onGoogleSignInSuccess(account: GoogleSignInAccount) {
-        googleAccount = account
-        _uiState.value = AuthUiState.GoogleLinked(account)
-    }
-
-    /**
-     * Google क्रेडेंशियल्स और यूज़र द्वारा दर्ज चालू मोबाइल नंबर को स्थानीय रूप से सत्यापित और सहेजना
-     */
-    fun finalizeAuthentication(enteredPhone: String) {
-        val cleanPhone = enteredPhone.trim()
-
-        if (cleanPhone.length != 10 || !cleanPhone.all { it.isDigit() }) {
-            _uiState.value = AuthUiState.Error("कृपया मान्य 10-अंकों का मोबाइल नंबर दर्ज करें")
+    fun handleGoogleSignInResult(account: GoogleSignInAccount?) {
+        val idToken = account?.idToken
+        if (idToken.isNullOrBlank()) {
+            _authState.value = AuthState.Error("Google प्रमाणीकरण टोकन प्राप्त नहीं हुआ। कृपया पुनः प्रयास करें।")
             return
         }
 
-        viewModelScope.launch {
-            _uiState.value = AuthUiState.Loading
+        _authState.value = AuthState.Loading
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val request = VerifyGoogleRequest(
+                    idToken = idToken,
+                    email = account.email.orEmpty(),
+                    displayName = account.displayName.orEmpty(),
+                    photoUrl = account.photoUrl?.toString()
+                )
 
-            val context = getApplication<Application>()
-            val uid = googleAccount?.id ?: "usr_${System.currentTimeMillis()}"
-            val name = googleAccount?.displayName ?: "किसान साथी"
-            val emailToken = googleAccount?.idToken ?: "token_$uid"
+                val response = apiService.verifyGoogleToken(request)
+                if (response.isSuccessful && response.body()?.success == true) {
+                    val authData = response.body()?.data
+                    if (authData != null) {
+                        sessionManager.saveAuthToken(authData.token)
+                        sessionManager.saveUserSession(authData.user)
 
-            // Keystore-backed सुरक्षित SharedPreferences में सत्र सहेजना
-            val currentRole = SessionManager.getUserRole(context).ifBlank { "BUYER" }
-            SessionManager.saveSession(
-                context = context,
-                token = emailToken,
-                uid = uid,
-                role = currentRole
-            )
-
-            _uiState.value = AuthUiState.Success(
-                uid = uid,
-                phone = cleanPhone,
-                name = name
-            )
+                        withContext(Dispatchers.Main) {
+                            _authState.value = AuthState.Success(
+                                role = authData.user.role,
+                                isNewUser = authData.isNewUser
+                            )
+                        }
+                    } else {
+                        withContext(Dispatchers.Main) {
+                            _authState.value = AuthState.Error("सर्वर से अमान्य डेटा प्राप्त हुआ।")
+                        }
+                    }
+                } else {
+                    val errorMsg = response.errorBody()?.string() ?: "प्रमाणीकरण विफल रहा।"
+                    withContext(Dispatchers.Main) {
+                        _authState.value = AuthState.Error("त्रुटि: $errorMsg")
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    _authState.value = AuthState.Error("नेटवर्क विफलता: ${e.localizedMessage}")
+                }
+            }
         }
-    }
-
-    fun continueAsGuest() {
-        val context = getApplication<Application>()
-        val guestUid = "guest_${System.currentTimeMillis()}"
-        val currentRole = SessionManager.getUserRole(context).ifBlank { "BUYER" }
-
-        SessionManager.saveSession(
-            context = context,
-            token = "guest_session_token",
-            uid = guestUid,
-            role = currentRole
-        )
-
-        _uiState.value = AuthUiState.Success(
-            uid = guestUid,
-            phone = "",
-            name = "अतिथि उपयोगकर्ता"
-        )
-    }
-
-    fun resetError() {
-        _uiState.value = AuthUiState.Idle
     }
 }
