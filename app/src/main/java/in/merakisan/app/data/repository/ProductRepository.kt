@@ -1,55 +1,37 @@
 // app/src/main/java/in/merakisan/app/data/repository/ProductRepository.kt
-package in.merakisan.app.data.repository
+package `in`.merakisan.app.data.repository
 
 import android.content.Context
-import in.merakisan.app.core.network.ApiClient
-import in.merakisan.app.core.network.model.ProductDto
-import in.merakisan.app.data.local.AppDatabase
-import in.merakisan.app.data.local.entity.toDto
-import in.merakisan.app.data.local.entity.toEntity
+import `in`.merakisan.app.core.network.ApiClient
+import `in`.merakisan.app.core.network.model.ApiResponse
+import `in`.merakisan.app.core.network.model.ProductDto
+import `in`.merakisan.app.data.local.AppDatabase
+import `in`.merakisan.app.data.local.entity.toDto
+import `in`.merakisan.app.data.local.entity.toEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 
-/**
- * MERA KISAN Offline-First Repository
- * Local-First data flow: Emits Room cached data immediately, fetches Vercel REST backend,
- * updates Room cache, and re-emits without blocking UI threads.
- */
 class ProductRepository(context: Context) {
 
     private val apiService = ApiClient.getApiService(context)
     private val productDao = AppDatabase.getInstance(context).productDao()
 
-    /**
-     * Offline-first listing with local fallback
-     */
-    fun getMarketplaceProducts(
+    fun getProducts(
         category: String? = null,
         isSmallQuantityOnly: Boolean = false,
-        isOrganicOnly: Boolean = false,
-        searchQuery: String = ""
+        isOrganicOnly: Boolean = false
     ): Flow<List<ProductDto>> = flow {
-        // 1. Emit local cache instantly (Zero network latency for rural users)
-        val initialEntities = when {
-            searchQuery.isNotBlank() -> {
-                // Room synchronous query snapshot for immediate load
-                productDao.getProductById(searchQuery)?.let { listOf(it) } ?: emptyList()
-            }
-            isSmallQuantityOnly -> {
-                // Will be handled by Flow query in DAO, fetching latest snapshot here
-                emptyList()
-            }
-            category != null -> {
-                emptyList()
-            }
-            else -> {
-                emptyList()
-            }
+        // 1. स्थानीय कैश से तुरंत डेटा दिखाएं
+        val cached = productDao.getAllProducts().firstOrNull()?.map { it.toDto() } ?: emptyList()
+        if (cached.isNotEmpty()) {
+            emit(cached)
         }
-        
-        // 2. Fetch fresh listings from Vercel REST Backend
+
+        // 2. नेटवर्क से ताज़ा डेटा लाएं
         try {
             val response = apiService.getProducts(
                 category = category,
@@ -58,50 +40,37 @@ class ProductRepository(context: Context) {
                 limit = 50,
                 page = 1
             )
-
             if (response.isSuccessful && response.body()?.success == true) {
-                val remoteProducts = response.body()?.data ?: emptyList()
-                if (remoteProducts.isNotEmpty()) {
-                    // Update local Room cache in background
-                    val entities = remoteProducts.map { it.toEntity() }
-                    productDao.insertProducts(entities)
-                }
-                emit(remoteProducts)
-            } else {
-                // Network returned error response: Fallback gracefully to cache
-                fallbackToLocalCache(category, isSmallQuantityOnly)
+                val remoteList = response.body()?.data ?: emptyList()
+                productDao.insertProducts(remoteList.map { it.toEntity() })
+                emit(remoteList)
             }
-        } catch (e: Exception) {
-            // Network failure / Offline: emit available local cache
-            fallbackToLocalCache(category, isSmallQuantityOnly)
+        } catch (_: Exception) {
+            // नेटवर्क विफलता पर स्थानीय कैश डेटा ही बना रहेगा
         }
     }.flowOn(Dispatchers.IO)
 
-    private suspend fun kotlinx.coroutines.flow.FlowCollector<List<ProductDto>>.fallbackToLocalCache(
-        category: String?,
-        isSmallQuantityOnly: Boolean
-    ) {
-        // In actual flow, local cache provides continuity
+    // लाइन 91 टाइप सेफ़्टी: Flow<ProductEntity?> को Flow<ProductDto?> में सेफ़ली मैप करना
+    fun getProductDetail(productId: String): Flow<ProductDto?> {
+        return productDao.getProductById(productId).map { entity ->
+            entity?.toDto()
+        }.flowOn(Dispatchers.IO)
     }
 
-    suspend fun getProductDetails(productId: String): ProductDto? {
-        // Cache lookup first
-        val cached = productDao.getProductById(productId)
-        if (cached != null) {
-            return cached.toDto()
-        }
+    fun getProductDetails(productId: String): Flow<ProductDto?> = getProductDetail(productId)
 
-        // Remote fetch
+    suspend fun createProduct(product: ProductDto): ApiResponse<ProductDto>? {
         return try {
-            val response = apiService.getProductDetails(productId)
-            if (response.isSuccessful && response.body()?.success == true) {
-                val remote = response.body()?.data
-                if (remote != null) {
-                    productDao.insertProduct(remote.toEntity())
-                    remote
-                } else null
-            } else null
-        } catch (e: Exception) {
+            val response = apiService.createProduct(product)
+            if (response.isSuccessful) {
+                response.body()?.data?.let { saved ->
+                    productDao.insertProduct(saved.toEntity())
+                }
+                response.body()
+            } else {
+                null
+            }
+        } catch (_: Exception) {
             null
         }
     }
