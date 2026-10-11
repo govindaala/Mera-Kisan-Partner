@@ -25,13 +25,18 @@ class ProductRepository(context: Context) {
         isSmallQuantityOnly: Boolean = false,
         isOrganicOnly: Boolean = false
     ): Flow<List<ProductDto>> = flow {
-        // 1. स्थानीय कैश से तुरंत डेटा दिखाएं
-        val cached = productDao.getAllProducts().firstOrNull()?.map { it.toDto() } ?: emptyList()
+        // 1. स्थानीय Room कैश से तत्काल डेटा दिखाएं (ऑफ़लाइन फ़र्स्ट)
+        val cached = if (category.isNullOrBlank()) {
+            productDao.getAllProducts().firstOrNull()?.map { it.toDto() } ?: emptyList()
+        } else {
+            productDao.getProductsByCategory(category).firstOrNull()?.map { it.toDto() } ?: emptyList()
+        }
+
         if (cached.isNotEmpty()) {
             emit(cached)
         }
 
-        // 2. नेटवर्क से ताज़ा डेटा लाएं
+        // 2. नेटवर्क से ताज़ा डेटा प्राप्त करें और कैश अपडेट करें
         try {
             val response = apiService.getProducts(
                 category = category,
@@ -46,23 +51,20 @@ class ProductRepository(context: Context) {
                 emit(remoteList)
             }
         } catch (_: Exception) {
-            // नेटवर्क विफलता पर स्थानीय कैश डेटा ही बना रहेगा
+            // नेटवर्क विफलता पर स्थानीय कैश ही बना रहेगा
         }
     }.flowOn(Dispatchers.IO)
 
-    // लाइन 91 टाइप सेफ़्टी: Flow<ProductEntity?> को Flow<ProductDto?> में सेफ़ली मैप करना
     fun getProductDetail(productId: String): Flow<ProductDto?> {
         return productDao.getProductById(productId).map { entity ->
             entity?.toDto()
         }.flowOn(Dispatchers.IO)
     }
 
-    fun getProductDetails(productId: String): Flow<ProductDto?> = getProductDetail(productId)
-
     suspend fun createProduct(product: ProductDto): ApiResponse<ProductDto>? {
         return try {
             val response = apiService.createProduct(product)
-            if (response.isSuccessful) {
+            if (response.isSuccessful && response.body()?.success == true) {
                 response.body()?.data?.let { saved ->
                     productDao.insertProduct(saved.toEntity())
                 }
