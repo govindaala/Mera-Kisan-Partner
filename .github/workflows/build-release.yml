@@ -1,23 +1,28 @@
-name: Build & Direct Release APK
+# .github/workflows/build-release.yml
+name: Build & Release Mera Kisan APK
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
   workflow_dispatch:
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+permissions:
+  contents: write
 
 jobs:
-  build-and-release:
+  build-and-publish-apk:
+    name: Build & Direct Release APK
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
       - name: 1. रिपॉजिटरी चेकआउट
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: 2. जावा JDK 17 सेटअप
         uses: actions/setup-java@v4
@@ -28,555 +33,139 @@ jobs:
       - name: 3. Gradle टूल सेटअप
         uses: gradle/actions/setup-gradle@v3
         with:
-          gradle-version: "8.5"
+          cache-disabled: true
 
       - name: 4. ऑटो-सैनिटाइज़र व एनवायरनमेंट तैयारी
         run: |
           echo "=== 1. सभी Kotlin फाइलों में package और import को ऑटो-एस्केप किया जा रहा है ==="
-          find app/src/main/java -type f -name "*.kt" -exec sed -i 's/package in\./package `in`\./g' {} +
-          find app/src/main/java -type f -name "*.kt" -exec sed -i 's/import in\./import `in`\./g' {} +
-          echo "✔ पैकेज व इम्पोर्ट एस्केप संपन्न"
+          find app/src/main/java -type f -name "*.kt" -exec sed -i -E 's/^package[[:space:]]+in\./package `in`./g' {} +
+          find app/src/main/java -type f -name "*.kt" -exec sed -i -E 's/^import[[:space:]]+in\./import `in`./g' {} +
 
           echo "=== 2. Gradlew Wrapper पुष्टि ==="
-          gradle wrapper --gradle-version 8.5 --distribution-type bin
-          chmod +x ./gradlew
-          echo "✔ Gradle 8.5 Wrapper पुष्टि संपन्न"
-
-          echo "=== 3. MERA KISAN ऑटो-पैचर (अंतिम 34 त्रुटियों का स्थायी समाधान) ==="
-          python3 - << 'EOF'
-          import os
-
-          # 1. Patch app/build.gradle.kts
-          gradle_path = "app/build.gradle.kts"
-          if os.path.exists(gradle_path):
-              with open(gradle_path, "r", encoding="utf-8") as f:
-                  content = f.read()
-              content = content.replace('applicationIdSuffix = ".debug"', '// applicationIdSuffix removed')
-              if "swiperefreshlayout" not in content:
-                  content = content.replace(
-                      'dependencies {',
-                      'dependencies {\n    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")'
-                  )
-              with open(gradle_path, "w", encoding="utf-8") as f:
-                  f.write(content)
-              print("✔ app/build.gradle.kts पैच संपन्न")
-
-          # 2. Patch PosterGenerator.kt (Illegal escape \v हटाना)
-          poster_path = "app/src/main/java/in/merakisan/app/core/utils/PosterGenerator.kt"
-          if os.path.exists(poster_path):
-              with open(poster_path, "r", encoding="utf-8") as f:
-                  content = f.read()
-              content = content.replace(r"\vert{}", " | ")
-              content = content.replace("\\vert{}", " | ")
-              content = content.replace("\\v", " | ")
-              with open(poster_path, "w", encoding="utf-8") as f:
-                  f.write(content)
-              print("✔ PosterGenerator.kt पैच संपन्न")
-
-          # 3. Patch ApiService.kt (OrderDtoUpdate और CreateOrderRequest का पूर्ण समावेश)
-          api_service_path = "app/src/main/java/in/merakisan/app/core/network/ApiService.kt"
-          api_service_code = '''package `in`.merakisan.app.core.network
-
-          import `in`.merakisan.app.core.network.model.*
-          import okhttp3.MultipartBody
-          import retrofit2.Response
-          import retrofit2.http.*
-
-          data class OrderDtoUpdate(
-              val status: String = "",
-              val notes: String = ""
-          )
-
-          data class CreateOrderRequest(
-              val productId: String = "",
-              val sellerUid: String = "",
-              val buyerUid: String = "",
-              val quantity: Double = 0.0,
-              val unit: String = "kg",
-              val totalAmountPaise: Long = 0L,
-              val paymentMethod: String = "cod",
-              val deliveryAddress: String = "",
-              val buyerPhone: String = ""
-          )
-
-          interface ApiService {
-              @GET("v1/products")
-              suspend fun getProducts(
-                  @Query("category") category: String? = null,
-                  @Query("max_quantity") maxQuantity: Double? = null,
-                  @Query("organic_only") organicOnly: Boolean? = null,
-                  @Query("limit") limit: Int = 50,
-                  @Query("page") page: Int = 1
-              ): Response<ApiResponse<List<ProductDto>>>
-
-              @GET("v1/products/{id}")
-              suspend fun getProductDetail(@Path("id") productId: String): Response<ApiResponse<ProductDto>>
-
-              @POST("v1/products")
-              suspend fun createProduct(@Body product: ProductDto): Response<ApiResponse<ProductDto>>
-
-              @Multipart
-              @POST("v1/media/upload")
-              suspend fun uploadMedia(
-                  @Part("product_id") productId: String,
-                  @Part("media_type") mediaType: String,
-                  @Part file: MultipartBody.Part
-              ): Response<ApiResponse<MediaUploadDto>>
-
-              @POST("v1/orders")
-              suspend fun createOrder(
-                  @Header("Idempotency-Key") idempotencyKey: String,
-                  @Body request: CreateOrderRequest
-              ): Response<ApiResponse<OrderDto>>
-
-              @GET("v1/orders")
-              suspend fun getOrders(): Response<ApiResponse<List<OrderDto>>>
-
-              @GET("v1/orders/{id}")
-              suspend fun getOrderDetail(@Path("id") orderId: String): Response<ApiResponse<OrderDto>>
-
-              @PATCH("v1/orders/{id}/status")
-              suspend fun updateOrderStatus(
-                  @Path("id") orderId: String,
-                  @Body request: OrderDtoUpdate
-              ): Response<ApiResponse<OrderDto>>
-
-              @GET("v1/mandi/prices")
-              suspend fun getMandiPrices(@Query("district") district: String? = null): Response<ApiResponse<List<MandiPriceDto>>>
-
-              @GET("v1/requests")
-              suspend fun getBuyerRequests(): Response<ApiResponse<List<BuyerRequestDto>>>
-
-              @POST("v1/requests")
-              suspend fun createBuyerRequest(@Body request: BuyerRequestDto): Response<ApiResponse<BuyerRequestDto>>
-          }
-          '''
-          if os.path.exists(api_service_path):
-              with open(api_service_path, "w", encoding="utf-8") as f:
-                  f.write(api_service_code)
-              print("✔ ApiService.kt पैच संपन्न")
-
-          # 4. Patch SessionManager.kt (RoleSelectionFragment और CheckoutBottomSheet के सभी कॉल्स का समर्थन)
-          session_path = "app/src/main/java/in/merakisan/app/core/security/SessionManager.kt"
-          session_code = '''package `in`.merakisan.app.core.security
-
-          import android.content.Context
-          import android.content.SharedPreferences
-
-          data class UserSession(
-              val uid: String = "",
-              val name: String = "",
-              val phone: String = "",
-              val email: String = "",
-              val role: String = "both"
-          )
-
-          class SessionManager(private val context: Context) {
-              private val prefs: SharedPreferences = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-
-              companion object {
-                  private const val PREF_NAME = "mera_kisan_prefs"
-                  private const val KEY_TOKEN = "auth_token"
-                  private const val KEY_USER_ID = "user_id"
-                  private const val KEY_USER_ROLE = "user_role"
-                  private const val KEY_USER_PHONE = "user_phone"
-                  private const val KEY_USER_NAME = "user_name"
-                  private const val KEY_USER_EMAIL = "user_email"
-                  private const val KEY_FCM_TOKEN = "fcm_token"
-
-                  @JvmStatic
-                  fun getAuthToken(context: Context): String? =
-                      context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).getString(KEY_TOKEN, null)
-
-                  @JvmStatic
-                  fun getUserUid(context: Context): String? =
-                      context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).getString(KEY_USER_ID, null)
-
-                  @JvmStatic
-                  fun getUserId(context: Context): String = getUserUid(context) ?: ""
-
-                  @JvmStatic
-                  fun getUserRole(context: Context): String =
-                      context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).getString(KEY_USER_ROLE, "buyer") ?: "buyer"
-
-                  @JvmStatic
-                  fun saveFcmToken(context: Context, token: String) {
-                      context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).edit().putString(KEY_FCM_TOKEN, token).apply()
-                  }
-
-                  @JvmStatic
-                  @JvmOverloads
-                  fun saveSession(
-                      context: Context? = null,
-                      token: String = "",
-                      uid: String = "",
-                      userId: String = uid,
-                      name: String = "",
-                      phone: String = "",
-                      role: String = "both"
-                  ) {
-                      val ctx = context ?: return
-                      val finalUid = if (uid.isNotBlank()) uid else userId
-                      val editor = ctx.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).edit()
-                          .putString(KEY_USER_ID, finalUid)
-                          .putString(KEY_USER_NAME, name)
-                          .putString(KEY_USER_PHONE, phone)
-                          .putString(KEY_USER_ROLE, role)
-                      if (token.isNotBlank()) editor.putString(KEY_TOKEN, token)
-                      editor.apply()
-                  }
-              }
-
-              fun saveAuthToken(token: String) = prefs.edit().putString(KEY_TOKEN, token).apply()
-              fun getAuthToken(): String? = prefs.getString(KEY_TOKEN, null)
-
-              @JvmOverloads
-              fun saveSession(
-                  token: String = "",
-                  uid: String = "",
-                  userId: String = uid,
-                  name: String = "",
-                  phone: String = "",
-                  role: String = "both"
-              ) {
-                  val finalUid = if (uid.isNotBlank()) uid else userId
-                  val editor = prefs.edit()
-                      .putString(KEY_USER_ID, finalUid)
-                      .putString(KEY_USER_NAME, name)
-                      .putString(KEY_USER_PHONE, phone)
-                      .putString(KEY_USER_ROLE, role)
-                  if (token.isNotBlank()) editor.putString(KEY_TOKEN, token)
-                  editor.apply()
-              }
-
-              fun saveUserSession(userId: String = "", name: String = "", phone: String = "", role: String = "both") =
-                  saveSession(userId = userId, name = name, phone = phone, role = role)
-
-              fun getUserSession(): UserSession =
-                  UserSession(getUserId(), getUserName(), getUserPhone(), prefs.getString(KEY_USER_EMAIL, "") ?: "", getUserRole())
-
-              fun getUserId(): String = prefs.getString(KEY_USER_ID, "") ?: ""
-              fun getUserName(): String = prefs.getString(KEY_USER_NAME, "") ?: ""
-              fun getUserPhone(): String = prefs.getString(KEY_USER_PHONE, "") ?: ""
-              fun getUserRole(): String = prefs.getString(KEY_USER_ROLE, "buyer") ?: "buyer"
-              fun clearSession() = prefs.edit().clear().apply()
-          }
-          '''
-          if os.path.exists(session_path):
-              with open(session_path, "w", encoding="utf-8") as f:
-                  f.write(session_code)
-              print("✔ SessionManager.kt पैच संपन्न")
-
-          # 5. Patch MandiPricesViewModel.kt (MandiPricesFragment के 9 एरर्स का स्थायी समाधान)
-          mandi_vm_path = "app/src/main/java/in/merakisan/app/ui/mandi/MandiPricesViewModel.kt"
-          mandi_vm_code = '''package `in`.merakisan.app.ui.mandi
-
-          import android.app.Application
-          import androidx.lifecycle.AndroidViewModel
-          import androidx.lifecycle.viewModelScope
-          import `in`.merakisan.app.core.network.ApiClient
-          import `in`.merakisan.app.core.network.model.MandiPriceDto
-          import kotlinx.coroutines.flow.MutableStateFlow
-          import kotlinx.coroutines.flow.StateFlow
-          import kotlinx.coroutines.flow.asStateFlow
-          import kotlinx.coroutines.launch
-
-          sealed class MandiUiState {
-              object Loading : MandiUiState()
-              data class Success(val prices: List<MandiPriceDto> = emptyList()) : MandiUiState()
-              data class Error(val message: String = "") : MandiUiState()
-              object Empty : MandiUiState()
-          }
-
-          class MandiPricesViewModel(application: Application) : AndroidViewModel(application) {
-              private val apiService = ApiClient.getApiService(application)
-              private val _uiState = MutableStateFlow<MandiUiState>(MandiUiState.Loading)
-              val uiState: StateFlow<MandiUiState> = _uiState.asStateFlow()
-
-              fun loadMandiPrices(district: String? = null, forceRefresh: Boolean = false) {
-                  _uiState.value = MandiUiState.Loading
-                  viewModelScope.launch {
-                      try {
-                          val resp = apiService.getMandiPrices(district)
-                          if (resp.isSuccessful && resp.body()?.success == true) {
-                              val list = resp.body()?.data ?: emptyList()
-                              _uiState.value = if (list.isEmpty()) MandiUiState.Empty else MandiUiState.Success(list)
-                          } else {
-                              _uiState.value = MandiUiState.Empty
-                          }
-                      } catch (e: Exception) {
-                          _uiState.value = MandiUiState.Error(e.localizedMessage ?: "त्रुटि")
-                      }
-                  }
-              }
-          }
-          '''
-          if os.path.exists(mandi_vm_path):
-              with open(mandi_vm_path, "w", encoding="utf-8") as f:
-                  f.write(mandi_vm_code)
-              print("✔ MandiPricesViewModel.kt पैच संपन्न")
-
-          # 6. Patch MarketplaceFragment.kt (सुरक्षित ViewBinding + 100% Exhaustive when)
-          mkt_frag_path = "app/src/main/java/in/merakisan/app/ui/marketplace/MarketplaceFragment.kt"
-          mkt_frag_code = '''package `in`.merakisan.app.ui.marketplace
-
-          import android.os.Bundle
-          import android.view.LayoutInflater
-          import android.view.View
-          import android.view.ViewGroup
-          import android.widget.Toast
-          import androidx.core.view.isVisible
-          import androidx.fragment.app.Fragment
-          import androidx.fragment.app.viewModels
-          import androidx.lifecycle.Lifecycle
-          import androidx.lifecycle.lifecycleScope
-          import androidx.lifecycle.repeatOnLifecycle
-          import androidx.navigation.fragment.findNavController
-          import androidx.recyclerview.widget.LinearLayoutManager
-          import `in`.merakisan.app.R
-          import `in`.merakisan.app.core.network.model.ProductDto
-          import `in`.merakisan.app.databinding.FragmentMarketplaceBinding
-          import kotlinx.coroutines.flow.collectLatest
-          import kotlinx.coroutines.launch
-
-          class MarketplaceFragment : Fragment() {
-
-              private var _binding: FragmentMarketplaceBinding? = null
-              private val binding get() = _binding!!
-
-              private val viewModel: MarketplaceViewModel by viewModels()
-              private lateinit var productAdapter: ProductAdapter
-
-              override fun onCreateView(
-                  inflater: LayoutInflater,
-                  container: ViewGroup?,
-                  savedInstanceState: Bundle?
-              ): View {
-                  _binding = FragmentMarketplaceBinding.inflate(inflater, container, false)
-                  return binding.root
-              }
-
-              override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-                  super.onViewCreated(view, savedInstanceState)
-
-                  productAdapter = ProductAdapter(
-                      onProductClick = { product ->
-                          val bundle = Bundle().apply { putString("productId", product.productId) }
-                          try {
-                              findNavController().navigate(R.id.productDetailFragment, bundle)
-                          } catch (_: Exception) {}
-                      }
-                  )
-
-                  binding.rvProducts.apply {
-                      layoutManager = LinearLayoutManager(requireContext())
-                      adapter = productAdapter
-                  }
-
-                  binding.swipeRefresh.setOnRefreshListener {
-                      viewModel.loadMarketplaceProducts()
-                  }
-
-                  viewLifecycleOwner.lifecycleScope.launch {
-                      viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                          viewModel.uiState.collectLatest { state ->
-                              when (state) {
-                                  is MarketplaceUiState.Loading -> {
-                                      binding.swipeRefresh.isRefreshing = true
-                                  }
-                                  is MarketplaceUiState.Success -> {
-                                      binding.swipeRefresh.isRefreshing = false
-                                      val list = if (state.products.isNotEmpty()) state.products else state.data
-                                      productAdapter.submitList(list)
-                                      binding.rvProducts.isVisible = list.isNotEmpty()
-                                  }
-                                  is MarketplaceUiState.Empty -> {
-                                      binding.swipeRefresh.isRefreshing = false
-                                      productAdapter.submitList(emptyList())
-                                      binding.rvProducts.isVisible = false
-                                  }
-                                  is MarketplaceUiState.Error -> {
-                                      binding.swipeRefresh.isRefreshing = false
-                                      val msg = state.message.ifBlank { state.error }
-                                      if (msg.isNotBlank()) {
-                                          Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                                      }
-                                  }
-                                  else -> {
-                                      binding.swipeRefresh.isRefreshing = false
-                                  }
-                              }
-                          }
-                      }
-                  }
-
-                  viewModel.loadMarketplaceProducts()
-              }
-
-              override fun onDestroyView() {
-                  super.onDestroyView()
-                  _binding = null
-              }
-          }
-          '''
-          if os.path.exists(mkt_frag_path):
-              with open(mkt_frag_path, "w", encoding="utf-8") as f:
-                  f.write(mkt_frag_code)
-              print("✔ MarketplaceFragment.kt पैच संपन्न")
-
-          # 7. Patch FeatureManager.kt
-          feature_path = "app/src/main/java/in/merakisan/app/core/config/FeatureManager.kt"
-          feature_code = '''package `in`.merakisan.app.core.config
-
-          import android.content.Context
-          import android.content.SharedPreferences
-
-          object FeatureManager {
-              private const val PREFS_NAME = "mera_kisan_features"
-
-              private val DEFAULT_FLAGS: Map<String, Boolean> = mapOf(
-                  "payment" to false,
-                  "crop_boost" to false,
-                  "online_order" to true,
-                  "offers" to false,
-                  "mandi_price" to true,
-                  "buyer_request" to true,
-                  "admob" to false,
-                  "chat" to false,
-                  "oil_marketplace" to false
-              )
-
-              fun isEnabled(context: Context, featureKey: String): Boolean {
-                  val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                  return prefs.getBoolean(featureKey, DEFAULT_FLAGS[featureKey] ?: false)
-              }
-
-              fun setFeature(context: Context, key: String, enabled: Boolean) {
-                  val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                  prefs.edit().putBoolean(key, enabled).apply()
-              }
-
-              suspend fun syncRemoteConfig(context: Context) {}
-              fun isMaintenanceMode(context: Context): Boolean = false
-              fun getMaintenanceMessage(context: Context): String = "सिस्टम मेंटेनेंस जारी है।"
-          }
-          '''
-          if os.path.exists(feature_path):
-              with open(feature_path, "w", encoding="utf-8") as f:
-                  f.write(feature_code)
-              print("✔ FeatureManager.kt पैच संपन्न")
-
-          # 8. Patch ApiClient.kt
-          api_client_path = "app/src/main/java/in/merakisan/app/core/network/ApiClient.kt"
-          if os.path.exists(api_client_path):
-              with open(api_client_path, "r", encoding="utf-8") as f:
-                  content = f.read()
-              content = content.replace("BuildConfig.BASE_URL", '"https://mera-kisan-backend.vercel.app/"')
-              with open(api_client_path, "w", encoding="utf-8") as f:
-                  f.write(content)
-              print("✔ ApiClient.kt पैच संपन्न")
-
-          # 9. Patch AuthViewModel.kt
-          auth_vm_path = "app/src/main/java/in/merakisan/app/ui/auth/AuthViewModel.kt"
-          auth_vm_code = '''package `in`.merakisan.app.ui.auth
-
-          import android.app.Application
-          import androidx.lifecycle.AndroidViewModel
-          import androidx.lifecycle.viewModelScope
-          import com.google.android.gms.auth.api.signin.GoogleSignInAccount
-          import `in`.merakisan.app.core.security.SessionManager
-          import kotlinx.coroutines.flow.MutableStateFlow
-          import kotlinx.coroutines.flow.StateFlow
-          import kotlinx.coroutines.flow.asStateFlow
-          import kotlinx.coroutines.launch
-
-          sealed class AuthUiState {
-              object Idle : AuthUiState()
-              object Loading : AuthUiState()
-              data class GoogleLinked(val account: GoogleSignInAccount) : AuthUiState()
-              data class Success(val role: String, val name: String = "किसान साथी") : AuthUiState()
-              data class Error(val message: String) : AuthUiState()
-          }
-
-          class AuthViewModel(application: Application) : AndroidViewModel(application) {
-              private val sessionManager = SessionManager(application)
-              private val _uiState = MutableStateFlow<AuthUiState>(AuthUiState.Idle)
-              val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
-              private var currentAccount: GoogleSignInAccount? = null
-
-              fun resetError() {
-                  if (_uiState.value is AuthUiState.Error) {
-                      _uiState.value = AuthUiState.Idle
-                  }
-              }
-
-              fun onGoogleSignInSuccess(account: GoogleSignInAccount?) {
-                  if (account == null) {
-                      _uiState.value = AuthUiState.Error("Google खाता प्राप्त नहीं हुआ")
-                      return
-                  }
-                  currentAccount = account
-                  _uiState.value = AuthUiState.GoogleLinked(account)
-              }
-
-              fun finalizeAuthentication(phone: String) {
-                  val account = currentAccount
-                  if (account == null) {
-                      _uiState.value = AuthUiState.Error("Google खाता अमान्य है")
-                      return
-                  }
-                  _uiState.value = AuthUiState.Loading
-                  viewModelScope.launch {
-                      val uid = account.id ?: "usr_${System.currentTimeMillis()}"
-                      val token = account.idToken ?: "token_$uid"
-                      val name = account.displayName ?: "किसान साथी"
-                      sessionManager.saveAuthToken(token)
-                      sessionManager.saveSession(token = token, uid = uid, name = name, phone = phone, role = "both")
-                      _uiState.value = AuthUiState.Success("both", name)
-                  }
-              }
-
-              fun continueAsGuest() {
-                  val guestUid = "guest_${System.currentTimeMillis()}"
-                  sessionManager.saveAuthToken("guest_session_token")
-                  sessionManager.saveSession(token = "guest_session_token", uid = guestUid, name = "Guest User", phone = "", role = "buyer")
-                  _uiState.value = AuthUiState.Success("buyer", "Guest User")
-              }
-          }
-          '''
-          if os.path.exists(auth_vm_path):
-              with open(auth_vm_path, "w", encoding="utf-8") as f:
-                  f.write(auth_vm_code)
-              print("✔ AuthViewModel.kt पैच संपन्न")
-
-          print("=== ऑटो-पैचर पूर्ण: शेष सभी 34 त्रुटियाँ 100% हल हुईं ===")
-          EOF
+          if [ ! -f "./gradlew" ]; then
+            gradle wrapper --gradle-version 8.5 --no-configuration-cache || true
+          fi
+          [ -f "./gradlew" ] && chmod +x ./gradlew
+
+          echo "kapt.verbose=true" >> gradle.properties
+          echo "kapt.use.worker.api=false" >> gradle.properties
+          echo "kotlin.compiler.execution.strategy=in-process" >> gradle.properties
+          echo "org.gradle.configuration-cache=false" >> gradle.properties
 
       - name: 5. Android APK क्लीन संकलन (Assemble Debug APK)
+        id: assemble_gradle
         run: |
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew assembleDebug \
+            --no-daemon \
+            --no-configuration-cache \
+            --no-build-cache \
+            -x test -x lint 2>&1 | tee build_raw.log
 
       - name: 6. APK निष्कर्षण व सत्यापन
+        id: package_apk
+        if: success()
         run: |
-          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
-          if [ -z "$APK_PATH" ] \vert{}\vert{} [ ! -f "$APK_PATH" ]; then
-            echo "Error: कोई APK फ़ाइल नहीं मिली!"
+          FOUND_APK=$(find . -path "*/build/outputs/apk/*" -name "*.apk" | head -n 1)
+          if [ -z "$FOUND_APK" ]; then
+            echo "::error::कोई APK फ़ाइल नहीं मिली!"
             exit 1
           fi
-          echo "APK_FILE=$APK_PATH" >> $GITHUB_ENV
-          echo "APK तैयार है: $APK_PATH"
+          echo "APK प्राप्त हुई: $FOUND_APK"
+          mkdir -p release_assets
+          cp "$FOUND_APK" release_assets/MeraKisan-App.apk
+          echo "apk_path=release_assets/MeraKisan-App.apk" >> $GITHUB_OUTPUT
 
       - name: 7. GitHub Releases में डायरेक्ट APK पब्लिश
         uses: softprops/action-gh-release@v2
-        if: env.APK_FILE != ''
+        if: success()
         with:
-          tag_name: "v1.0.0-${{ github.run_number }}"
-          name: "MERA KISAN Release Build #${{ github.run_number }}"
+          tag_name: v1.0.${{ github.run_number }}
+          name: MERA KISAN Official APK (Build #${{ github.run_number }})
           body: |
-            🌾 **MERA KISAN Official App Release**
-            - Kotlin Keyword Auto-Escape एवं Gradle 8.5 Wrapper पुष्टि
-            - सभी 153 कंपाइलर व डिपेंडेंसी त्रुटियाँ हल की गईं
-            - Google Services Package: `in.merakisan.app`
-          files: ${{ env.APK_FILE }}
+            🌾 **MERA KISAN Android Application — आधिकारिक APK**
+
+            - बिल्ड संख्या: #${{ github.run_number }}
+            - स्थिति: सीधा इंस्टॉलेबल APK (बिना ZIP फ़ाइल के)
+
+            ⬇️ **सीधा डाउनलोड लिंक:**
+            नीचे Assets में `MeraKisan-App.apk` पर टैप करके इंस्टॉल करें।
+          draft: false
+          prerelease: false
+          files: release_assets/MeraKisan-App.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 8. विफलता डायग्नोस्टिक्स (सटीक लाइन, शब्द व सुधार सुझाव)
+        if: failure()
+        run: |
+          python3 - << 'EOF'
+          import re
+          import os
+
+          log_file = "build_raw.log"
+          if not os.path.exists(log_file):
+              print("लॉग फ़ाइल उपलब्ध नहीं है।")
+              exit(0)
+
+          error_pattern = re.compile(r"^e:\s+(?:file://)?(.*?):(\d+):(\d+)\s+(.*)")
+          errors = []
+
+          with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+              for line in f:
+                  m = error_pattern.match(line.strip())
+                  if m:
+                      errors.append({
+                          "file": m.group(1),
+                          "line": int(m.group(2)),
+                          "col": int(m.group(3)),
+                          "msg": m.group(4)
+                      })
+
+          print("=" * 80)
+          print("🚨 MERA KISAN — कंपाइलर त्रुटि विश्लेषण रिपोर्ट (LINE, WORD & FIX DETECTOR)")
+          print(f"कुल पाई गई त्रुटियाँ: {len(errors)}")
+          print("=" * 80)
+
+          if not errors:
+              print("कोई सीधी Kotlin कंपाइलर त्रुटि (e:) नहीं मिली।")
+              exit(0)
+
+          for idx, err in enumerate(errors[:25], 1):
+              fpath = err["file"]
+              l_num = err["line"]
+              c_num = err["col"]
+              msg = err["msg"]
+
+              print(f"\n[{idx}] 📁 फ़ाइल: {os.path.relpath(fpath, os.getcwd()) if os.path.isabs(fpath) else fpath}")
+              print(f"    📍 पंक्ति (Line): {l_num}, स्तंभ (Column): {c_num}")
+              print(f"    ⚠️  त्रुटि संदेश: {msg}")
+
+              if os.path.exists(fpath):
+                  try:
+                      with open(fpath, "r", encoding="utf-8", errors="ignore") as src:
+                          lines = src.readlines()
+                          if 0 < l_num <= len(lines):
+                              target_line = lines[l_num - 1].rstrip('\n')
+                              print(f"    📝 वास्तविक कोड पंक्ति:")
+                              print(f"       {target_line}")
+                              pointer = " " * (c_num - 1) + "^" * max(1, min(len(target_line) - c_num + 1, 15))
+                              print(f"       {pointer}")
+
+                              # संभावित शब्द व सुधार सुझाव
+                              if "Unresolved reference:" in msg:
+                                  missing_word = msg.split("Unresolved reference:")[-1].strip()
+                                  print(f"    ❌ ग़लत/अनुपस्थित शब्द: '{missing_word}'")
+                                  print(f"    💡 सुधार: यह शब्द क्लास या फ़ाइल में मौजूद नहीं है। इसे डिक्लेयर करें या सही स्पेलिंग लिखें।")
+                              elif "Type mismatch:" in msg:
+                                  print(f"    ❌ टाइप विसंगति (Type Mismatch)")
+                                  print(f"    💡 सुधार: नलेबल (String?) को सेफ़ कॉल (?.) या डिफ़ॉल्ट मान (?: \"\") दें।")
+                              elif "Cannot find a parameter with this name:" in msg:
+                                  missing_param = msg.split("name:")[-1].strip()
+                                  print(f"    ❌ अज्ञात पैरामीटर: '{missing_param}'")
+                                  print(f"    💡 सुधार: मॉडल क्लास के कंस्ट्रक्टर में यह फ़ील्ड जोड़ें।")
+                  except Exception as ex:
+                      print(f"    (फ़ाइल पढ़ने में त्रुटि: {ex})")
+              print("-" * 80)
+
+          print("=" * 80)
+          EOF
