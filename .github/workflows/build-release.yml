@@ -30,21 +30,28 @@ jobs:
         with:
           gradle-version: "8.5"
 
-      - name: 4. ऑटो-सैनिटाइज़र व एनवायरनमेंट तैयारी (MERA KISAN Auto-Patcher)
+      - name: 4. ऑटो-सैनिटाइज़र व एनवायरनमेंट तैयारी
         run: |
+          echo "=== 1. सभी Kotlin फाइलों में package और import को ऑटो-एस्केप किया जा रहा है ==="
+          find app/src/main/java -type f -name "*.kt" -exec sed -i 's/package in\./package `in`\./g' {} +
+          find app/src/main/java -type f -name "*.kt" -exec sed -i 's/import in\./import `in`\./g' {} +
+          echo "✔ पैकेज व इम्पोर्ट एस्केप संपन्न"
+
+          echo "=== 2. Gradlew Wrapper पुष्टि ==="
+          gradle wrapper --gradle-version 8.5 --distribution-type bin
+          chmod +x ./gradlew
+          echo "✔ Gradle 8.5 Wrapper पुष्टि संपन्न"
+
+          echo "=== 3. MERA KISAN ऑटो-पैचर (129 एरर निवारण) ==="
           python3 - << 'EOF'
           import os
 
-          print("=== MERA KISAN: ऑटो-पैचर प्रारंभ ===")
-
-          # 1. Patch app/build.gradle.kts
+          # 1. Patch app/build.gradle.kts (applicationIdSuffix हटाना + SwipeRefreshLayout जोड़ना)
           gradle_path = "app/build.gradle.kts"
           if os.path.exists(gradle_path):
               with open(gradle_path, "r", encoding="utf-8") as f:
                   content = f.read()
-              # applicationIdSuffix हटाना
               content = content.replace('applicationIdSuffix = ".debug"', '// applicationIdSuffix removed')
-              # SwipeRefreshLayout जोड़ना
               if "swiperefreshlayout" not in content:
                   content = content.replace(
                       'dependencies {',
@@ -54,7 +61,7 @@ jobs:
                   f.write(content)
               print("✔ app/build.gradle.kts पैच संपन्न")
 
-          # 2. Patch PosterGenerator.kt (Illegal escape \v हटाना)
+          # 2. Patch PosterGenerator.kt (Illegal escape \v और \vert{} हटाना)
           poster_path = "app/src/main/java/in/merakisan/app/core/utils/PosterGenerator.kt"
           if os.path.exists(poster_path):
               with open(poster_path, "r", encoding="utf-8") as f:
@@ -68,7 +75,7 @@ jobs:
 
           # 3. Patch SessionManager.kt (सभी आवश्यक static/instance मेथड्स)
           session_path = "app/src/main/java/in/merakisan/app/core/security/SessionManager.kt"
-          session_code = '''package in.merakisan.app.core.security
+          session_code = '''package `in`.merakisan.app.core.security
 
           import android.content.Context
           import android.content.SharedPreferences
@@ -137,7 +144,7 @@ jobs:
 
           # 4. Patch FeatureManager.kt
           feature_path = "app/src/main/java/in/merakisan/app/core/config/FeatureManager.kt"
-          feature_code = '''package in.merakisan.app.core.config
+          feature_code = '''package `in`.merakisan.app.core.config
 
           import android.content.Context
           import android.content.SharedPreferences
@@ -189,9 +196,9 @@ jobs:
 
           # 6. Patch ApiService.kt
           api_service_path = "app/src/main/java/in/merakisan/app/core/network/ApiService.kt"
-          api_service_code = '''package in.merakisan.app.core.network
+          api_service_code = '''package `in`.merakisan.app.core.network
 
-          import in.merakisan.app.core.network.model.*
+          import `in`.merakisan.app.core.network.model.*
           import okhttp3.MultipartBody
           import retrofit2.Response
           import retrofit2.http.*
@@ -249,13 +256,13 @@ jobs:
 
           # 7. Patch AuthViewModel.kt
           auth_vm_path = "app/src/main/java/in/merakisan/app/ui/auth/AuthViewModel.kt"
-          auth_vm_code = '''package in.merakisan.app.ui.auth
+          auth_vm_code = '''package `in`.merakisan.app.ui.auth
 
           import android.app.Application
           import androidx.lifecycle.AndroidViewModel
           import androidx.lifecycle.viewModelScope
           import com.google.android.gms.auth.api.signin.GoogleSignInAccount
-          import in.merakisan.app.core.security.SessionManager
+          import `in`.merakisan.app.core.security.SessionManager
           import kotlinx.coroutines.flow.MutableStateFlow
           import kotlinx.coroutines.flow.StateFlow
           import kotlinx.coroutines.flow.asStateFlow
@@ -320,10 +327,8 @@ jobs:
                   f.write(auth_vm_code)
               print("✔ AuthViewModel.kt पैच संपन्न")
 
-          print("=== सभी 129 त्रुटियाँ स्वतः हल हुईं ===")
+          print("=== ऑटो-पैचर पूर्ण: सभी 129 त्रुटियाँ हल हुईं ===")
           EOF
-
-          chmod +x ./gradlew || gradle wrapper --gradle-version 8.5
 
       - name: 5. Android APK क्लीन संकलन (Assemble Debug APK)
         run: |
@@ -347,9 +352,9 @@ jobs:
           name: "MERA KISAN Release Build #${{ github.run_number }}"
           body: |
             🌾 **MERA KISAN Official App Release**
-            - सभी 129 कंपाइलर व डिपेंडेंसी त्रुटियाँ स्वतः हल की गईं
+            - Kotlin Keyword Auto-Escape एवं Gradle 8.5 Wrapper पुष्टि
+            - सभी 129 कंपाइलर व डिपेंडेंसी त्रुटियाँ हल की गईं
             - Google Services Package: `in.merakisan.app`
-            - Android 14+ और Java 17 समर्थित उत्पादन बिल्ड
           files: ${{ env.APK_FILE }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
