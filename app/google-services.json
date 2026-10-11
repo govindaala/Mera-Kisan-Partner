@@ -1,83 +1,36 @@
 {
   "project_info": {
-    "project_number": "100000000001",
+    "project_number": "886135136080",
     "project_id": "mera-kisan-65967",
-    "storage_bucket": "mera-kisan-65967.appspot.com"
+    "storage_bucket": "mera-kisan-65967.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:100000000001:android:abcdef1234567890",
+        "mobilesdk_app_id": "1:886135136080:android:7f7d339992da61da1ad655",
         "android_client_info": {
           "package_name": "in.merakisan.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "886135136080-1ikqef06khft2qgiekgsahvfr9881sf7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
-          "current_key": "AIzaSyDummyKeyForCICompilationOnly12345"
+          "current_key": "AIzaSyCAXLmI_3Ar1FLNGYds3rpjyE9TdOeK6KQ"
         }
       ],
       "services": {
-        "analytics_service": {
-          "status": 1
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:100000000001:android:abcdef1234567891",
-        "android_client_info": {
-          "package_name": "in.merakisan.app.debug"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyDummyKeyForCICompilationOnly12345"
-        }
-      ],
-      "services": {
-        "analytics_service": {
-          "status": 1
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:100000000001:android:abcdef1234567892",
-        "android_client_info": {
-          "package_name": "in.merakisan.partner"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyDummyKeyForCICompilationOnly12345"
-        }
-      ],
-      "services": {
-        "analytics_service": {
-          "status": 1
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:100000000001:android:abcdef1234567893",
-        "android_client_info": {
-          "package_name": "in.merakisan.partner.debug"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyDummyKeyForCICompilationOnly12345"
-        }
-      ],
-      "services": {
-        "analytics_service": {
-          "status": 1
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "886135136080-1ikqef06khft2qgiekgsahvfr9881sf7.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
