@@ -39,5 +39,8 @@ abstract class AppDatabase : RoomDatabase() {
                 instance
             }
         }
+
+        // ProductRepository और SyncWorker दोनों के लिए getInstance उपलब्ध
+        fun getInstance(context: Context): AppDatabase = getDatabase(context)
     }
 }
