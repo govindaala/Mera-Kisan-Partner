@@ -21,6 +21,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * Marketplace UI State Machine
+ * MarketplaceFragment.kt:120 ke when (state) ke sath 100% exhaustive aur perfectly aligned
  */
 sealed class MarketplaceUiState {
     object Loading : MarketplaceUiState()
@@ -33,23 +34,19 @@ sealed class MarketplaceUiState {
         val error: String = message
     ) : MarketplaceUiState()
     object Empty : MarketplaceUiState()
-    object Idle : MarketplaceUiState()
-    data class Offline(
-        val products: List<ProductDto> = emptyList()
-    ) : MarketplaceUiState()
 }
 
 /**
  * MERA KISAN Marketplace View Model
- * StateFlow ke sath MarketplaceFragment line 117 ke liye 100% compatible
+ * Free-First, Offline Cache aur StateFlow se reactive architecture
  */
 class MarketplaceViewModel(application: Application) : AndroidViewModel(application) {
 
     private val apiService = ApiClient.getApiService(application)
     private val productDao = AppDatabase.getInstance(application).productDao()
 
-    // 1. MarketplaceFragment.kt:117 ke collectLatest ke liye StateFlow
-    private val _uiState = MutableStateFlow<MarketplaceUiState>(MarketplaceUiState.Idle)
+    // 1. MarketplaceFragment.kt:117 ke collectLatest ke liye StateFlow (Exhaustive 4 States)
+    private val _uiState = MutableStateFlow<MarketplaceUiState>(MarketplaceUiState.Loading)
     val uiState: StateFlow<MarketplaceUiState> = _uiState.asStateFlow()
 
     // 2. Backward compatibility LiveData
