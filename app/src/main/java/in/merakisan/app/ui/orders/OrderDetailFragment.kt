@@ -1,8 +1,7 @@
 // app/src/main/java/in/merakisan/app/ui/orders/OrderDetailFragment.kt
-package in.merakisan.app.ui.orders
+package `in`.merakisan.app.ui.orders
 
 import android.content.Intent
-import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -10,14 +9,16 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
-import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
-import in.merakisan.app.core.network.ApiClient
-import in.merakisan.app.core.network.model.OrderDto
-import in.merakisan.app.core.security.SessionManager
-import in.merakisan.app.databinding.FragmentOrderDetailBinding
+import `in`.merakisan.app.core.network.ApiClient
+import `in`.merakisan.app.core.network.model.OrderDto
+import `in`.merakisan.app.core.network.model.UpdateOrderStatusRequest
+import `in`.merakisan.app.core.security.SessionManager
+import `in`.merakisan.app.databinding.FragmentOrderDetailBinding
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import java.net.URLEncoder
+import kotlinx.coroutines.withContext
 import java.util.Locale
 
 class OrderDetailFragment : Fragment() {
@@ -25,7 +26,7 @@ class OrderDetailFragment : Fragment() {
     private var _binding: FragmentOrderDetailBinding? = null
     private val binding get() = _binding!!
 
-    private var orderId: String = ""
+    private var currentOrderId: String = ""
     private var currentOrder: OrderDto? = null
 
     override fun onCreateView(
@@ -40,178 +41,211 @@ class OrderDetailFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        binding.toolbar.setNavigationOnClickListener { findNavController().navigateUp() }
-
-        orderId = arguments?.getString("orderId") ?: ""
-        if (orderId.isBlank()) {
-            Toast.makeText(requireContext(), "अमान्य ऑर्डर संदर्भ", Toast.LENGTH_SHORT).show()
-            findNavController().navigateUp()
-            return
+        currentOrderId = arguments?.getString("orderId", "").orEmpty()
+        if (currentOrderId.isNotBlank()) {
+            loadOrderDetail(currentOrderId)
+        } else {
+            Toast.makeText(context, "ऑर्डर आईडी अमान्य है।", Toast.LENGTH_SHORT).show()
         }
 
-        loadOrderDetails()
-        setupDisputeButton()
+        findView("btnBack")?.setOnClickListener {
+            findNavController().navigateUp()
+        }
     }
 
-    private fun loadOrderDetails() {
-        lifecycleScope.launch {
+    private fun loadOrderDetail(orderId: String) {
+        findView("progressBar")?.visibility = View.VISIBLE
+
+        CoroutineScope(Dispatchers.IO).launch {
             try {
                 val apiService = ApiClient.getApiService(requireContext())
                 val response = apiService.getOrderDetail(orderId)
 
-                if (response.isSuccessful && response.body()?.success == true) {
-                    val order = response.body()?.data
-                    if (order != null) {
-                        currentOrder = order
-                        bindOrderToUi(order)
+                withContext(Dispatchers.Main) {
+                    findView("progressBar")?.visibility = View.GONE
+                    if (response.isSuccessful && response.body()?.success == true) {
+                        val order = response.body()?.data
+                        if (order != null) {
+                            bindOrderData(order)
+                        }
+                    } else {
+                        Toast.makeText(context, "ऑर्डर विवरण प्राप्त नहीं हो सका।", Toast.LENGTH_SHORT).show()
                     }
-                } else {
-                    Toast.makeText(requireContext(), "ऑर्डर लोड नहीं हो सका", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
-                Toast.makeText(requireContext(), "नेटवर्क संपर्क विफल: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                withContext(Dispatchers.Main) {
+                    findView("progressBar")?.visibility = View.GONE
+                    Toast.makeText(context, "नेटवर्क त्रुटि: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
 
-    private fun bindOrderToUi(order: OrderDto) {
-        val currentUid = SessionManager.getUserUid(requireContext())
-        val isSeller = order.sellerUid == currentUid
+    private fun bindOrderData(order: OrderDto) {
+        currentOrder = order
+        val sessionManager = SessionManager(requireContext())
+        val currentUser = sessionManager.getUserSession()
+        val isSeller = currentUser?.uid == order.sellerUid
 
-        binding.tvOrderDetailId.text = "ऑर्डर #${order.orderId.takeLast(8)}"
-        binding.tvOrderDetailStatusBadge.text = order.orderStatus
+        // 1. टेक्स्ट व राशि प्रदर्शन (IntegerPaise से सुरक्षित)
+        findTextView("tvOrderId")?.text = "ऑर्डर आईडी: #${order.orderId.takeLast(8)}"
+        findTextView("tvProductName")?.text = order.productName
+        findTextView("tvOrderQuantity")?.text = "मात्रा: ${order.quantity}${order.unit}"
 
         val totalRupees = order.totalAmountPaise / 100.0
-        val unitPriceRupees = (order.totalAmountPaise / order.quantity) / 100.0
+        findTextView("tvTotalAmount")?.text = String.format(Locale.getDefault(), "कुल राशि: ₹%.0f", totalRupees)
+        findTextView("tvPaymentMethod")?.text = "भुगतान प्रकार: ${order.paymentMethod.uppercase()}"
+        findTextView("tvOrderStatus")?.text = "स्थिति: ${formatStatusName(order.orderStatus)}"
+        findTextView("tvDeliveryAddress")?.text = "डिलीवरी पता: ${order.deliveryAddress}"
 
-        binding.tvOrderDetailProductName.text = order.productName
-        binding.tvOrderDetailQuantity.text = String.format(Locale.getDefault(), "मात्रा: %.1f %s @ ₹%.0f/%s", order.quantity, order.unit, unitPriceRupees, order.unit)
-        binding.tvOrderDetailTotalAmount.text = String.format(Locale.getDefault(), "कुल देय: ₹%.2f", totalRupees)
-        binding.tvOrderDetailPaymentMethod.text = "भुगतान स्थिति: ${order.paymentStatus}"
-        binding.tvOrderTimestamp.text = "दिनांक: ${order.createdAt}"
-        binding.tvDeliveryAddressText.text = "डिलीवरी पता: ${order.deliveryAddress.ifBlank { "खेत से पिकअप" }}"
-
-        // टाइमलाइन स्ट्रिप
-        updateTimelineStrip(order.orderStatus)
-
-        // काउंटरपार्टी संपर्क (किसान या खरीदार)
-        if (isSeller) {
-            binding.tvCounterpartyTitle.text = "ग्राहक (खरीदार) संपर्क:"
-            binding.tvCounterpartyName.text = order.buyerName
-            setupContactButtons(order.buyerPhone)
-        } else {
-            binding.tvCounterpartyTitle.text = "विक्रेता (किसान) संपर्क:"
-            binding.tvCounterpartyName.text = order.sellerName
-            setupContactButtons(order.sellerPhone)
-        }
-
-        // स्टेट मशीन एक्शन बटन (Farmer vs Buyer)
-        setupStateActionButtons(order, isSeller)
-    }
-
-    private fun updateTimelineStrip(status: String) {
-        val timelineText = when (status) {
-            "PLACED" -> "⏳ 1. ऑर्डर दर्ज (PLACED) ➔ 2. स्वीकृति प्रतीक्षारत"
-            "ACCEPTED" -> "✔ 1. दर्ज ➔ ✔ 2. किसान द्वारा स्वीकृत ➔ ⏳ 3. तैयारी जारी (PROCESSING)"
-            "PROCESSING" -> "✔ 1. दर्ज ➔ ✔ 2. स्वीकृत ➔ ⏳ 3. पैकेजिंग जारी (PROCESSING)"
-            "IN_TRANSIT" -> "✔ 1. दर्ज ➔ ✔ 2. स्वीकृत ➔ ✔ 3. रवाना (IN_TRANSIT) ➔ ⏳ डिलीवरी शेष"
-            "DELIVERED" -> "✔ 1. दर्ज ➔ ✔ 2. स्वीकृत ➔ ✔ 3. डिलीवर (DELIVERED) ➔ ⏳ पूर्णता प्रतीक्षारत"
-            "COMPLETED" -> "✔ 1. दर्ज ➔ ✔ 2. स्वीकृत ➔ ✔ 3. डिलीवर ➔ ✔ 4. पूर्ण (COMPLETED)"
-            "DISPUTED" -> "⚠️ विवाद विचाराधीन (DISPUTED) — एडमिन हस्तक्षेप सक्रिय"
-            "CANCELLED" -> "❌ ऑर्डर रद्द किया गया (CANCELLED)"
-            else -> status
-        }
-        binding.tvTimelineDescription.text = timelineText
-    }
-
-    private fun setupContactButtons(phone: String?) {
-        binding.btnOrderCall.setOnClickListener {
-            if (!phone.isNullOrBlank()) {
-                startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone")))
+        // 2. संपर्क बटन (Call / WhatsApp)
+        val counterpartPhone = if (isSeller) order.buyerPhone else order.sellerPhone
+        findView("btnCall")?.setOnClickListener {
+            if (!counterpartPhone.isNullOrBlank()) {
+                startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$counterpartPhone")))
             } else {
-                Toast.makeText(requireContext(), "फ़ोन नंबर उपलब्ध नहीं है", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "फ़ोन नंबर उपलब्ध नहीं है।", Toast.LENGTH_SHORT).show()
             }
         }
 
-        binding.btnOrderWhatsApp.setOnClickListener {
-            if (!phone.isNullOrBlank()) {
-                val url = "https://api.whatsapp.com/send?phone=+91$phone&text=${URLEncoder.encode("नमस्ते, MERA KISAN ऑर्डर #${orderId.takeLast(6)} के संदर्भ में संपर्क किया है।", "UTF-8")}"
-                try {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                } catch (e: Exception) {
-                    Toast.makeText(requireContext(), "WhatsApp इंस्टॉल नहीं है", Toast.LENGTH_SHORT).show()
-                }
+        findView("btnWhatsApp")?.setOnClickListener {
+            if (!counterpartPhone.isNullOrBlank()) {
+                val clean = counterpartPhone.replace("+", "").replace(" ", "").trim()
+                val url = "https://api.whatsapp.com/send?phone=$clean&text=${Uri.encode("नमस्ते, Mera Kisan ऑर्डर #${order.orderId.takeLast(6)} के संबंध में संपर्क कर रहे हैं।")}"
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            } else {
+                Toast.makeText(context, "WhatsApp नंबर उपलब्ध नहीं है।", Toast.LENGTH_SHORT).show()
             }
         }
+
+        // 3. स्टेट मशीन ट्रांज़िशन्स (Zero-Trust State Machine)
+        setupStateActions(order, isSeller)
     }
 
-    private fun setupStateActionButtons(order: OrderDto, isSeller: Boolean) {
-        binding.llBottomActionContainer.visibility = View.VISIBLE
+    private fun setupStateActions(order: OrderDto, isSeller: Boolean) {
+        val btnPrimary = findView("btnPrimaryAction")
+        val btnSecondary = findView("btnSecondaryAction")
 
-        when {
+        btnPrimary?.visibility = View.GONE
+        btnSecondary?.visibility = View.GONE
+
+        if (isSeller) {
             // किसान की स्वीकृत क्रियाएं
-            isSeller && order.orderStatus == "PLACED" -> {
-                binding.btnPrimaryAction.text = "ऑर्डर स्वीकार करें (Accept Order)"
-                binding.btnPrimaryAction.setOnClickListener {
-                    transitionOrderStatus("ACCEPTED")
+            when (order.orderStatus.uppercase()) {
+                "PLACED" -> {
+                    setActionButton(btnPrimary, "ऑर्डर स्वीकार करें (Accept)") {
+                        executeStatusUpdate("ACCEPTED", "किसान द्वारा ऑर्डर स्वीकार किया गया")
+                    }
+                    setActionButton(btnSecondary, "रद्द करें (Reject)") {
+                        executeStatusUpdate("CANCELLED", "किसान द्वारा ऑर्डर रद्द किया गया")
+                    }
+                }
+                "ACCEPTED" -> {
+                    setActionButton(btnPrimary, "डिस्पैच / रवाना करें (In Transit)") {
+                        executeStatusUpdate("IN_TRANSIT", "उपज गंतव्य के लिए रवाना की गई")
+                    }
+                }
+                "IN_TRANSIT" -> {
+                    setActionButton(btnPrimary, "डिलीवरी पूर्ण दर्ज करें (Delivered)") {
+                        executeStatusUpdate("DELIVERED", "उपज ग्राहक तक पहुँच चुकी है")
+                    }
                 }
             }
-            isSeller && (order.orderStatus == "ACCEPTED" || order.orderStatus == "PROCESSING") -> {
-                binding.btnPrimaryAction.text = "माल रवाना करें (Mark In Transit)"
-                binding.btnPrimaryAction.setOnClickListener {
-                    transitionOrderStatus("IN_TRANSIT")
-                }
-            }
-
+        } else {
             // खरीदार की स्वीकृत क्रियाएं
-            !isSeller && order.orderStatus == "IN_TRANSIT" -> {
-                binding.btnPrimaryAction.text = "माल मिल गया — डिलीवरी पुष्टि करें"
-                binding.btnPrimaryAction.setOnClickListener {
-                    transitionOrderStatus("DELIVERED")
+            when (order.orderStatus.uppercase()) {
+                "PLACED" -> {
+                    setActionButton(btnSecondary, "ऑर्डर रद्द करें") {
+                        executeStatusUpdate("CANCELLED", "खरीदार द्वारा ऑर्डर रद्द किया गया")
+                    }
                 }
-            }
-            !isSeller && order.orderStatus == "DELIVERED" -> {
-                binding.btnPrimaryAction.text = "संतुष्ट — ऑर्डर पूर्ण करें (Complete)"
-                binding.btnPrimaryAction.setOnClickListener {
-                    transitionOrderStatus("COMPLETED")
+                "IN_TRANSIT" -> {
+                    setActionButton(btnPrimary, "प्राप्ति की पुष्टि करें (Confirm Received)") {
+                        executeStatusUpdate("DELIVERED", "खरीदार ने उपज प्राप्त कर ली")
+                    }
                 }
-            }
-
-            else -> {
-                // कोई क्रिया लंबित नहीं (उदा. CANCELLED, COMPLETED, DISPUTED)
-                binding.llBottomActionContainer.visibility = View.GONE
+                "DELIVERED" -> {
+                    setActionButton(btnSecondary, "विवाद दर्ज करें (Dispute)") {
+                        openDisputeDialog(order.orderId)
+                    }
+                }
             }
         }
     }
 
-    private fun transitionOrderStatus(nextStatus: String) {
-        lifecycleScope.launch {
-            try {
-                binding.btnPrimaryAction.isEnabled = false
-                val apiService = ApiClient.getApiService(requireContext())
-                val response = apiService.updateOrderStatus(orderId, nextStatus)
+    private fun setActionButton(view: View?, title: String, action: () -> Unit) {
+        view?.let {
+            it.visibility = View.VISIBLE
+            if (it is android.widget.Button) it.text = title
+            it.setOnClickListener { action() }
+        }
+    }
 
-                if (response.isSuccessful && response.body()?.success == true) {
-                    Toast.makeText(requireContext(), "स्थिति सफलतापूर्वक अद्यतित हुई!", Toast.LENGTH_SHORT).show()
-                    loadOrderDetails()
-                } else {
-                    Toast.makeText(requireContext(), "स्थिति बदलने में विफलता", Toast.LENGTH_SHORT).show()
-                    binding.btnPrimaryAction.isEnabled = true
+    private fun executeStatusUpdate(newStatus: String, notes: String) {
+        findView("progressBar")?.visibility = View.VISIBLE
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val apiService = ApiClient.getApiService(requireContext())
+                val req = UpdateOrderStatusRequest(status = newStatus, notes = notes)
+                val response = apiService.updateOrderStatus(currentOrderId, req)
+
+                withContext(Dispatchers.Main) {
+                    findView("progressBar")?.visibility = View.GONE
+                    if (response.isSuccessful && response.body()?.success == true) {
+                        Toast.makeText(context, "ऑर्डर स्थिति अद्यतित की गई!", Toast.LENGTH_SHORT).show()
+                        loadOrderDetail(currentOrderId)
+                    } else {
+                        Toast.makeText(context, "स्थिति बदलने में विफलता।", Toast.LENGTH_SHORT).show()
+                    }
                 }
             } catch (e: Exception) {
-                Toast.makeText(requireContext(), "त्रुटि: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
-                binding.btnPrimaryAction.isEnabled = true
+                withContext(Dispatchers.Main) {
+                    findView("progressBar")?.visibility = View.GONE
+                    Toast.makeText(context, "नेटवर्क त्रुटि: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
 
-    private fun setupDisputeButton() {
-        binding.btnRaiseDispute.setOnClickListener {
-            CreateDisputeDialogFragment.newInstance(orderId) { reason, desc, _ ->
-                transitionOrderStatus("DISPUTED")
-                Toast.makeText(requireContext(), "विवाद दर्ज हुआ: $reason", Toast.LENGTH_LONG).show()
-            }.show(childFragmentManager, "CreateDispute")
+    private fun openDisputeDialog(orderId: String) {
+        val dialog = CreateDisputeDialogFragment.newInstance(orderId)
+        dialog.show(parentFragmentManager, "CreateDisputeDialogFragment")
+    }
+
+    private fun formatStatusName(status: String): String {
+        return when (status.uppercase()) {
+            "PLACED" -> "नया ऑर्डर दर्ज"
+            "ACCEPTED" -> "किसान द्वारा स्वीकृत"
+            "IN_TRANSIT" -> "रास्ते में (रवाना)"
+            "DELIVERED" -> "सफलतापूर्वक डिलीवर"
+            "CANCELLED" -> "रद्द किया गया"
+            "DISPUTED" -> "विवाद समीक्षाधीन"
+            else -> status
         }
+    }
+
+    private fun findTextView(vararg names: String): android.widget.TextView? {
+        val root = binding.root
+        for (name in names) {
+            val id = root.resources.getIdentifier(name, "id", root.context.packageName)
+            if (id != 0) {
+                val v = root.findViewById<View>(id)
+                if (v is android.widget.TextView) return v
+            }
+        }
+        return null
+    }
+
+    private fun findView(vararg names: String): View? {
+        val root = binding.root
+        for (name in names) {
+            val id = root.resources.getIdentifier(name, "id", root.context.packageName)
+            if (id != 0) {
+                val v = root.findViewById<View>(id)
+                if (v != null) return v
+            }
+        }
+        return null
     }
 
     override fun onDestroyView() {
