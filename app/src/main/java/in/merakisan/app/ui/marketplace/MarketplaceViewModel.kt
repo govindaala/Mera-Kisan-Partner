@@ -12,12 +12,15 @@ import `in`.merakisan.app.data.local.AppDatabase
 import `in`.merakisan.app.data.local.entity.toDto
 import `in`.merakisan.app.data.local.entity.toEntity
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Marketplace UI स्टेट मशीन (MarketplaceFragment के साथ 100% संगत)
+ * Marketplace UI State Machine
  */
 sealed class MarketplaceUiState {
     object Loading : MarketplaceUiState()
@@ -38,18 +41,18 @@ sealed class MarketplaceUiState {
 
 /**
  * MERA KISAN Marketplace View Model
- * पूर्ण कार्यक्षमता: फ़िल्टरिंग, सर्च, ऑफ़लाइन कैश और UI स्टेट सिंक्रोनाइज़ेशन
+ * StateFlow ke sath MarketplaceFragment line 117 ke liye 100% compatible
  */
 class MarketplaceViewModel(application: Application) : AndroidViewModel(application) {
 
     private val apiService = ApiClient.getApiService(application)
     private val productDao = AppDatabase.getInstance(application).productDao()
 
-    // 1. MarketplaceFragment द्वारा अपेक्षित मुख्य UI स्टेट
-    private val _uiState = MutableLiveData<MarketplaceUiState>(MarketplaceUiState.Idle)
-    val uiState: LiveData<MarketplaceUiState> get() = _uiState
+    // 1. MarketplaceFragment.kt:117 ke collectLatest ke liye StateFlow
+    private val _uiState = MutableStateFlow<MarketplaceUiState>(MarketplaceUiState.Idle)
+    val uiState: StateFlow<MarketplaceUiState> = _uiState.asStateFlow()
 
-    // 2. लेगेसी कॉलिंग कंपैटिबिलिटी
+    // 2. Backward compatibility LiveData
     private val _products = MutableLiveData<List<ProductDto>>()
     val products: LiveData<List<ProductDto>> get() = _products
 
@@ -59,14 +62,13 @@ class MarketplaceViewModel(application: Application) : AndroidViewModel(applicat
     private val _error = MutableLiveData<String?>()
     val error: LiveData<String?> get() = _error
 
-    // आंतरिक फ़िल्टर अवस्था
+    // Filter states
     private var currentCategory: String? = null
     private var isSmallQuantityOnly: Boolean = false
     private var isOrganicOnly: Boolean = false
     private var currentSearchQuery: String = ""
     private var allLoadedProducts: List<ProductDto> = emptyList()
 
-    // 3. MarketplaceFragment:74 द्वारा कॉल किया जाने वाला मुख्य लोडर
     fun loadMarketplaceProducts() {
         loadProducts(
             category = currentCategory,
@@ -75,25 +77,21 @@ class MarketplaceViewModel(application: Application) : AndroidViewModel(applicat
         )
     }
 
-    // 4. MarketplaceFragment:82, 93, 96, 99 द्वारा कॉल किए जाने वाले फ़िल्टर मेथड्स
     fun setCategoryFilter(category: String?) {
         currentCategory = if (category.isNullOrBlank() || category.equals("all", ignoreCase = true)) null else category
         loadMarketplaceProducts()
     }
 
-    // 5. MarketplaceFragment:83, 87 द्वारा कॉल किया जाने वाला छोटी मात्रा फ़िल्टर
     fun setSmallQuantityFilter(enabled: Boolean) {
         isSmallQuantityOnly = enabled
         loadMarketplaceProducts()
     }
 
-    // 6. MarketplaceFragment:84, 90 द्वारा कॉल किया जाने वाला जैविक फ़िल्टर
     fun setOrganicFilter(enabled: Boolean) {
         isOrganicOnly = enabled
         loadMarketplaceProducts()
     }
 
-    // 7. MarketplaceFragment:109 द्वारा कॉल किया जाने वाला सर्च मेथड
     fun searchProducts(query: String) {
         currentSearchQuery = query
         filterCurrentProducts()
@@ -149,7 +147,7 @@ class MarketplaceViewModel(application: Application) : AndroidViewModel(applicat
             _products.value = cached
             _isLoading.value = false
             if (cached.isEmpty()) {
-                _error.value = "कोई उत्पाद उपलब्ध नहीं है।"
+                _error.value = "Koi utpad uplabdh nahi hai."
                 _uiState.value = MarketplaceUiState.Empty
             } else {
                 _uiState.value = MarketplaceUiState.Success(cached)
