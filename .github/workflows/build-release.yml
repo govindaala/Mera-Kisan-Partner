@@ -36,46 +36,92 @@ jobs:
           gradle-version: "8.5"
           cache-disabled: true
 
-
       - name: 4. ऑटो-सैनिटाइज़र व एनवायरनमेंट तैयारी
+        shell: bash
         run: |
-          echo "=== 1. सभी Kotlin फाइलों में package और import को ऑटो-एस्केप किया जा रहा है ==="
-          find app/src/main/java -type f -name "*.kt" -exec sed -i -E 's/^package[[:space:]]+in\./package `in`./g' {} +
-          find app/src/main/java -type f -name "*.kt" -exec sed -i -E 's/^import[[:space:]]+in\./import `in`./g' {} +
+          echo "=== 1. Kotlin package और import की जाँच ==="
 
-          echo "=== 2. Gradlew Wrapper पुष्टि ==="
-          if [ ! -f "./gradlew" ]; then
-            gradle wrapper --gradle-version 8.5 --no-configuration-cache || true
+          if [ -d "app/src/main/java" ]; then
+            find app/src/main/java -type f -name "*.kt" \
+              -exec sed -i -E \
+              's/^package[[:space:]]+in\./package `in`./g' {} +
+
+            find app/src/main/java -type f -name "*.kt" \
+              -exec sed -i -E \
+              's/^import[[:space:]]+in\./import `in`./g' {} +
           fi
-          [ -f "./gradlew" ] && chmod +x ./gradlew
 
-          echo "kapt.verbose=true" >> gradle.properties
-          echo "kapt.use.worker.api=false" >> gradle.properties
-          echo "kotlin.compiler.execution.strategy=in-process" >> gradle.properties
-          echo "org.gradle.configuration-cache=false" >> gradle.properties
+          echo "=== 2. Gradle Wrapper की पुष्टि ==="
+
+          if [ ! -f "./gradlew" ]; then
+            gradle wrapper --gradle-version 8.5 \
+              --no-configuration-cache || true
+          fi
+
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+          else
+            echo "::error::Gradle Wrapper उपलब्ध नहीं है!"
+            exit 1
+          fi
+
+          touch gradle.properties
+
+          grep -qxF 'kapt.verbose=true' gradle.properties ||
+            echo 'kapt.verbose=true' >> gradle.properties
+
+          grep -qxF 'kapt.use.worker.api=false' gradle.properties ||
+            echo 'kapt.use.worker.api=false' >> gradle.properties
+
+          grep -qxF 'kotlin.compiler.execution.strategy=in-process' gradle.properties ||
+            echo 'kotlin.compiler.execution.strategy=in-process' >> gradle.properties
+
+          grep -qxF 'org.gradle.configuration-cache=false' gradle.properties ||
+            echo 'org.gradle.configuration-cache=false' >> gradle.properties
+
+          echo "=== Environment तैयार है ==="
 
       - name: 5. Android APK क्लीन संकलन (Assemble Debug APK)
         id: assemble_gradle
+        shell: bash
         run: |
+          set -o pipefail
+
           ./gradlew assembleDebug \
             --no-daemon \
             --no-configuration-cache \
             --no-build-cache \
+            --console=plain \
             -x test -x lint 2>&1 | tee build_raw.log
 
       - name: 6. APK निष्कर्षण व सत्यापन
         id: package_apk
         if: success()
+        shell: bash
         run: |
-          FOUND_APK=$(find . -path "*/build/outputs/apk/*" -name "*.apk" | head -n 1)
+          FOUND_APK=$(find . \
+            -path "*/build/outputs/apk/*" \
+            -type f \
+            -name "*.apk" \
+            ! -path "*/intermediates/*" \
+            | head -n 1)
+
           if [ -z "$FOUND_APK" ]; then
             echo "::error::कोई APK फ़ाइल नहीं मिली!"
             exit 1
           fi
+
           echo "APK प्राप्त हुई: $FOUND_APK"
+
           mkdir -p release_assets
+
           cp "$FOUND_APK" release_assets/MeraKisan-App.apk
-          echo "apk_path=release_assets/MeraKisan-App.apk" >> $GITHUB_OUTPUT
+
+          echo "apk_path=release_assets/MeraKisan-App.apk" >> "$GITHUB_OUTPUT"
+
+          echo "APK_SIZE=$(du -h release_assets/MeraKisan-App.apk | cut -f1)" >> "$GITHUB_ENV"
+
+          echo "APK सफलतापूर्वक तैयार हुई।"
 
       - name: 7. GitHub Releases में डायरेक्ट APK पब्लिश
         uses: softprops/action-gh-release@v2
@@ -88,6 +134,7 @@ jobs:
 
             - बिल्ड संख्या: #${{ github.run_number }}
             - स्थिति: सीधा इंस्टॉलेबल APK (बिना ZIP फ़ाइल के)
+            - APK आकार: ${{ env.APK_SIZE }}
 
             ⬇️ **सीधा डाउनलोड लिंक:**
             नीचे Assets में `MeraKisan-App.apk` पर टैप करके इंस्टॉल करें।
@@ -97,77 +144,641 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 8. विफलता डायग्नोस्टिक्स (सटीक लाइन, शब्द व सुधार सुझाव)
+      - name: 8. विस्तृत बिल्ड एरर डायग्नोस्टिक्स (25-25 के ब्लॉक में)
         if: failure()
+        shell: bash
         run: |
-          python3 - << 'EOF'
-          import re
+          python3 - <<'PY'
           import os
+          import re
+          import json
+          import subprocess
+          from collections import Counter
 
-          log_file = "build_raw.log"
-          if not os.path.exists(log_file):
-              print("लॉग फ़ाइल उपलब्ध नहीं है।")
-              exit(0)
+          LOG_FILE = "build_raw.log"
+          REPORT_FILE = "build_error_report.txt"
+          SUMMARY_FILE = os.environ.get("GITHUB_STEP_SUMMARY", "")
 
-          error_pattern = re.compile(r"^e:\s+(?:file://)?(.*?):(\d+):(\d+)\s+(.*)")
           errors = []
+          categories = Counter()
+          seen = set()
 
-          with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
-              for line in f:
-                  m = error_pattern.match(line.strip())
-                  if m:
-                      errors.append({
-                          "file": m.group(1),
-                          "line": int(m.group(2)),
-                          "col": int(m.group(3)),
-                          "msg": m.group(4)
-                      })
+          def print_both(text=""):
+              print(text)
+              if SUMMARY_FILE:
+                  with open(SUMMARY_FILE, "a", encoding="utf-8") as f:
+                      f.write(text + "\n")
 
-          print("=" * 80)
-          print("🚨 MERA KISAN — कंपाइलर त्रुटि विश्लेषण रिपोर्ट (LINE, WORD & FIX DETECTOR)")
-          print(f"कुल पाई गई त्रुटियाँ: {len(errors)}")
-          print("=" * 80)
+          def clean_path(path):
+              path = path.strip().strip("'\"")
+              path = re.sub(r"^file://", "", path)
+              return path
+
+          def categorize(message):
+              m = message.lower()
+
+              if any(x in m for x in [
+                  "unresolved reference",
+                  "overload resolution ambiguity",
+                  "none of the following functions",
+                  "type mismatch",
+                  "cannot infer",
+                  "expecting ",
+                  "syntax error",
+                  "conflicting overloads",
+                  "redeclaration",
+                  "no value passed for parameter",
+                  "too many arguments",
+                  "cannot find a parameter",
+                  "is not allowed here",
+                  "return type mismatch",
+                  "smart cast",
+                  "suspension functions can be called",
+                  "variable expected"
+              ]):
+                  return "Kotlin / कोड"
+
+              if any(x in m for x in [
+                  "manifest merger failed",
+                  "androidmanifest.xml",
+                  "manifest merger"
+              ]):
+                  return "Android Manifest"
+
+              if any(x in m for x in [
+                  "could not resolve",
+                  "could not find ",
+                  "failed to resolve",
+                  "could not download",
+                  "no matching variant",
+                  "dependency resolution",
+                  "unable to resolve dependency"
+              ]):
+                  return "Dependency / लाइब्रेरी"
+
+              if any(x in m for x in [
+                  "resource linking failed",
+                  "aapt:",
+                  "resource not found",
+                  "error: resource ",
+                  "duplicate resources",
+                  "android resource compilation failed"
+              ]):
+                  return "Android Resources"
+
+              if any(x in m for x in [
+                  "compilation failed",
+                  "javac",
+                  "java compiler",
+                  "cannot find symbol",
+                  "package does not exist"
+              ]):
+                  return "Java / Compilation"
+
+              if any(x in m for x in [
+                  "sdk location not found",
+                  "failed to find target",
+                  "android sdk",
+                  "build tools revision"
+              ]):
+                  return "Android SDK"
+
+              if any(x in m for x in [
+                  "execution failed for task",
+                  "what went wrong",
+                  "build failed with an exception",
+                  "could not create task",
+                  "unable to create",
+                  "could not determine",
+                  "plugin was not found",
+                  "plugin request for plugin"
+              ]):
+                  return "Gradle / Build Configuration"
+
+              if any(x in m for x in [
+                  "outofmemoryerror",
+                  "java heap space",
+                  "gc overhead limit exceeded"
+              ]):
+                  return "Memory / JVM"
+
+              if any(x in m for x in [
+                  "timed out",
+                  "timeout",
+                  "connection reset",
+                  "connection refused",
+                  "unknownhostexception",
+                  "could not get resource",
+                  "http 429",
+                  "http 5"
+              ]):
+                  return "Network / Download"
+
+              if any(x in m for x in [
+                  "duplicate class",
+                  "class is defined multiple times"
+              ]):
+                  return "Duplicate Class / Dependency"
+
+              if any(x in m for x in [
+                  "signingconfig",
+                  "keystore",
+                  "failed to read key",
+                  "signing failed"
+              ]):
+                  return "APK Signing"
+
+              if any(x in m for x in [
+                  "zipalign",
+                  "apksigner",
+                  "failed to package",
+                  "packageapplication",
+                  "assembledebug"
+              ]):
+                  return "APK Packaging"
+
+              return "Other / अन्य"
+
+          def get_suggestions(category, message):
+              m = message.lower()
+              suggestions = []
+
+              if "unresolved reference" in m:
+                  suggestions.extend([
+                      "संबंधित नाम, spelling और import जाँचें।",
+                      "यदि यह बाहरी लाइब्रेरी की क्लास है, तो module की dependencies जाँचें।",
+                      "यदि यह आपके प्रोजेक्ट का नाम है, तो declaration और package जाँचें।"
+                  ])
+
+              elif "type mismatch" in m:
+                  suggestions.extend([
+                      "अपेक्षित type और प्राप्त type की तुलना करें।",
+                      "String, Int, Boolean, nullable और non-nullable प्रकार जाँचें।",
+                      "सही conversion या null handling लागू करें; केवल अनुमान से ?. या ?: न जोड़ें।"
+                  ])
+
+              elif "cannot find a parameter with this name" in m:
+                  suggestions.extend([
+                      "Function या constructor में parameter का वास्तविक नाम जाँचें।",
+                      "उस function की declaration और call site की तुलना करें।"
+                  ])
+
+              elif "no value passed for parameter" in m:
+                  suggestions.extend([
+                      "आवश्यक parameter प्रदान करें या उचित default value की जाँच करें।"
+                  ])
+
+              elif "expecting " in m or "syntax error" in m:
+                  suggestions.extend([
+                      "इस लाइन से ठीक पहले और बाद में brackets, quotes, commas और braces जाँचें।",
+                      "कभी-कभी वास्तविक syntax error पिछली लाइन में होता है।"
+                  ])
+
+              elif "cannot find symbol" in m or "package does not exist" in m:
+                  suggestions.extend([
+                      "Java import, package declaration और dependency जाँचें।",
+                      "क्लास का सही नाम तथा संबंधित module की configuration जाँचें।"
+                  ])
+
+              elif "manifest merger failed" in m:
+                  suggestions.extend([
+                      "पूरा Manifest merger error देखें।",
+                      "Manifest में conflicting attributes और library manifests जाँचें।"
+                  ])
+
+              elif any(x in m for x in [
+                  "could not resolve",
+                  "could not find ",
+                  "failed to resolve",
+                  "could not download"
+              ]):
+                  suggestions.extend([
+                      "Dependency का नाम और version जाँचें।",
+                      "Repositories और network/download error जाँचें।",
+                      "यदि dependency मौजूद नहीं है, तो सही उपलब्ध version चुनें।"
+                  ])
+
+              elif "resource linking failed" in m or "resource not found" in m:
+                  suggestions.extend([
+                      "XML resource नाम, references और resource directory जाँचें।",
+                      "देखें कि referenced resource वास्तव में मौजूद है या नहीं।"
+                  ])
+
+              elif "sdk location not found" in m:
+                  suggestions.extend([
+                      "Android SDK की उपलब्धता और SDK path जाँचें।",
+                      "GitHub runner के Android SDK environment की जाँच करें।"
+                  ])
+
+              elif any(x in m for x in [
+                  "outofmemoryerror",
+                  "java heap space",
+                  "gc overhead limit exceeded"
+              ]):
+                  suggestions.extend([
+                      "JVM memory usage और Gradle memory settings जाँचें।",
+                      "देखें कि कोई task अत्यधिक memory तो नहीं ले रहा।"
+                  ])
+
+              elif any(x in m for x in [
+                  "timed out",
+                  "connection reset",
+                  "unknownhostexception",
+                  "could not get resource"
+              ]):
+                  suggestions.extend([
+                      "Network और repository की उपलब्धता जाँचें।",
+                      "संबंधित dependency download दोबारा चलाकर देखें।"
+                  ])
+
+              elif "duplicate class" in m:
+                  suggestions.extend([
+                      "कौन-सी दो dependencies एक ही class उपलब्ध करा रही हैं, यह जाँचें।",
+                      "Dependency tree और compatible versions की जाँच करें।"
+                  ])
+
+              elif "execution failed for task" in m:
+                  suggestions.extend([
+                      "इसी task के ऊपर लॉग में वास्तविक कारण खोजें।",
+                      "केवल इस संदेश के आधार पर मूल कारण निश्चित नहीं किया जा सकता।"
+                  ])
+
+              if not suggestions:
+                  suggestions.extend([
+                      "पूरा build log देखें; यह संदेश अकेले मूल कारण तय करने के लिए पर्याप्त नहीं है।",
+                      "संबंधित Gradle task और उसके ठीक पहले आने वाले error messages जाँचें।"
+                  ])
+
+              return suggestions
+
+          def source_context(path, line_number, column):
+              if not path or not os.path.isfile(path):
+                  return None
+
+              try:
+                  with open(path, "r", encoding="utf-8", errors="replace") as f:
+                      lines = f.readlines()
+
+                  if not (1 <= line_number <= len(lines)):
+                      return None
+
+                  start = max(1, line_number - 2)
+                  end = min(len(lines), line_number + 2)
+
+                  result = []
+
+                  for n in range(start, end + 1):
+                      marker = ">>" if n == line_number else "  "
+                      result.append(
+                          f"{marker} {n:5}: {lines[n - 1].rstrip()}"
+                      )
+
+                      if n == line_number:
+                          col = max(1, column)
+                          result.append("       " + " " * (col - 1) + "^")
+
+                  return "\n".join(result)
+
+              except Exception as exc:
+                  return f"कोड संदर्भ पढ़ने में समस्या: {exc}"
+
+          def add_error(category, path="", line=0, col=0, message="",
+                        origin=""):
+              key = (category, path, line, col, message)
+
+              if key in seen:
+                  return
+
+              seen.add(key)
+
+              errors.append({
+                  "category": category,
+                  "file": path,
+                  "line": line,
+                  "column": col,
+                  "message": message.strip(),
+                  "origin": origin
+              })
+
+          if os.path.isfile(LOG_FILE):
+              with open(LOG_FILE, "r", encoding="utf-8",
+                        errors="replace") as f:
+                  log_lines = f.readlines()
+          else:
+              log_lines = []
+
+          # Kotlin compiler errors:
+          # e: file:///path/File.kt:25:10 Error message
+          kotlin_pattern = re.compile(
+              r"^\s*e:\s+(?:file://)?(.+?):(\d+):(\d+)\s+(.*)$",
+              re.IGNORECASE
+          )
+
+          # Java compiler errors:
+          # /path/File.java:25: error: cannot find symbol
+          java_pattern = re.compile(
+              r"^\s*(.+?\.java):(\d+):\s*error:\s*(.*)$",
+              re.IGNORECASE
+          )
+
+          # General file:line:column diagnostics.
+          generic_pattern = re.compile(
+              r"^\s*(.+?\.(?:kt|java|xml)):(\d+):(\d+):\s*"
+              r"(error|warning):\s*(.*)$",
+              re.IGNORECASE
+          )
+
+          # Android resource/compiler errors.
+          resource_pattern = re.compile(
+              r"^\s*(.+?\.xml):(\d+):\s*"
+              r"error:\s*(.*)$",
+              re.IGNORECASE
+          )
+
+          for raw in log_lines:
+              line_text = raw.rstrip("\n")
+
+              m = kotlin_pattern.match(line_text)
+
+              if m:
+                  path = clean_path(m.group(1))
+                  add_error(
+                      categorize(m.group(4)),
+                      path,
+                      int(m.group(2)),
+                      int(m.group(3)),
+                      m.group(4),
+                      "Kotlin compiler"
+                  )
+                  continue
+
+              m = java_pattern.match(line_text)
+
+              if m:
+                  add_error(
+                      categorize(m.group(3)),
+                      clean_path(m.group(1)),
+                      int(m.group(2)),
+                      1,
+                      m.group(3),
+                      "Java compiler"
+                  )
+                  continue
+
+              m = generic_pattern.match(line_text)
+
+              if m and m.group(4).lower() == "error":
+                  add_error(
+                      categorize(m.group(5)),
+                      clean_path(m.group(1)),
+                      int(m.group(2)),
+                      int(m.group(3)),
+                      m.group(5),
+                      "Compiler / Resource"
+                  )
+                  continue
+
+              m = resource_pattern.match(line_text)
+
+              if m:
+                  add_error(
+                      categorize(m.group(3)),
+                      clean_path(m.group(1)),
+                      int(m.group(2)),
+                      1,
+                      m.group(3),
+                      "Android resource compiler"
+                  )
+
+          # Collect Gradle task failures and prominent error lines.
+          important_patterns = [
+              re.compile(r"^\s*FAILURE:\s+Build failed", re.I),
+              re.compile(r"^\s*Execution failed for task ", re.I),
+              re.compile(r"^\s*Could not resolve all files", re.I),
+              re.compile(r"^\s*Could not resolve ", re.I),
+              re.compile(r"^\s*Could not find ", re.I),
+              re.compile(r"^\s*Plugin \[id:", re.I),
+              re.compile(r"^\s*Manifest merger failed", re.I),
+              re.compile(r"^\s*Android resource linking failed", re.I),
+              re.compile(r"^\s*OutOfMemoryError", re.I),
+              re.compile(r"^\s*Caused by:", re.I),
+              re.compile(r"^\s*What went wrong:", re.I),
+              re.compile(r"^\s*Compilation error", re.I),
+              re.compile(r"^\s*BUILD FAILED", re.I),
+          ]
+
+          for raw in log_lines:
+              line_text = raw.strip()
+
+              if not line_text:
+                  continue
+
+              if any(p.search(line_text) for p in important_patterns):
+                  add_error(
+                      categorize(line_text),
+                      "",
+                      0,
+                      0,
+                      line_text,
+                      "Gradle / Build log"
+                  )
+
+          # If the build failed but no recognizable error was found,
+          # include the last relevant log lines rather than claiming
+          # that no problem exists.
+          if not errors:
+              candidates = []
+
+              for raw in log_lines:
+                  s = raw.strip()
+
+                  if not s:
+                      continue
+
+                  if re.search(
+                      r"error|failed|failure|exception|could not|"
+                      r"not found|timed out|denied",
+                      s,
+                      re.IGNORECASE
+                  ):
+                      candidates.append(s)
+
+              for s in candidates[-25:]:
+                  add_error(
+                      "Other / अन्य",
+                      "",
+                      0,
+                      0,
+                      s,
+                      "Fallback log detection"
+                  )
+
+          categories = Counter(e["category"] for e in errors)
+
+          # Generate complete text report.
+          with open(REPORT_FILE, "w", encoding="utf-8") as report:
+              report.write("=" * 90 + "\n")
+              report.write("MERA KISAN — COMPLETE BUILD ERROR REPORT\n")
+              report.write("=" * 90 + "\n")
+              report.write(f"कुल पहचानी गई रिपोर्ट प्रविष्टियाँ: {len(errors)}\n")
+              report.write(f"लॉग फ़ाइल उपलब्ध: {os.path.isfile(LOG_FILE)}\n")
+              report.write("\n")
+
+              report.write("श्रेणी के अनुसार सारांश:\n")
+
+              for category, count in categories.most_common():
+                  report.write(f"  - {category}: {count}\n")
+
+              report.write("\n")
+
+              if not errors:
+                  report.write(
+                      "कोई स्पष्ट त्रुटि नहीं मिली। "
+                      "पूरा लॉग देखकर कारण की जाँच करें।\n"
+                  )
+
+              for idx, err in enumerate(errors, 1):
+                  report.write("\n" + "=" * 90 + "\n")
+                  report.write(
+                      f"त्रुटि #{idx} | श्रेणी: {err['category']}\n"
+                  )
+                  report.write("=" * 90 + "\n")
+
+                  report.write(
+                      f"स्रोत: {err['origin'] or 'अज्ञात'}\n"
+                  )
+
+                  if err["file"]:
+                      report.write(f"फ़ाइल: {err['file']}\n")
+
+                  if err["line"]:
+                      report.write(
+                          f"लाइन: {err['line']} | "
+                          f"कॉलम: {err['column']}\n"
+                      )
+
+                  report.write(f"त्रुटि संदेश: {err['message']}\n")
+
+                  context = source_context(
+                      err["file"],
+                      err["line"],
+                      err["column"]
+                  )
+
+                  if context:
+                      report.write("\nकोड संदर्भ:\n")
+                      report.write(context + "\n")
+
+                  report.write("\nसंभावित जाँच / सुधार:\n")
+
+                  for suggestion in get_suggestions(
+                      err["category"], err["message"]
+                  ):
+                      report.write(f"  - {suggestion}\n")
+
+                  report.write(
+                      "\nनोट: सुझाव संभावित दिशा बताते हैं; "
+                      "यह स्वचालित रूप से सत्यापित समाधान नहीं है।\n"
+                  )
+
+          # Display errors in blocks of 25.
+          print_both("")
+          print_both("=" * 90)
+          print_both("🌾 MERA KISAN — BUILD ERROR DIAGNOSTICS")
+          print_both("=" * 90)
+          print_both(f"लॉग फ़ाइल: {LOG_FILE}")
+          print_both(f"कुल पहचानी गई प्रविष्टियाँ: {len(errors)}")
+          print_both(f"कुल ब्लॉक: {(len(errors) + 24) // 25}")
+
+          print_both("\nश्रेणी के अनुसार सारांश:")
+
+          for category, count in categories.most_common():
+              print_both(f"  • {category}: {count}")
 
           if not errors:
-              print("कोई सीधी Kotlin कंपाइलर त्रुटि (e:) नहीं मिली।")
-              exit(0)
+              print_both(
+                  "\nकोई स्पष्ट error pattern नहीं मिला। "
+                  "पूरा लॉग और रिपोर्ट जाँचें।"
+              )
 
-          for idx, err in enumerate(errors[:25], 1):
-              fpath = err["file"]
-              l_num = err["line"]
-              c_num = err["col"]
-              msg = err["msg"]
+          for block_start in range(0, len(errors), 25):
+              block = errors[block_start:block_start + 25]
+              block_number = block_start // 25 + 1
+              total_blocks = (len(errors) + 24) // 25
 
-              print(f"\n[{idx}] 📁 फ़ाइल: {os.path.relpath(fpath, os.getcwd()) if os.path.isabs(fpath) else fpath}")
-              print(f"    📍 पंक्ति (Line): {l_num}, स्तंभ (Column): {c_num}")
-              print(f"    ⚠️  त्रुटि संदेश: {msg}")
+              print_both("\n" + "#" * 90)
+              print_both(
+                  f"📦 BLOCK {block_number}/{total_blocks} "
+                  f"| प्रविष्टियाँ {block_start + 1}"
+                  f" से {block_start + len(block)}"
+              )
+              print_both("#" * 90)
 
-              if os.path.exists(fpath):
-                  try:
-                      with open(fpath, "r", encoding="utf-8", errors="ignore") as src:
-                          lines = src.readlines()
-                          if 0 < l_num <= len(lines):
-                              target_line = lines[l_num - 1].rstrip('\n')
-                              print(f"    📝 वास्तविक कोड पंक्ति:")
-                              print(f"       {target_line}")
-                              pointer = " " * (c_num - 1) + "^" * max(1, min(len(target_line) - c_num + 1, 15))
-                              print(f"       {pointer}")
+              for offset, err in enumerate(block, 1):
+                  idx = block_start + offset
 
-                              # संभावित शब्द व सुधार सुझाव
-                              if "Unresolved reference:" in msg:
-                                  missing_word = msg.split("Unresolved reference:")[-1].strip()
-                                  print(f"    ❌ ग़लत/अनुपस्थित शब्द: '{missing_word}'")
-                                  print(f"    💡 सुधार: यह शब्द क्लास या फ़ाइल में मौजूद नहीं है। इसे डिक्लेयर करें या सही स्पेलिंग लिखें।")
-                              elif "Type mismatch:" in msg:
-                                  print(f"    ❌ टाइप विसंगति (Type Mismatch)")
-                                  print(f"    💡 सुधार: नलेबल (String?) को सेफ़ कॉल (?.) या डिफ़ॉल्ट मान (?: \"\") दें।")
-                              elif "Cannot find a parameter with this name:" in msg:
-                                  missing_param = msg.split("name:")[-1].strip()
-                                  print(f"    ❌ अज्ञात पैरामीटर: '{missing_param}'")
-                                  print(f"    💡 सुधार: मॉडल क्लास के कंस्ट्रक्टर में यह फ़ील्ड जोड़ें।")
-                  except Exception as ex:
-                      print(f"    (फ़ाइल पढ़ने में त्रुटि: {ex})")
-              print("-" * 80)
+                  print_both("\n" + "-" * 90)
+                  print_both(
+                      f"[{idx}/{len(errors)}] "
+                      f"श्रेणी: {err['category']}"
+                  )
+                  print_both("-" * 90)
 
-          print("=" * 80)
-          EOF
+                  if err["file"]:
+                      print_both(f"📁 फ़ाइल: {err['file']}")
+
+                  if err["line"]:
+                      print_both(
+                          f"📍 लाइन: {err['line']} | "
+                          f"कॉलम: {err['column']}"
+                      )
+
+                  print_both(f"⚠️ संदेश: {err['message']}")
+                  print_both(f"🔎 स्रोत: {err['origin']}")
+
+                  context = source_context(
+                      err["file"],
+                      err["line"],
+                      err["column"]
+                  )
+
+                  if context:
+                      print_both("\n📝 कोड संदर्भ:")
+                      for context_line in context.splitlines():
+                          print_both("   " + context_line)
+
+                  print_both("\n💡 संभावित जाँच / सुधार:")
+
+                  for suggestion in get_suggestions(
+                      err["category"], err["message"]
+                  ):
+                      print_both(f"   • {suggestion}")
+
+                  print_both(
+                      "   • मूल कारण की पुष्टि पूरे लॉग और संबंधित "
+                      "कोड से करें।"
+                  )
+
+          print_both("\n" + "=" * 90)
+          print_both("रिपोर्ट तैयार: " + REPORT_FILE)
+          print_both("पूरा बिल्ड लॉग: " + LOG_FILE)
+          print_both("=" * 90)
+
+          # Export machine-readable JSON for future debugging.
+          with open("build_error_report.json", "w", encoding="utf-8") as f:
+              json.dump(errors, f, ensure_ascii=False, indent=2)
+
+          print("\nJSON रिपोर्ट भी तैयार: build_error_report.json")
+          PY
+
+      - name: 9. बिल्ड लॉग और एरर रिपोर्ट अपलोड
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mera-kisan-build-diagnostics-${{ github.run_number }}
+          path: |
+            build_raw.log
+            build_error_report.txt
+            build_error_report.json
+          if-no-files-found: ignore
+          retention-days: 14
