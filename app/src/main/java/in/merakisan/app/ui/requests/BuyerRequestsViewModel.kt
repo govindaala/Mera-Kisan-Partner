@@ -1,130 +1,143 @@
 // app/src/main/java/in/merakisan/app/ui/requests/BuyerRequestsViewModel.kt
-package in.merakisan.app.ui.requests
+package `in`.merakisan.app.ui.requests
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
-import in.merakisan.app.core.network.model.BuyerRequestDto
-import in.merakisan.app.core.network.model.CreateBuyerRequestPayload
-import in.merakisan.app.core.security.SessionManager
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import `in`.merakisan.app.core.network.ApiClient
+import `in`.merakisan.app.core.network.model.BuyerRequestDto
+import `in`.merakisan.app.core.security.SessionManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-
-sealed class BuyerRequestsUiState {
-    object Loading : BuyerRequestsUiState()
-    data class Success(val requests: List<BuyerRequestDto>) : BuyerRequestsUiState()
-    data class Error(val message: String) : BuyerRequestsUiState()
-    object Empty : BuyerRequestsUiState()
-}
+import kotlinx.coroutines.withContext
 
 class BuyerRequestsViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val _uiState = MutableStateFlow<BuyerRequestsUiState>(BuyerRequestsUiState.Loading)
-    val uiState: StateFlow<BuyerRequestsUiState> = _uiState.asStateFlow()
+    private val apiService = ApiClient.getApiService(application)
+    private val sessionManager = SessionManager(application)
 
-    // स्थानीय कैश व इन-मेमोरी सूची (जब तक बैकएंड REST एंडपॉइंट से सिंक्रोनाइज़ हो)
-    private val localRequestsList = mutableListOf<BuyerRequestDto>()
+    private val _requests = MutableLiveData<List<BuyerRequestDto>>()
+    val requests: LiveData<List<BuyerRequestDto>> get() = _requests
 
-    init {
-        loadBuyerRequests()
-    }
+    private val _isLoading = MutableLiveData<Boolean>()
+    val isLoading: LiveData<Boolean> get() = _isLoading
 
-    fun loadBuyerRequests() {
-        viewModelScope.launch {
-            _uiState.value = BuyerRequestsUiState.Loading
+    private val _errorMessage = MutableLiveData<String?>()
+    val errorMessage: LiveData<String?> get() = _errorMessage
+
+    private val _isCreateSuccess = MutableLiveData<Boolean>()
+    val isCreateSuccess: LiveData<Boolean> get() = _isCreateSuccess
+
+    private var allFetchedRequests: List<BuyerRequestDto> = emptyList()
+
+    fun loadRequests() {
+        _isLoading.value = true
+        _errorMessage.value = null
+
+        viewModelScope.launch(Dispatchers.IO) {
             try {
-                // नेटवर्क विलंब सिमुलेशन और प्रारंभिक डेटा
-                delay(600)
-                if (localRequestsList.isEmpty()) {
-                    seedInitialRequests()
-                }
+                val response = apiService.getBuyerRequests()
+                if (response.isSuccessful && response.body()?.success == true) {
+                    val list = response.body()?.data ?: emptyList()
+                    allFetchedRequests = list
 
-                if (localRequestsList.isEmpty()) {
-                    _uiState.value = BuyerRequestsUiState.Empty
+                    withContext(Dispatchers.Main) {
+                        _requests.value = list
+                        _isLoading.value = false
+                        if (list.isEmpty()) {
+                            _errorMessage.value = "वर्तमान में 'मुझे चाहिए' बोर्ड पर कोई सक्रिय मांग नहीं है।"
+                        }
+                    }
                 } else {
-                    _uiState.value = BuyerRequestsUiState.Success(localRequestsList.toList())
+                    withContext(Dispatchers.Main) {
+                        allFetchedRequests = emptyList()
+                        _requests.value = emptyList()
+                        _isLoading.value = false
+                        _errorMessage.value = "मांग सूची लोड करने में असमर्थ।"
+                    }
                 }
             } catch (e: Exception) {
-                _uiState.value = BuyerRequestsUiState.Error("मांग सूची लोड करने में समस्या: ${e.localizedMessage}")
+                withContext(Dispatchers.Main) {
+                    allFetchedRequests = emptyList()
+                    _requests.value = emptyList()
+                    _isLoading.value = false
+                    _errorMessage.value = "इंटरनेट संपर्क विफलता: ${e.localizedMessage}"
+                }
             }
         }
     }
 
-    fun postNewRequest(payload: CreateBuyerRequestPayload) {
-        viewModelScope.launch {
-            val userUid = SessionManager.getUserUid(getApplication()) ?: "buyer_guest"
-            val newId = "REQ_${System.currentTimeMillis().toString().takeLast(6)}"
+    fun createBuyerRequest(
+        productName: String,
+        category: String,
+        quantity: Double,
+        unit: String,
+        targetPricePaise: Long,
+        notes: String
+    ) {
+        val user = sessionManager.getUserSession()
+        if (user == null || user.uid.isBlank()) {
+            _errorMessage.value = "मांग पोस्ट करने के लिए कृपया पहले लॉगिन करें।"
+            return
+        }
 
-            val newRequest = BuyerRequestDto(
-                requestId = newId,
-                buyerUid = userUid,
-                buyerName = "स्थानीय ग्राहक",
-                buyerPhone = "9826000000",
-                productName = payload.productName,
-                category = payload.category,
-                variety = payload.variety,
-                quantity = payload.quantity,
-                unit = payload.unit,
-                targetPricePaise = payload.targetPricePaise,
-                district = payload.district,
-                village = payload.village,
-                requiredDate = payload.requiredDate,
-                notes = payload.notes,
-                status = "ACTIVE",
-                offersCount = 0,
-                createdAt = "आज"
-            )
+        _isLoading.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val dto = BuyerRequestDto(
+                    buyerUid = user.uid,
+                    buyerName = user.name.ifBlank { "ग्राहक" },
+                    buyerPhone = user.phone.orEmpty(),
+                    productName = productName,
+                    category = category,
+                    quantity = quantity,
+                    unit = unit,
+                    targetPricePaise = targetPricePaise,
+                    district = user.district.orEmpty(),
+                    village = user.village.orEmpty(),
+                    notes = notes,
+                    status = "active"
+                )
 
-            localRequestsList.add(0, newRequest)
-            _uiState.value = BuyerRequestsUiState.Success(localRequestsList.toList())
+                val response = apiService.createBuyerRequest(dto)
+                if (response.isSuccessful && response.body()?.success == true) {
+                    withContext(Dispatchers.Main) {
+                        _isCreateSuccess.value = true
+                        _isLoading.value = false
+                        loadRequests()
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        _isCreateSuccess.value = false
+                        _isLoading.value = false
+                        _errorMessage.value = "मांग दर्ज करने में सर्वर विफलता।"
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    _isCreateSuccess.value = false
+                    _isLoading.value = false
+                    _errorMessage.value = "नेटवर्क विफलता: ${e.localizedMessage}"
+                }
+            }
         }
     }
 
-    private fun seedInitialRequests() {
-        localRequestsList.add(
-            BuyerRequestDto(
-                requestId = "REQ_1001",
-                buyerUid = "B_901",
-                buyerName = "कैलाश शर्मा",
-                buyerPhone = "9826112233",
-                productName = "देशी गेहूं (शरबती)",
-                category = "अनाज",
-                variety = "बिना केमिकल / शुद्ध",
-                quantity = 50.0,
-                unit = "kg",
-                targetPricePaise = 4200, // ₹42.00
-                village = "गरोठ",
-                district = "मंदसौर",
-                requiredDate = "15 अक्टूबर तक",
-                notes = "घर के खाने के लिए शुद्ध देशी शरबती गेहूं चाहिए।",
-                status = "ACTIVE",
-                offersCount = 2,
-                createdAt = "कल"
-            )
-        )
-        localRequestsList.add(
-            BuyerRequestDto(
-                requestId = "REQ_1002",
-                buyerUid = "B_902",
-                buyerName = "राकेश वर्मा",
-                buyerPhone = "9826445566",
-                productName = "कच्ची घानी मूंगफली तेल",
-                category = "तेल",
-                variety = "कोल्ड प्रेस्ड",
-                quantity = 10.0,
-                unit = "लीटर",
-                targetPricePaise = 22000, // ₹220.00
-                village = "शामगढ़",
-                district = "मंदसौर",
-                requiredDate = "तुरंत",
-                notes = "लकड़ी की घानी का निकला हुआ शुद्ध तेल चाहिए।",
-                status = "ACTIVE",
-                offersCount = 1,
-                createdAt = "आज"
-            )
-        )
+    fun filterRequests(query: String) {
+        val q = query.trim().lowercase()
+        if (q.isBlank()) {
+            _requests.value = allFetchedRequests
+            return
+        }
+
+        val filtered = allFetchedRequests.filter { item ->
+            item.productName.lowercase().contains(q) ||
+            item.category.lowercase().contains(q) ||
+            item.district.lowercase().contains(q) ||
+            item.notes.lowercase().contains(q)
+        }
+        _requests.value = filtered
     }
 }
