@@ -31,10 +31,6 @@ android {
                 "proguard-rules.pro"
             )
         }
-        debug {
-            // ZIP का applicationIdSuffix = ".debug" हटाया गया ताकि google-services.json से मैच हो
-            isDebuggable = true
-        }
     }
 
     compileOptions {
