@@ -32,7 +32,7 @@ android {
             )
         }
         debug {
-            // ZIP का applicationIdSuffix = ".debug" हटाया गया ताकि google-services.json से 100% मैच हो सके
+            // ZIP का applicationIdSuffix = ".debug" हटाया गया ताकि google-services.json से मैच हो
             isDebuggable = true
         }
     }
@@ -54,35 +54,33 @@ android {
 }
 
 dependencies {
-    // 1. Core UI & AndroidX (ZIP कैटलॉग से)
+    // 1. AndroidX & Material (ZIP Catalog अनुसार)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
-    implementation("androidx.activity:activity-ktx:1.9.3")
     implementation(libs.androidx.constraintlayout)
 
-    // 2. Navigation (ZIP कैटलॉग से)
+    // 2. Navigation (ZIP Catalog अनुसार)
     implementation(libs.androidx.navigation.fragment.ktx)
     implementation(libs.androidx.navigation.ui.ktx)
 
-    // 3. Lifecycle & ViewModel (ZIP कैटलॉग से)
+    // 3. Lifecycle & ViewModel (ZIP Catalog अनुसार)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation(libs.androidx.lifecycle.livedata.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
 
-    // 4. Room Database (ZIP कैटलॉग से)
+    // 4. Room Database (ZIP Catalog अनुसार)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     kapt(libs.androidx.room.compiler)
 
-    // 5. Network & Retrofit (ZIP कैटलॉग से)
+    // 5. Network & Retrofit (ZIP Catalog अनुसार)
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.gson)
     implementation(libs.okhttp.logging)
 
-    // 6. Coroutines
+    // 6. Coroutines (ZIP Catalog अनुसार)
     implementation(libs.kotlinx.coroutines.android)
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
 
     // 7. Image Loading (Glide)
     implementation("com.github.bumptech.glide:glide:4.16.0")
@@ -96,14 +94,14 @@ dependencies {
     implementation("com.google.android.gms:play-services-auth:21.3.0")
     implementation(libs.play.services.location)
 
-    // 9. WorkManager & Security
+    // 9. WorkManager & Security (ZIP Catalog अनुसार)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.security.crypto)
 
-    // 10. QR Code
+    // 10. QR Code (ZXing)
     implementation("com.google.zxing:core:3.5.3")
 
-    // 11. Testing
+    // 11. Testing (ZIP Catalog अनुसार)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
