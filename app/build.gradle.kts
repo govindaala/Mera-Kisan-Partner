@@ -1,26 +1,25 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
-    id("kotlin-kapt")
-    id("androidx.navigation.safeargs.kotlin")
+    alias(libs.plugins.kotlin.kapt)
     id("com.google.gms.google-services")
 }
 
 android {
     namespace = "in.merakisan.app"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "in.merakisan.app"
         minSdk = 24
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-
-        // Backend Base URL कॉन्फ़िगरेशन
-        buildConfigField("String", "BASE_URL", "\"https://mera-kisan-backend.vercel.app/\"")
+        vectorDrawables {
+            useSupportLibrary = true
+        }
     }
 
     buildTypes {
@@ -32,7 +31,7 @@ android {
             )
         }
         debug {
-            applicationIdSuffix = ".debug"
+            // applicationIdSuffix = ".debug" हटा दिया गया है ताकि google-services.json से 100% मैच हो
             isDebuggable = true
         }
     }
@@ -48,56 +47,64 @@ android {
 
     buildFeatures {
         viewBinding = true
-        dataBinding = false
-        buildConfig = true // ApiClient के लिए BuildConfig जनरेशन सक्षम
+        dataBinding = true
+        buildConfig = true
     }
 }
 
-kapt {
-    correctErrorTypes = true
-}
-
 dependencies {
-    // AndroidX & Material UI Core
-    implementation("androidx.core:core-ktx:1.12.0")
-    implementation("androidx.appcompat:appcompat:1.6.1")
-    implementation("com.google.android.material:material:1.11.0")
-    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
-    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.appcompat)
+    implementation(libs.material)
+    implementation(libs.androidx.activity)
+    implementation(libs.androidx.constraintlayout)
 
-    // Image Loading (Coil - UI कार्ड्स और थंबनेल्स के लिए)
-    implementation("io.coil-kt:coil:2.6.0")
-
-    // Google Sign-In Authentication
-    implementation("com.google.android.gms:play-services-auth:21.0.0")
-
-    // QR Code Generator (ZXing Core)
-    implementation("com.google.zxing:core:3.5.3")
-
-    // Navigation Component
-    implementation("androidx.navigation:navigation-fragment-ktx:2.7.7")
-    implementation("androidx.navigation:navigation-ui-ktx:2.7.7")
+    // Navigation
+    implementation(libs.androidx.navigation.fragment.ktx)
+    implementation(libs.androidx.navigation.ui.ktx)
 
     // Lifecycle & ViewModel
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
-    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.7.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
+    implementation(libs.androidx.lifecycle.viewmodel.ktx)
+    implementation(libs.androidx.lifecycle.livedata.ktx)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
 
     // Room Database
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    kapt("androidx.room:room-compiler:2.6.1")
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    kapt(libs.androidx.room.compiler)
 
-    // Networking & Retrofit
-    implementation("com.squareup.retrofit2:retrofit:2.9.0")
-    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
-    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
-    implementation("com.google.code.gson:gson:2.10.1")
+    // Network & Retrofit
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.converter.gson)
+    implementation(libs.okhttp.logging)
 
-    // WorkManager (Background Sync)
-    implementation("androidx.work:work-runtime-ktx:2.9.0")
+    // Coroutines
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.kotlinx.coroutines.core)
 
-    // Firebase BOM & Cloud Messaging
-    implementation(platform("com.google.firebase:firebase-bom:32.8.0"))
-    implementation("com.google.firebase:firebase-messaging:23.4.1")
+    // Image Loading
+    implementation(libs.glide)
+    kapt(libs.glide.compiler)
+
+    // Google Play Services & Firebase BoM
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+    implementation("com.google.firebase:firebase-analytics")
+    implementation("com.google.firebase:firebase-auth")
+    implementation("com.google.firebase:firebase-messaging")
+    implementation(libs.play.services.auth)
+    implementation(libs.play.services.location)
+
+    // WorkManager
+    implementation(libs.androidx.work.runtime.ktx)
+
+    // Security Crypto
+    implementation(libs.androidx.security.crypto)
+
+    // QR Code
+    implementation(libs.zxing.core)
+
+    // Testing
+    testImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.espresso.core)
 }
