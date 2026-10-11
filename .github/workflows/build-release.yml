@@ -33,7 +33,8 @@ jobs:
       - name: 3. Gradle टूल सेटअप
         uses: gradle/actions/setup-gradle@v3
         with:
-          cache-disabled: true
+          gradle-version: "8.5"
+
 
       - name: 4. ऑटो-सैनिटाइज़र व एनवायरनमेंट तैयारी
         run: |
