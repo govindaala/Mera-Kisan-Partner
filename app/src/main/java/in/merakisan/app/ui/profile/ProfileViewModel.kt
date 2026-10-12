@@ -52,7 +52,9 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                 if (resp.isSuccessful && resp.body()?.success == true) {
                     val u = resp.body()?.data
                     if (u != null) {
+                        val currentToken = sessionManager.getAuthToken().orEmpty()
                         sessionManager.saveSession(
+                            token = currentToken,
                             uid = u.uid,
                             name = u.name,
                             phone = u.phone,
@@ -74,7 +76,9 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
 
     fun updateRole(newRole: String) {
         val current = _userProfile.value ?: return
+        val currentToken = sessionManager.getAuthToken().orEmpty()
         sessionManager.saveSession(
+            token = currentToken,
             uid = current.uid,
             name = current.name,
             phone = current.phone,
@@ -83,7 +87,6 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         _userProfile.value = current.copy(currentRole = newRole, role = newRole)
     }
 
-    // ProfileFragment:92 के लिए logout फ़ंक्शन
     fun logout() {
         sessionManager.clearSession()
         _userProfile.value = null
