@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import `in`.merakisan.app.core.network.ApiClient
 import `in`.merakisan.app.core.network.model.BuyerRequestDto
+import `in`.merakisan.app.core.network.model.CreateBuyerRequestPayload
 import `in`.merakisan.app.core.security.SessionManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -47,8 +48,29 @@ class BuyerRequestsViewModel(application: Application) : AndroidViewModel(applic
         }
     }
 
+    // BuyerRequestsFragment:146 के लिए CreateBuyerRequestPayload ओवरलोड
+    fun postNewRequest(payload: CreateBuyerRequestPayload) {
+        val user = sessionManager.getUserSession()
+        val dto = BuyerRequestDto(
+            requestId = UUID.randomUUID().toString(),
+            buyerUid = user.uid,
+            buyerName = user.name.ifBlank { "ग्राहक" },
+            buyerPhone = user.phone,
+            productName = payload.productName,
+            category = payload.category,
+            quantity = payload.quantity,
+            unit = payload.unit,
+            targetPricePaise = payload.targetPricePaise,
+            district = user.role,
+            village = "",
+            notes = payload.notes,
+            status = "active"
+        )
+        postNewRequest(dto)
+    }
+
     fun postNewRequest(request: BuyerRequestDto) {
-        val finalRequest = if (request.requestId.isNullOrBlank()) {
+        val finalRequest = if (request.requestId.isBlank()) {
             request.copy(requestId = UUID.randomUUID().toString())
         } else {
             request
@@ -59,33 +81,6 @@ class BuyerRequestsViewModel(application: Application) : AndroidViewModel(applic
                 if (resp.isSuccessful) loadBuyerRequests()
             } catch (_: Exception) {}
         }
-    }
-
-    fun createBuyerRequest(
-        productName: String,
-        category: String,
-        quantity: Double,
-        unit: String,
-        targetPricePaise: Long,
-        notes: String
-    ) {
-        val user = sessionManager.getUserSession()
-        val dto = BuyerRequestDto(
-            requestId = UUID.randomUUID().toString(),
-            buyerUid = user.uid,
-            buyerName = user.name.ifBlank { "ग्राहक" },
-            buyerPhone = user.phone,
-            productName = productName,
-            category = category,
-            quantity = quantity,
-            unit = unit,
-            targetPricePaise = targetPricePaise,
-            district = "",
-            village = "",
-            notes = notes,
-            status = "active"
-        )
-        postNewRequest(dto)
     }
 
     fun filterRequests(query: String) {
