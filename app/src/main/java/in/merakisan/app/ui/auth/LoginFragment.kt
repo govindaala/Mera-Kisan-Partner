@@ -33,7 +33,6 @@ class LoginFragment : Fragment() {
     private val viewModel: AuthViewModel by viewModels()
     private lateinit var googleSignInClient: GoogleSignInClient
 
-    // Google Sign-In Intent Result Launcher
     private val googleSignInLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -43,11 +42,11 @@ class LoginFragment : Fragment() {
                 val account = task.getResult(ApiException::class.java)
                 viewModel.firebaseAuthWithGoogle(account)
             } catch (e: ApiException) {
-                Toast.makeText(context, "Google साइन-इन विफल: ${e.statusCode}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Google sign-in fail hua: ${e.statusCode}", Toast.LENGTH_SHORT).show()
                 viewModel.resetError()
             }
         } else {
-            Toast.makeText(context, "साइन-इन रद्द कर दिया गया", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Sign-in cancel kar diya gaya", Toast.LENGTH_SHORT).show()
             viewModel.resetError()
         }
     }
@@ -70,7 +69,6 @@ class LoginFragment : Fragment() {
     }
 
     private fun setupGoogleSignInClient() {
-        // Firebase Google-Services से वेब क्लाइंट आईडी फेच करना
         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestIdToken(getString(R.string.default_web_client_id))
             .requestEmail()
@@ -81,7 +79,6 @@ class LoginFragment : Fragment() {
     }
 
     private fun setupListeners() {
-        // 1. Google Sign-In बटन क्लिक
         findView("btnGoogleSignIn")?.setOnClickListener {
             googleSignInClient.signOut().addOnCompleteListener {
                 val signInIntent: Intent = googleSignInClient.signInIntent
@@ -89,7 +86,6 @@ class LoginFragment : Fragment() {
             }
         }
 
-        // 2. अतिथि / जारी रखें बटन (अतिरिक्त विकल्प)
         findView("btnContinueLogin")?.setOnClickListener {
             viewModel.continueAsGuest()
         }
@@ -105,17 +101,24 @@ class LoginFragment : Fragment() {
                         }
                         is AuthUiState.GoogleLinked -> {
                             findView("pbLoginLoading")?.isVisible = false
-                            // Google अकाउंट लिंक होने के बाद रोल चयन स्क्रीन पर जाएँ
-                            try {
-                                findNavController().navigate(R.id.roleSelectionFragment)
-                            } catch (_: Exception) {}
+                            val roleId = resources.getIdentifier("roleSelectionFragment", "id", requireContext().packageName)
+                            if (roleId != 0) {
+                                try {
+                                    findNavController().navigate(roleId)
+                                } catch (_: Exception) {}
+                            }
                         }
                         is AuthUiState.Success -> {
                             findView("pbLoginLoading")?.isVisible = false
-                            Toast.makeText(requireContext(), "स्वागत है, ${state.name}!", Toast.LENGTH_SHORT).show()
-                            try {
-                                findNavController().navigate(R.id.mainActivity)
-                            } catch (_: Exception) {}
+                            Toast.makeText(requireContext(), "Swagat hai, ${state.name}!", Toast.LENGTH_SHORT).show()
+                            val homeId = resources.getIdentifier("homeFragment", "id", requireContext().packageName)
+                            val roleId = resources.getIdentifier("roleSelectionFragment", "id", requireContext().packageName)
+                            val targetId = if (homeId != 0) homeId else roleId
+                            if (targetId != 0) {
+                                try {
+                                    findNavController().navigate(targetId)
+                                } catch (_: Exception) {}
+                            }
                         }
                         is AuthUiState.Error -> {
                             findView("pbLoginLoading")?.isVisible = false
