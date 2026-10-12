@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.Flow
 
 /**
  * MERA KISAN — ऑर्डर रूम DAO
- * किसान और खरीदार दोनों भूमिकाओं के लिए रिएक्टिव ऑफ़लाइन डेटा स्ट्रीम
+ * KAPT-सुरक्षित इंटरफ़ेस (बिना डिफ़ॉल्ट पैरामीटर के स्पष्ट SQL मैपिंग)
  */
 @Dao
 interface OrderDao {
@@ -31,7 +31,7 @@ interface OrderDao {
     suspend fun insertOrder(order: OrderEntity)
 
     @Query("UPDATE orders SET orderStatus = :newStatus, updatedAt = :timestamp WHERE orderId = :orderId")
-    suspend fun updateOrderStatus(orderId: String, newStatus: String, timestamp: Long = System.currentTimeMillis())
+    suspend fun updateOrderStatus(orderId: String, newStatus: String, timestamp: Long)
 
     @Query("DELETE FROM orders WHERE orderId = :orderId")
     suspend fun deleteOrderById(orderId: String)
