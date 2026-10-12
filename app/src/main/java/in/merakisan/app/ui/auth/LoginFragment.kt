@@ -1,5 +1,5 @@
 // app/src/main/java/in/merakisan/app/ui/auth/LoginFragment.kt
-package in.merakisan.app.ui.auth
+package `in`.merakisan.app.ui.auth
 
 import android.app.Activity
 import android.content.Intent
@@ -9,14 +9,19 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.findNavController
-import in.merakisan.app.R
-import in.merakisan.app.core.security.GoogleAuthManager
-import in.merakisan.app.core.security.SessionManager
-import in.merakisan.app.databinding.FragmentLoginBinding
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInClient
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
+import `in`.merakisan.app.R
+import `in`.merakisan.app.databinding.FragmentLoginBinding
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -26,25 +31,24 @@ class LoginFragment : Fragment() {
     private val binding get() = _binding!!
 
     private val viewModel: AuthViewModel by viewModels()
-    private lateinit var googleAuthManager: GoogleAuthManager
+    private lateinit var googleSignInClient: GoogleSignInClient
 
+    // Google Sign-In Intent Result Launcher
     private val googleSignInLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            val parseResult = googleAuthManager.parseSignInResult(result.data)
-            if (parseResult.isSuccess) {
-                val account = parseResult.getOrNull()
-                if (account != null) {
-                    viewModel.onGoogleSignInSuccess(account)
-                }
-            } else {
-                Toast.makeText(
-                    requireContext(),
-                    parseResult.exceptionOrNull()?.message ?: "Google साइन-इन विफल",
-                    Toast.LENGTH_SHORT
-                ).show()
+            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            try {
+                val account = task.getResult(ApiException::class.java)
+                viewModel.firebaseAuthWithGoogle(account)
+            } catch (e: ApiException) {
+                Toast.makeText(context, "Google साइन-इन विफल: ${e.statusCode}", Toast.LENGTH_SHORT).show()
+                viewModel.resetError()
             }
+        } else {
+            Toast.makeText(context, "साइन-इन रद्द कर दिया गया", Toast.LENGTH_SHORT).show()
+            viewModel.resetError()
         }
     }
 
@@ -59,69 +63,78 @@ class LoginFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        googleAuthManager = GoogleAuthManager(requireContext())
 
-        setupActions()
-        observeViewModel()
+        setupGoogleSignInClient()
+        setupListeners()
+        observeAuthState()
     }
 
-    private fun setupActions() {
-        binding.btnGoogleSignIn.setOnClickListener {
-            val intent = googleAuthManager.getSignInIntent()
-            googleSignInLauncher.launch(intent)
+    private fun setupGoogleSignInClient() {
+        // Firebase Google-Services से वेब क्लाइंट आईडी फेच करना
+        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestIdToken(getString(R.string.default_web_client_id))
+            .requestEmail()
+            .requestProfile()
+            .build()
+
+        googleSignInClient = GoogleSignIn.getClient(requireActivity(), gso)
+    }
+
+    private fun setupListeners() {
+        // 1. Google Sign-In बटन क्लिक
+        findView("btnGoogleSignIn")?.setOnClickListener {
+            googleSignInClient.signOut().addOnCompleteListener {
+                val signInIntent: Intent = googleSignInClient.signInIntent
+                googleSignInLauncher.launch(signInIntent)
+            }
         }
 
-        binding.btnContinueLogin.setOnClickListener {
-            val phone = binding.etMobileNumber.text.toString().trim()
-            viewModel.finalizeAuthentication(phone)
-        }
-
-        binding.tvSkipLogin.setOnClickListener {
+        // 2. अतिथि / जारी रखें बटन (अतिरिक्त विकल्प)
+        findView("btnContinueLogin")?.setOnClickListener {
             viewModel.continueAsGuest()
         }
     }
 
-    private fun observeViewModel() {
+    private fun observeAuthState() {
         viewLifecycleOwner.lifecycleScope.launch {
-            viewModel.uiState.collectLatest { state ->
-                when (state) {
-                    is AuthUiState.Idle -> {
-                        binding.pbLoginLoading.visibility = View.GONE
-                        binding.btnContinueLogin.isEnabled = true
-                    }
-                    is AuthUiState.Loading -> {
-                        binding.pbLoginLoading.visibility = View.VISIBLE
-                        binding.btnContinueLogin.isEnabled = false
-                    }
-                    is AuthUiState.GoogleLinked -> {
-                        binding.pbLoginLoading.visibility = View.GONE
-                        binding.btnContinueLogin.isEnabled = true
-                        binding.llGoogleProfileSummary.visibility = View.VISIBLE
-                        binding.tvGoogleUserName.text = "सत्यापित: ${state.account.displayName}"
-                        binding.tvGoogleUserEmail.text = state.account.email
-                        Toast.makeText(requireContext(), "Google खाता लिंक हो गया!", Toast.LENGTH_SHORT).show()
-                    }
-                    is AuthUiState.Success -> {
-                        binding.pbLoginLoading.visibility = View.GONE
-                        Toast.makeText(requireContext(), "स्वागत है, ${state.name}!", Toast.LENGTH_SHORT).show()
-
-                        // भूमिका चयन स्क्रीन पर आगे बढ़ें (यदि पहली बार है)
-                        val role = SessionManager.getUserRole(requireContext())
-                        if (role.isBlank()) {
-                            findNavController().navigate(R.id.action_login_to_roleSelection)
-                        } else {
-                            findNavController().navigate(R.id.action_login_to_home)
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.uiState.collectLatest { state ->
+                    when (state) {
+                        is AuthUiState.Loading -> {
+                            findView("pbLoginLoading")?.isVisible = true
                         }
-                    }
-                    is AuthUiState.Error -> {
-                        binding.pbLoginLoading.visibility = View.GONE
-                        binding.btnContinueLogin.isEnabled = true
-                        Toast.makeText(requireContext(), state.message, Toast.LENGTH_LONG).show()
-                        viewModel.resetError()
+                        is AuthUiState.GoogleLinked -> {
+                            findView("pbLoginLoading")?.isVisible = false
+                            // Google अकाउंट लिंक होने के बाद रोल चयन स्क्रीन पर जाएँ
+                            try {
+                                findNavController().navigate(R.id.roleSelectionFragment)
+                            } catch (_: Exception) {}
+                        }
+                        is AuthUiState.Success -> {
+                            findView("pbLoginLoading")?.isVisible = false
+                            Toast.makeText(requireContext(), "स्वागत है, ${state.name}!", Toast.LENGTH_SHORT).show()
+                            try {
+                                findNavController().navigate(R.id.mainActivity)
+                            } catch (_: Exception) {}
+                        }
+                        is AuthUiState.Error -> {
+                            findView("pbLoginLoading")?.isVisible = false
+                            if (state.message.isNotBlank()) {
+                                Toast.makeText(requireContext(), state.message, Toast.LENGTH_LONG).show()
+                            }
+                        }
+                        else -> {
+                            findView("pbLoginLoading")?.isVisible = false
+                        }
                     }
                 }
             }
         }
+    }
+
+    private fun findView(name: String): View? {
+        val id = resources.getIdentifier(name, "id", requireContext().packageName)
+        return if (id != 0) binding.root.findViewById(id) else null
     }
 
     override fun onDestroyView() {
