@@ -15,7 +15,13 @@ data class UserProfileUiModel(
     val uid: String = "",
     val name: String = "",
     val phone: String = "",
-    val currentRole: String = "both"
+    val email: String = "",
+    val currentRole: String = "both",
+    val role: String = currentRole,
+    val village: String = "",
+    val district: String = "",
+    val state: String = "Madhya Pradesh",
+    val verificationStatus: String = "unverified"
 )
 
 class ProfileViewModel(application: Application) : AndroidViewModel(application) {
@@ -31,7 +37,14 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
 
     fun loadProfile() {
         val session = sessionManager.getUserSession()
-        _userProfile.value = UserProfileUiModel(session.uid, session.name, session.phone, session.role)
+        _userProfile.value = UserProfileUiModel(
+            uid = session.uid,
+            name = session.name,
+            phone = session.phone,
+            email = session.email,
+            currentRole = session.role,
+            role = session.role
+        )
 
         viewModelScope.launch {
             try {
@@ -39,8 +52,20 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                 if (resp.isSuccessful && resp.body()?.success == true) {
                     val u = resp.body()?.data
                     if (u != null) {
-                        sessionManager.saveSession(uid = u.uid, name = u.name, phone = u.phone, role = u.role)
-                        _userProfile.value = UserProfileUiModel(u.uid, u.name, u.phone, u.role)
+                        sessionManager.saveSession(
+                            uid = u.uid,
+                            name = u.name,
+                            phone = u.phone,
+                            role = u.role
+                        )
+                        _userProfile.value = UserProfileUiModel(
+                            uid = u.uid,
+                            name = u.name,
+                            phone = u.phone,
+                            email = u.email,
+                            currentRole = u.role,
+                            role = u.role
+                        )
                     }
                 }
             } catch (_: Exception) {}
@@ -49,7 +74,12 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
 
     fun updateRole(newRole: String) {
         val current = _userProfile.value ?: return
-        sessionManager.saveSession(uid = current.uid, name = current.name, phone = current.phone, role = newRole)
-        _userProfile.value = current.copy(currentRole = newRole)
+        sessionManager.saveSession(
+            uid = current.uid,
+            name = current.name,
+            phone = current.phone,
+            role = newRole
+        )
+        _userProfile.value = current.copy(currentRole = newRole, role = newRole)
     }
 }
