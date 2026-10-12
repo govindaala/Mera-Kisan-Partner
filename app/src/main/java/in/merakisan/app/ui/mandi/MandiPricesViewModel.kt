@@ -3,80 +3,41 @@ package `in`.merakisan.app.ui.mandi
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import `in`.merakisan.app.core.network.ApiClient
 import `in`.merakisan.app.core.network.model.MandiPriceDto
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+
+sealed class MandiUiState {
+    object FeatureDisabled : MandiUiState()
+    object Loading : MandiUiState()
+    data class Success(val prices: List<MandiPriceDto> = emptyList()) : MandiUiState()
+    data class Empty(val message: String = "आज का कोई मंडी भाव उपलब्ध नहीं है।") : MandiUiState()
+    data class Error(val message: String = "") : MandiUiState()
+}
 
 class MandiPricesViewModel(application: Application) : AndroidViewModel(application) {
-
     private val apiService = ApiClient.getApiService(application)
+    private val _uiState = MutableStateFlow<MandiUiState>(MandiUiState.Loading)
+    val uiState: StateFlow<MandiUiState> = _uiState.asStateFlow()
 
-    private val _mandiPrices = MutableLiveData<List<MandiPriceDto>>()
-    val mandiPrices: LiveData<List<MandiPriceDto>> get() = _mandiPrices
-
-    private val _isLoading = MutableLiveData<Boolean>()
-    val isLoading: LiveData<Boolean> get() = _isLoading
-
-    private val _errorMessage = MutableLiveData<String?>()
-    val errorMessage: LiveData<String?> get() = _errorMessage
-
-    private var allFetchedPrices: List<MandiPriceDto> = emptyList()
-
-    fun loadMandiPrices(district: String? = null) {
-        _isLoading.value = true
-        _errorMessage.value = null
-
-        viewModelScope.launch(Dispatchers.IO) {
+    fun loadMandiPrices(district: String? = null, forceRefresh: Boolean = false) {
+        _uiState.value = MandiUiState.Loading
+        viewModelScope.launch {
             try {
-                val response = apiService.getMandiPrices(district)
-                if (response.isSuccessful && response.body()?.success == true) {
-                    val list = response.body()?.data ?: emptyList()
-                    allFetchedPrices = list
-
-                    withContext(Dispatchers.Main) {
-                        _mandiPrices.value = list
-                        _isLoading.value = false
-                        if (list.isEmpty()) {
-                            _errorMessage.value = "इस क्षेत्र के लिए आज का कोई मंडी भाव उपलब्ध नहीं है।"
-                        }
-                    }
+                val resp = apiService.getMandiPrices(district)
+                if (resp.isSuccessful && resp.body()?.success == true) {
+                    val list = resp.body()?.data ?: emptyList()
+                    _uiState.value = if (list.isEmpty()) MandiUiState.Empty() else MandiUiState.Success(list)
                 } else {
-                    withContext(Dispatchers.Main) {
-                        allFetchedPrices = emptyList()
-                        _mandiPrices.value = emptyList()
-                        _isLoading.value = false
-                        _errorMessage.value = "मंडी भाव सर्वर से प्राप्त नहीं हो सके।"
-                    }
+                    _uiState.value = MandiUiState.Empty()
                 }
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    allFetchedPrices = emptyList()
-                    _mandiPrices.value = emptyList()
-                    _isLoading.value = false
-                    _errorMessage.value = "नेटवर्क कनेक्शन अनुपलब्ध है। कृपया इंटरनेट चालू करें।"
-                }
+                _uiState.value = MandiUiState.Error(e.localizedMessage ?: "नेटवर्क त्रुटि")
             }
         }
-    }
-
-    fun filterPrices(query: String) {
-        val q = query.trim().lowercase()
-        if (q.isBlank()) {
-            _mandiPrices.value = allFetchedPrices
-            return
-        }
-
-        val filtered = allFetchedPrices.filter { item ->
-            item.commodity.lowercase().contains(q) ||
-            item.market.lowercase().contains(q) ||
-            item.district.lowercase().contains(q) ||
-            item.variety.orEmpty().lowercase().contains(q)
-        }
-        _mandiPrices.value = filtered
     }
 }
