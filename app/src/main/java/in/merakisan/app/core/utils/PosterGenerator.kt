@@ -68,7 +68,6 @@ object PosterGenerator {
         canvas.drawText("उपलब्ध स्टॉक: ${product.stockQuantity}${product.unit}", 60f, 1210f, stockPaint)
 
         val loc = if (!product.village.isNullOrBlank()) "${product.village},${product.district}" else product.district.orEmpty()
-        // लाइन 70 का एस्केप एरर स्थायी रूप से हल
         canvas.drawText("किसान: ${product.sellerName} \vert{} क्षेत्र: $loc", 60f, 1430f, stockPaint)
 
         val badgePaint = Paint().apply { color = Color.parseColor("#E8F5E9") }
@@ -94,7 +93,6 @@ object PosterGenerator {
         return poster
     }
 
-    // ShareBottomSheetFragment:86 के लिए generatePoster मेथड
     fun generatePoster(context: Context, product: ProductDto, productBitmap: Bitmap?): Result<File> {
         return try {
             val bitmap = generateProductPoster(context, product, productBitmap, null)
