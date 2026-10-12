@@ -68,7 +68,7 @@ object PosterGenerator {
         canvas.drawText("उपलब्ध स्टॉक: ${product.stockQuantity}${product.unit}", 60f, 1210f, stockPaint)
 
         val loc = if (!product.village.isNullOrBlank()) "${product.village},${product.district}" else product.district.orEmpty()
-        // लाइन 71 का फिक्स: कोई \v या अवैध एस्केप नहीं, सीधा पाइप सिंबल
+        // FIX: Koi \v ya \vert{} nahi, seedha standard pipe symbol
         canvas.drawText("किसान: ${product.sellerName} \vert{} क्षेत्र: $loc", 60f, 1430f, stockPaint)
 
         val badgePaint = Paint().apply { color = Color.parseColor("#E8F5E9") }
