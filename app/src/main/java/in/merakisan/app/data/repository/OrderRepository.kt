@@ -16,8 +16,8 @@ import kotlinx.coroutines.withContext
 import java.util.UUID
 
 /**
- * MERA KISAN — सेंट्रल ऑर्डर रिपॉजिटरी
- * नेटवर्क + लोकल रूम डेटाबेस को सिंक्रनाइज़ करता है (Offline-First Architecture)
+ * MERA KISAN — एकीकृत ऑर्डर रिपॉजिटरी
+ * नेटवर्क और रूम डेटाबेस के बीच वास्तविक समय में द्विमार्गी डेटा सिंक
  */
 class OrderRepository(private val context: Context) {
 
@@ -99,7 +99,7 @@ class OrderRepository(private val context: Context) {
             val req = UpdateOrderStatusRequest(nextStatus = nextStatus, status = nextStatus, notes = notes)
             val response = apiService.updateOrderStatus(orderId, req)
             if (response.isSuccessful) {
-                orderDao.updateOrderStatus(orderId, nextStatus)
+                orderDao.updateOrderStatus(orderId, nextStatus, System.currentTimeMillis())
                 Result.success(true)
             } else {
                 Result.failure(Exception("स्थिति अपडेट विफल"))
