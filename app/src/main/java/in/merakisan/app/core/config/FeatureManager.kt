@@ -16,7 +16,8 @@ object FeatureManager {
         "buyer_request" to true,
         "admob" to false,
         "chat" to false,
-        "banner_enabled" to true
+        "banner_enabled" to true,
+        "oil_marketplace" to false
     )
 
     fun isEnabled(context: Context, featureKey: String): Boolean {
@@ -29,7 +30,11 @@ object FeatureManager {
         prefs.edit().putBoolean(key, enabled).apply()
     }
 
-    suspend fun syncRemoteConfig(context: Context) {}
+    suspend fun syncRemoteConfig(context: Context): Boolean {
+        return true
+    }
+
     fun isMaintenanceMode(context: Context): Boolean = false
+
     fun getMaintenanceMessage(context: Context): String = "सिस्टम मेंटेनेंस जारी है।"
 }
