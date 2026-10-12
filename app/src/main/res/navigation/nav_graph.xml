@@ -28,7 +28,7 @@
             app:popUpToInclusive="true" />
     </fragment>
 
-    <!-- 2. Google & Phone Login Screen -->
+    <!-- 2. Login Screen -->
     <fragment
         android:id="@+id/loginFragment"
         android:name="in.merakisan.app.ui.auth.LoginFragment"
@@ -44,12 +44,17 @@
             app:popUpToInclusive="true" />
     </fragment>
 
-    <!-- 3. Role Selection Screen (Farmer, Buyer, Both) -->
+    <!-- 3. Role Selection Screen (action_roleSelection_to_home & action_role_to_home dono included) -->
     <fragment
         android:id="@+id/roleSelectionFragment"
         android:name="in.merakisan.app.ui.auth.RoleSelectionFragment"
         android:label="भूमिका चयन"
         tools:layout="@layout/fragment_role_selection">
+        <action
+            android:id="@+id/action_roleSelection_to_home"
+            app:destination="@id/homeFragment"
+            app:popUpTo="@id/roleSelectionFragment"
+            app:popUpToInclusive="true" />
         <action
             android:id="@+id/action_role_to_home"
             app:destination="@id/homeFragment"
@@ -94,7 +99,7 @@
             android:defaultValue="" />
     </fragment>
 
-    <!-- 7. Farmer Add Crop / Product Screen -->
+    <!-- 7. Add Product Screen -->
     <fragment
         android:id="@+id/addProductFragment"
         android:name="in.merakisan.app.ui.farmer.AddProductFragment"
@@ -124,7 +129,7 @@
             android:defaultValue="" />
     </fragment>
 
-    <!-- 10. Buyer Requests (Demand Board) Screen -->
+    <!-- 10. Buyer Requests Screen -->
     <fragment
         android:id="@+id/buyerRequestsFragment"
         android:name="in.merakisan.app.ui.requests.BuyerRequestsFragment"
