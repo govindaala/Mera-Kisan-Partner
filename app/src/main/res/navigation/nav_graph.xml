@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- app/src/main/res/navigation/nav_graph.xml -->
 <navigation xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -18,53 +17,51 @@
             app:popUpTo="@id/splashFragment"
             app:popUpToInclusive="true" />
         <action
-            android:id="@+id/action_splash_to_roleSelection"
-            app:destination="@id/roleSelectionFragment"
+            android:id="@+id/action_splash_to_home"
+            app:destination="@id/homeFragment"
             app:popUpTo="@id/splashFragment"
             app:popUpToInclusive="true" />
         <action
-            android:id="@+id/action_splash_to_home"
-            app:destination="@id/nav_home"
+            android:id="@+id/action_splash_to_role"
+            app:destination="@id/roleSelectionFragment"
             app:popUpTo="@id/splashFragment"
             app:popUpToInclusive="true" />
     </fragment>
 
-    <!-- 2. Login Screen (Google Sign-In + Trusted Mobile Input) -->
+    <!-- 2. Google & Phone Login Screen -->
     <fragment
         android:id="@+id/loginFragment"
         android:name="in.merakisan.app.ui.auth.LoginFragment"
         android:label="लॉगिन"
         tools:layout="@layout/fragment_login">
         <action
-            android:id="@+id/action_login_to_roleSelection"
-            app:destination="@id/roleSelectionFragment"
-            app:popUpTo="@id/loginFragment"
-            app:popUpToInclusive="true" />
+            android:id="@+id/action_login_to_role"
+            app:destination="@id/roleSelectionFragment" />
         <action
             android:id="@+id/action_login_to_home"
-            app:destination="@id/nav_home"
+            app:destination="@id/homeFragment"
             app:popUpTo="@id/loginFragment"
             app:popUpToInclusive="true" />
     </fragment>
 
-    <!-- 3. Role Selection (Farmer / Buyer / Both) -->
+    <!-- 3. Role Selection Screen (Farmer, Buyer, Both) -->
     <fragment
         android:id="@+id/roleSelectionFragment"
         android:name="in.merakisan.app.ui.auth.RoleSelectionFragment"
         android:label="भूमिका चयन"
         tools:layout="@layout/fragment_role_selection">
         <action
-            android:id="@+id/action_roleSelection_to_home"
-            app:destination="@id/nav_home"
+            android:id="@+id/action_role_to_home"
+            app:destination="@id/homeFragment"
             app:popUpTo="@id/roleSelectionFragment"
             app:popUpToInclusive="true" />
     </fragment>
 
-    <!-- 4. Core Bottom Nav Destinations -->
+    <!-- 4. Home Screen -->
     <fragment
-        android:id="@+id/nav_home"
+        android:id="@+id/homeFragment"
         android:name="in.merakisan.app.ui.home.HomeFragment"
-        android:label="MERA KISAN"
+        android:label="होम"
         tools:layout="@layout/fragment_home">
         <action
             android:id="@+id/action_home_to_productDetail"
@@ -72,13 +69,11 @@
         <action
             android:id="@+id/action_home_to_addProduct"
             app:destination="@id/addProductFragment" />
-        <action
-            android:id="@+id/action_home_to_mandiPrices"
-            app:destination="@id/mandiPricesFragment" />
     </fragment>
 
+    <!-- 5. Marketplace Screen -->
     <fragment
-        android:id="@+id/nav_marketplace"
+        android:id="@+id/marketplaceFragment"
         android:name="in.merakisan.app.ui.marketplace.MarketplaceFragment"
         android:label="बाज़ार"
         tools:layout="@layout/fragment_marketplace">
@@ -87,70 +82,80 @@
             app:destination="@id/productDetailFragment" />
     </fragment>
 
+    <!-- 6. Product Detail Screen -->
     <fragment
-        android:id="@+id/nav_buyer_requests"
-        android:name="in.merakisan.app.ui.requests.BuyerRequestsFragment"
-        android:label="मुझे चाहिए"
-        tools:layout="@layout/fragment_buyer_requests" />
-
-    <fragment
-        android:id="@+id/nav_favorites"
-        android:name="in.merakisan.app.ui.favorites.FavoritesFragment"
-        android:label="पसंदीदा"
-        tools:layout="@layout/fragment_favorites">
-        <action
-            android:id="@+id/action_favorites_to_productDetail"
-            app:destination="@id/productDetailFragment" />
+        android:id="@+id/productDetailFragment"
+        android:name="in.merakisan.app.ui.marketplace.ProductDetailFragment"
+        android:label="उत्पाद विवरण"
+        tools:layout="@layout/fragment_product_detail">
+        <argument
+            android:name="productId"
+            app:argType="string"
+            android:defaultValue="" />
     </fragment>
 
+    <!-- 7. Farmer Add Crop / Product Screen -->
     <fragment
-        android:id="@+id/nav_orders"
+        android:id="@+id/addProductFragment"
+        android:name="in.merakisan.app.ui.farmer.AddProductFragment"
+        android:label="फसल जोड़ें"
+        tools:layout="@layout/fragment_add_product" />
+
+    <!-- 8. Orders Screen -->
+    <fragment
+        android:id="@+id/ordersFragment"
         android:name="in.merakisan.app.ui.orders.OrdersFragment"
-        android:label="मेरे ऑर्डर्स"
+        android:label="ऑर्डर्स"
         tools:layout="@layout/fragment_orders">
         <action
             android:id="@+id/action_orders_to_orderDetail"
             app:destination="@id/orderDetailFragment" />
     </fragment>
 
-    <fragment
-        android:id="@+id/nav_profile"
-        android:name="in.merakisan.app.ui.profile.ProfileFragment"
-        android:label="मेरी प्रोफ़ाइल"
-        tools:layout="@layout/fragment_profile" />
-
-    <!-- 5. Secondary Screens -->
-    <fragment
-        android:id="@+id/productDetailFragment"
-        android:name="in.merakisan.app.ui.marketplace.ProductDetailFragment"
-        android:label="फसल विवरण"
-        tools:layout="@layout/fragment_product_detail">
-        <argument
-            android:name="productId"
-            app:argType="string" />
-    </fragment>
-
-    <fragment
-        android:id="@+id/addProductFragment"
-        android:name="in.merakisan.app.ui.farmer.AddProductFragment"
-        android:label="नई फसल जोड़ें"
-        tools:layout="@layout/fragment_add_product" />
-
+    <!-- 9. Order Detail Screen -->
     <fragment
         android:id="@+id/orderDetailFragment"
         android:name="in.merakisan.app.ui.orders.OrderDetailFragment"
-        android:label="ऑर्डर स्थिति"
+        android:label="ऑर्डर विवरण"
         tools:layout="@layout/fragment_order_detail">
         <argument
             android:name="orderId"
-            app:argType="string" />
+            app:argType="string"
+            android:defaultValue="" />
     </fragment>
 
-    <!-- 6. Mandi Prices Screen (Feature Flag Controlled) -->
+    <!-- 10. Buyer Requests (Demand Board) Screen -->
+    <fragment
+        android:id="@+id/buyerRequestsFragment"
+        android:name="in.merakisan.app.ui.requests.BuyerRequestsFragment"
+        android:label="मांग बोर्ड"
+        tools:layout="@layout/fragment_buyer_requests" />
+
+    <!-- 11. Favorites Screen -->
+    <fragment
+        android:id="@+id/favoritesFragment"
+        android:name="in.merakisan.app.ui.favorites.FavoritesFragment"
+        android:label="पसंदीदा"
+        tools:layout="@layout/fragment_favorites" />
+
+    <!-- 12. Mandi Prices Screen -->
     <fragment
         android:id="@+id/mandiPricesFragment"
         android:name="in.merakisan.app.ui.mandi.MandiPricesFragment"
         android:label="मंडी भाव"
         tools:layout="@layout/fragment_mandi_prices" />
+
+    <!-- 13. Profile Screen -->
+    <fragment
+        android:id="@+id/profileFragment"
+        android:name="in.merakisan.app.ui.profile.ProfileFragment"
+        android:label="प्रोफाइल"
+        tools:layout="@layout/fragment_profile">
+        <action
+            android:id="@+id/action_profile_to_login"
+            app:destination="@id/loginFragment"
+            app:popUpTo="@id/nav_graph"
+            app:popUpToInclusive="true" />
+    </fragment>
 
 </navigation>
