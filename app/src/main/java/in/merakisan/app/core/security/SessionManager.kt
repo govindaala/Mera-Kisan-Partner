@@ -1,3 +1,4 @@
+// app/src/main/java/in/merakisan/app/core/security/SessionManager.kt
 package `in`.merakisan.app.core.security
 
 import android.content.Context
@@ -44,21 +45,18 @@ class SessionManager(private val context: Context) {
             context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).edit().putString(KEY_FCM_TOKEN, token).apply()
         }
 
+        // Static helper RoleSelectionFragment ke liye
         @JvmStatic
-        @JvmOverloads
         fun saveSession(
-            context: Context? = null,
-            token: String = "",
-            uid: String = "",
-            userId: String = uid,
+            context: Context,
+            token: String,
+            uid: String,
             name: String = "",
             phone: String = "",
             role: String = "both"
         ) {
-            val ctx = context ?: return
-            val finalUid = if (uid.isNotBlank()) uid else userId
-            val editor = ctx.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).edit()
-                .putString(KEY_USER_ID, finalUid)
+            val editor = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).edit()
+                .putString(KEY_USER_ID, uid)
                 .putString(KEY_USER_NAME, name)
                 .putString(KEY_USER_PHONE, phone)
                 .putString(KEY_USER_ROLE, role)
@@ -70,18 +68,16 @@ class SessionManager(private val context: Context) {
     fun saveAuthToken(token: String) = prefs.edit().putString(KEY_TOKEN, token).apply()
     fun getAuthToken(): String? = prefs.getString(KEY_TOKEN, null)
 
-    @JvmOverloads
+    // Instance method bina signature clash ke
     fun saveSession(
-        token: String = "",
-        uid: String = "",
-        userId: String = uid,
+        token: String,
+        uid: String,
         name: String = "",
         phone: String = "",
         role: String = "both"
     ) {
-        val finalUid = if (uid.isNotBlank()) uid else userId
         val editor = prefs.edit()
-            .putString(KEY_USER_ID, finalUid)
+            .putString(KEY_USER_ID, uid)
             .putString(KEY_USER_NAME, name)
             .putString(KEY_USER_PHONE, phone)
             .putString(KEY_USER_ROLE, role)
@@ -89,11 +85,18 @@ class SessionManager(private val context: Context) {
         editor.apply()
     }
 
-    fun saveUserSession(userId: String = "", name: String = "", phone: String = "", role: String = "both") =
-        saveSession(userId = userId, name = name, phone = phone, role = role)
+    fun saveUserSession(userId: String, name: String, phone: String, role: String = "both") {
+        saveSession(token = "", uid = userId, name = name, phone = phone, role = role)
+    }
 
     fun getUserSession(): UserSession =
-        UserSession(getUserId(), getUserName(), getUserPhone(), prefs.getString(KEY_USER_EMAIL, "") ?: "", getUserRole())
+        UserSession(
+            uid = getUserId(),
+            name = getUserName(),
+            phone = getUserPhone(),
+            email = prefs.getString(KEY_USER_EMAIL, "") ?: "",
+            role = getUserRole()
+        )
 
     fun getUserId(): String = prefs.getString(KEY_USER_ID, "") ?: ""
     fun getUserName(): String = prefs.getString(KEY_USER_NAME, "") ?: ""
