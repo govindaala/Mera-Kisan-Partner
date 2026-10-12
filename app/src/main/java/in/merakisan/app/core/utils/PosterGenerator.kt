@@ -9,6 +9,8 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
 import `in`.merakisan.app.core.network.model.ProductDto
+import java.io.File
+import java.io.FileOutputStream
 import java.util.Locale
 
 object PosterGenerator {
@@ -66,15 +68,9 @@ object PosterGenerator {
         canvas.drawText("उपलब्ध स्टॉक: ${product.stockQuantity}${product.unit}", 60f, 1210f, stockPaint)
 
         val loc = if (!product.village.isNullOrBlank()) "${product.village},${product.district}" else product.district.orEmpty()
-        // लाइन 96 का स्थायी सुधार: \vert{} को सीधे " | " से बदला गया
+        // लाइन 70 का एस्केप एरर स्थायी रूप से हल
         canvas.drawText("किसान: ${product.sellerName} \vert{} क्षेत्र: $loc", 60f, 1430f, stockPaint)
 
-        val badgeText = when (product.verificationStatus) {
-            "organic_certified" -> "प्रमाणित जैविक (Organic Certified)"
-            "verified_farmer" -> "सत्यापित किसान"
-            "lab_tested" -> "प्रयोगशाला परीक्षित"
-            else -> "किसान द्वारा घोषित स्थानीय उपज"
-        }
         val badgePaint = Paint().apply { color = Color.parseColor("#E8F5E9") }
         val badgeRect = RectF(60f, 1260f, (width - 60).toFloat(), 1350f)
         canvas.drawRoundRect(badgeRect, 16f, 16f, badgePaint)
@@ -85,7 +81,7 @@ object PosterGenerator {
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             textAlign = Paint.Align.CENTER
         }
-        canvas.drawText(badgeText, (width / 2).toFloat(), 1320f, badgeTextPaint)
+        canvas.drawText("किसान द्वारा घोषित स्थानीय उपज", (width / 2).toFloat(), 1320f, badgeTextPaint)
 
         if (qrBitmap != null) {
             val qrRect = RectF(740f, 1490f, 1000f, 1750f)
@@ -96,5 +92,19 @@ object PosterGenerator {
         canvas.drawRect(0f, 1840f, width.toFloat(), height.toFloat(), footerPaint)
 
         return poster
+    }
+
+    // ShareBottomSheetFragment:86 के लिए generatePoster मेथड
+    fun generatePoster(context: Context, product: ProductDto, productBitmap: Bitmap?): Result<File> {
+        return try {
+            val bitmap = generateProductPoster(context, product, productBitmap, null)
+            val file = File(context.cacheDir, "poster_${product.productId}.png")
+            FileOutputStream(file).use { out ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 90, out)
+            }
+            Result.success(file)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 }
