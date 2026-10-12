@@ -45,7 +45,6 @@ class SessionManager(private val context: Context) {
             context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).edit().putString(KEY_FCM_TOKEN, token).apply()
         }
 
-        // Static helper RoleSelectionFragment ke liye
         @JvmStatic
         fun saveSession(
             context: Context,
@@ -63,12 +62,23 @@ class SessionManager(private val context: Context) {
             if (token.isNotBlank()) editor.putString(KEY_TOKEN, token)
             editor.apply()
         }
+
+        @JvmStatic
+        fun saveSession(
+            context: Context,
+            uid: String,
+            name: String = "",
+            phone: String = "",
+            role: String = "both"
+        ) {
+            val existingToken = getAuthToken(context).orEmpty()
+            saveSession(context, existingToken, uid, name, phone, role)
+        }
     }
 
     fun saveAuthToken(token: String) = prefs.edit().putString(KEY_TOKEN, token).apply()
     fun getAuthToken(): String? = prefs.getString(KEY_TOKEN, null)
 
-    // Instance method bina signature clash ke
     fun saveSession(
         token: String,
         uid: String,
@@ -85,8 +95,17 @@ class SessionManager(private val context: Context) {
         editor.apply()
     }
 
+    fun saveSession(
+        uid: String,
+        name: String = "",
+        phone: String = "",
+        role: String = "both"
+    ) {
+        saveSession(token = getAuthToken().orEmpty(), uid = uid, name = name, phone = phone, role = role)
+    }
+
     fun saveUserSession(userId: String, name: String, phone: String, role: String = "both") {
-        saveSession(token = "", uid = userId, name = name, phone = phone, role = role)
+        saveSession(uid = userId, name = name, phone = phone, role = role)
     }
 
     fun getUserSession(): UserSession =
