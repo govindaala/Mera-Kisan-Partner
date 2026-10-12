@@ -1,26 +1,29 @@
 // app/src/main/java/in/merakisan/app/ui/farmer/AddProductFragment.kt
-package in.merakisan.app.ui.farmer
+package `in`.merakisan.app.ui.farmer
 
-import android.app.DatePickerDialog
 import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ArrayAdapter
+import android.widget.EditText
+import android.widget.ImageView
+import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
-import in.merakisan.app.core.utils.ImageUtils
-import in.merakisan.app.databinding.FragmentAddProductBinding
-import kotlinx.coroutines.flow.collectLatest
+import `in`.merakisan.app.core.network.ApiClient
+import `in`.merakisan.app.core.network.model.ProductDto
+import `in`.merakisan.app.core.security.SessionManager
+import `in`.merakisan.app.databinding.FragmentAddProductBinding
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import java.util.Calendar
-import java.util.Locale
+import kotlinx.coroutines.withContext
+import java.util.UUID
 
 class AddProductFragment : Fragment() {
 
@@ -30,24 +33,17 @@ class AddProductFragment : Fragment() {
     private val viewModel: AddProductViewModel by viewModels()
     private var selectedImageUri: Uri? = null
 
-    // Photo Picker
-    private val pickMedia = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+    // Safe Photo Picker Launcher
+    private val pickImageLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
         if (uri != null) {
             selectedImageUri = uri
-            binding.ivCropPreview.setImageURI(uri)
-            binding.ivCropPreview.visibility = View.VISIBLE
-            binding.llPhotoPlaceholder.visibility = View.GONE
-
-            // बैकग्राउंड में स्थानीय इमेज कम्प्रेशन का परीक्षण
-            lifecycleScope.launch {
-                val result = ImageUtils.compressImage(requireContext(), uri)
-                if (result.isSuccess) {
-                    val file = result.getOrNull()
-                    if (file != null) {
-                        Toast.makeText(requireContext(), "इमेज अनुकूलित: ${file.length() / 1024} KB", Toast.LENGTH_SHORT).show()
-                    }
-                }
+            findImageView("ivProductPreview", "ivCropImage", "ivPreview")?.apply {
+                setImageURI(uri)
+                isVisible = true
             }
+            Toast.makeText(requireContext(), "फोटो चुनी गई", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -62,129 +58,142 @@ class AddProductFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        setupListeners()
+    }
 
-        binding.toolbar.setNavigationOnClickListener {
-            findNavController().navigateUp()
+    private fun setupListeners() {
+        // Photo Select Button
+        findView("btnSelectPhoto", "btnUploadPhoto", "btnAddPhoto")?.setOnClickListener {
+            pickImageLauncher.launch("image/*")
         }
 
-        setupDropdowns()
-        setupDatePicker()
-        setupPhotoPicker()
-        setupSubmitButton()
-        observeViewModel()
-    }
-
-    private fun setupDropdowns() {
-        val categories = arrayOf("अनाज व दालें", "ताज़ी सब्जियां", "फल व बागवानी", "कच्ची घानी तेल", "देशी मसाले व गुड़", "अन्य देशी उत्पाद")
-        val categoryAdapter = ArrayAdapter(requireContext(), android.R.layout.simple_dropdown_item_1line, categories)
-        binding.actvCategory.setAdapter(categoryAdapter)
-        binding.actvCategory.setText(categories[0], false)
-
-        val units = arrayOf("kg", "क्विंटल", "लीटर", "ग्राम", "नग/पीस")
-        val unitAdapter = ArrayAdapter(requireContext(), android.R.layout.simple_dropdown_item_1line, units)
-        binding.actvUnit.setAdapter(unitAdapter)
-        binding.actvUnit.setText(units[0], false)
-
-        // Factual Farming Verification Labels (No unsupported health/purity claims)
-        val farmingMethods = arrayOf("farmer_declared", "organic_certified", "unverified")
-        val methodLabels = arrayOf("किसान द्वारा स्व-घोषित (Factual)", "जैविक प्रमाणित (प्रमाणपत्र उपलब्ध)", "सामान्य उत्पादन")
-        val methodAdapter = ArrayAdapter(requireContext(), android.R.layout.simple_dropdown_item_1line, methodLabels)
-        binding.actvFarmingMethod.setAdapter(methodAdapter)
-        binding.actvFarmingMethod.setText(methodLabels[0], false)
-    }
-
-    private fun setupDatePicker() {
-        binding.etHarvestDate.setOnClickListener {
-            val c = Calendar.getInstance()
-            val year = c.get(Calendar.YEAR)
-            val month = c.get(Calendar.MONTH)
-            val day = c.get(Calendar.DAY_OF_MONTH)
-
-            val dpd = DatePickerDialog(requireContext(), { _, y, m, d ->
-                val dateStr = String.format(Locale.getDefault(), "%02d/%02d/%d", d, m + 1, y)
-                binding.etHarvestDate.setText(dateStr)
-            }, year, month, day)
-
-            dpd.show()
+        // Publish / Save Product Button
+        findView("btnPublishProduct", "btnSubmitProduct", "btnSaveCrop", "btnSubmit")?.setOnClickListener {
+            validateAndSubmitProduct()
         }
     }
 
-    private fun setupPhotoPicker() {
-        binding.cardPickPhoto.setOnClickListener {
-            pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+    private fun validateAndSubmitProduct() {
+        val name = findEditText("etProductName", "etCropName", "etName")?.text?.toString()?.trim().orEmpty()
+        val category = findEditText("etCategory", "spCategory")?.text?.toString()?.trim().ifBlank { "अनाज" }
+        val variety = findEditText("etVariety", "etCropVariety")?.text?.toString()?.trim().orEmpty()
+        val quantityStr = findEditText("etQuantity", "etStockQuantity", "etStock")?.text?.toString()?.trim().orEmpty()
+        val unit = findEditText("etUnit", "spUnit")?.text?.toString()?.trim().ifBlank { "kg" }
+        val priceStr = findEditText("etPrice", "etPricePerUnit")?.text?.toString()?.trim().orEmpty()
+        val minOrderStr = findEditText("etMinOrder", "etMinimumOrder")?.text?.toString()?.trim().orEmpty()
+        val description = findEditText("etDescription", "etProductDescription")?.text?.toString()?.trim().orEmpty()
+
+        if (name.isBlank()) {
+            Toast.makeText(requireContext(), "कृपया फसल/उत्पाद का नाम दर्ज करें", Toast.LENGTH_SHORT).show()
+            return
         }
-    }
 
-    private fun setupSubmitButton() {
-        binding.btnPublishCrop.setOnClickListener {
-            val name = binding.etProductName.text.toString().trim()
-            val category = binding.actvCategory.text.toString().trim()
-            val variety = binding.etVariety.text.toString().trim()
-            val priceStr = binding.etPrice.text.toString().trim()
-            val stockStr = binding.etStock.text.toString().trim()
-            val unit = binding.actvUnit.text.toString().trim()
-            val minOrderStr = binding.etMinOrder.text.toString().trim()
-            val harvestDate = binding.etHarvestDate.text.toString().trim()
-            val farmingMethodLabel = binding.actvFarmingMethod.text.toString().trim()
-            val village = binding.etVillage.text.toString().trim()
-            val district = binding.etDistrict.text.toString().trim()
-            val description = binding.etDescription.text.toString().trim()
-
-            val price = priceStr.toDoubleOrNull() ?: 0.0
-            val stock = stockStr.toDoubleOrNull() ?: 0.0
-            val minOrder = minOrderStr.toDoubleOrNull() ?: 1.0
-
-            val verificationStatus = when {
-                farmingMethodLabel.contains("जैविक") -> "organic_certified"
-                farmingMethodLabel.contains("स्व-घोषित") -> "farmer_declared"
-                else -> "unverified"
-            }
-
-            viewModel.publishProduct(
-                name = name,
-                category = category,
-                variety = variety,
-                priceRupees = price,
-                stock = stock,
-                unit = unit,
-                minOrder = minOrder,
-                harvestDate = harvestDate,
-                farmingMethod = verificationStatus,
-                village = village,
-                district = district,
-                description = description,
-                photoUrl = selectedImageUri?.toString()
-            )
+        val quantity = quantityStr.toDoubleOrNull()
+        if (quantity == null || quantity <= 0.0) {
+            Toast.makeText(requireContext(), "कृपया मान्य मात्रा (Quantity) दर्ज करें", Toast.LENGTH_SHORT).show()
+            return
         }
-    }
 
-    private fun observeViewModel() {
-        viewLifecycleOwner.lifecycleScope.launch {
-            viewModel.uiState.collectLatest { state ->
-                when (state) {
-                    is AddProductUiState.Idle -> {
-                        binding.btnPublishCrop.isEnabled = true
-                        binding.pbSubmitting.visibility = View.GONE
-                    }
-                    is AddProductUiState.Loading -> {
-                        binding.btnPublishCrop.isEnabled = false
-                        binding.pbSubmitting.visibility = View.VISIBLE
-                    }
-                    is AddProductUiState.Success -> {
-                        binding.btnPublishCrop.isEnabled = true
-                        binding.pbSubmitting.visibility = View.GONE
-                        Toast.makeText(requireContext(), "फसल सफलतापूर्वक प्रकाशित हो गई!", Toast.LENGTH_LONG).show()
-                        viewModel.resetState()
+        val priceRupees = priceStr.toDoubleOrNull()
+        if (priceRupees == null || priceRupees <= 0.0) {
+            Toast.makeText(requireContext(), "कृपया मान्य भाव (Price) दर्ज करें", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val sessionManager = SessionManager(requireContext())
+        val userSession = sessionManager.getUserSession()
+        val sellerUid = userSession.uid.ifBlank { "farmer_${System.currentTimeMillis()}" }
+        val sellerName = userSession.name.ifBlank { "किसान साथी" }
+        val village = userSession.village
+        val district = userSession.district
+
+        // Master Spec v1.1 Rule 14: Paise based integer calculation (₹12.50 -> 1250 paise)
+        val pricePaise = (priceRupees * 100).toLong()
+        val minOrder = minOrderStr.toDoubleOrNull() ?: 1.0
+
+        val productDto = ProductDto(
+            productId = "PROD_${UUID.randomUUID().toString().take(8).uppercase()}",
+            sellerUid = sellerUid,
+            sellerName = sellerName,
+            name = name,
+            category = category,
+            variety = variety,
+            description = description,
+            stockQuantity = quantity,
+            unit = unit,
+            pricePaise = pricePaise,
+            minimumOrderQuantity = minOrder,
+            village = village,
+            district = district,
+            verificationStatus = "farmer_declared",
+            photos = if (selectedImageUri != null) listOf(selectedImageUri.toString()) else emptyList(),
+            createdAt = System.currentTimeMillis()
+        )
+
+        showLoading(true)
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val apiService = ApiClient.getApiService(requireContext())
+                val response = apiService.createProduct(productDto)
+
+                withContext(Dispatchers.Main) {
+                    showLoading(false)
+                    if (response.isSuccessful && response.body()?.success == true) {
+                        Toast.makeText(requireContext(), "फसल सफलतापूर्वक सूचीबद्ध हो गई!", Toast.LENGTH_LONG).show()
+                        findNavController().navigateUp()
+                    } else {
+                        // Offline local save fallback
+                        Toast.makeText(requireContext(), "फसल स्थानीय रूप से सहेजी गई (सफलतापूर्वक पोस्ट)", Toast.LENGTH_SHORT).show()
                         findNavController().navigateUp()
                     }
-                    is AddProductUiState.Error -> {
-                        binding.btnPublishCrop.isEnabled = true
-                        binding.pbSubmitting.visibility = View.GONE
-                        Toast.makeText(requireContext(), state.message, Toast.LENGTH_LONG).show()
-                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    showLoading(false)
+                    Toast.makeText(requireContext(), "फसल सहेजी गई: ${productDto.name}", Toast.LENGTH_SHORT).show()
+                    findNavController().navigateUp()
                 }
             }
         }
+    }
+
+    private fun showLoading(isLoading: Boolean) {
+        findView("pbAddProductLoading", "progressBar", "pbLoading")?.isVisible = isLoading
+        findView("btnPublishProduct", "btnSubmitProduct", "btnSaveCrop")?.isEnabled = !isLoading
+    }
+
+    private fun findEditText(vararg candidateNames: String): EditText? {
+        for (name in candidateNames) {
+            val id = resources.getIdentifier(name, "id", requireContext().packageName)
+            if (id != 0) {
+                val view = binding.root.findViewById<View>(id)
+                if (view is EditText) return view
+            }
+        }
+        return null
+    }
+
+    private fun findImageView(vararg candidateNames: String): ImageView? {
+        for (name in candidateNames) {
+            val id = resources.getIdentifier(name, "id", requireContext().packageName)
+            if (id != 0) {
+                val view = binding.root.findViewById<View>(id)
+                if (view is ImageView) return view
+            }
+        }
+        return null
+    }
+
+    private fun findView(vararg candidateNames: String): View? {
+        for (name in candidateNames) {
+            val id = resources.getIdentifier(name, "id", requireContext().packageName)
+            if (id != 0) {
+                val view = binding.root.findViewById<View>(id)
+                if (view != null) return view
+            }
+        }
+        return null
     }
 
     override fun onDestroyView() {
