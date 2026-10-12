@@ -1,4 +1,3 @@
-// app/src/main/java/in/merakisan/app/core/network/ApiService.kt
 package `in`.merakisan.app.core.network
 
 import `in`.merakisan.app.core.network.model.*
@@ -56,7 +55,7 @@ interface ApiService {
     @POST("v1/products")
     suspend fun createProduct(@Body product: ProductDto): Response<ApiResponse<ProductDto>>
 
-    // MediaUploadWorker:51 के String पैरामीटर से 100% मेल
+    // MediaUploadWorker:51 के स्ट्रिंग कॉल से पूर्णतः संरेखित
     @Multipart
     @POST("v1/media/upload")
     suspend fun uploadMedia(
