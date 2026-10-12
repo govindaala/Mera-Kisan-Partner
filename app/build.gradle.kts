@@ -21,6 +21,9 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        // ApiClient.kt:61 के लिए BASE_URL फील्ड
+        buildConfigField("String", "BASE_URL", "\"https://mera-kisan-backend.vercel.app/\"")
     }
 
     buildTypes {
@@ -30,6 +33,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        debug {
+            // applicationIdSuffix हटाया गया ताकि google-services.json से 100% मेल खाए
+            isDebuggable = true
         }
     }
 
@@ -50,39 +57,41 @@ android {
 }
 
 dependencies {
-    // 1. AndroidX & Material (ZIP Catalog अनुसार)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     implementation(libs.androidx.constraintlayout)
 
-    // 2. Navigation (ZIP Catalog अनुसार)
+    // SwipeRefreshLayout (Home, Favorites, Mandi, Orders, BuyerRequests के लिए अनिवार्य)
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
+
+    // Image Loading: Coil (ProductAdapter, ProductDetail, ShareBottomSheet के लिए अनिवार्य)
+    implementation("io.coil-kt:coil:2.6.0")
+
+    // Navigation
     implementation(libs.androidx.navigation.fragment.ktx)
     implementation(libs.androidx.navigation.ui.ktx)
 
-    // 3. Lifecycle & ViewModel (ZIP Catalog अनुसार)
+    // Lifecycle & ViewModel
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation(libs.androidx.lifecycle.livedata.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
 
-    // 4. Room Database (ZIP Catalog अनुसार)
+    // Room Database
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     kapt(libs.androidx.room.compiler)
 
-    // 5. Network & Retrofit (ZIP Catalog अनुसार)
+    // Network & Retrofit
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.gson)
     implementation(libs.okhttp.logging)
 
-    // 6. Coroutines (ZIP Catalog अनुसार)
+    // Coroutines
     implementation(libs.kotlinx.coroutines.android)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
 
-    // 7. Image Loading (Glide)
-    implementation("com.github.bumptech.glide:glide:4.16.0")
-    kapt("com.github.bumptech.glide:compiler:4.16.0")
-
-    // 8. Google Play Services & Firebase BoM
+    // Google Play Services & Firebase BoM
     implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-auth")
@@ -90,14 +99,14 @@ dependencies {
     implementation("com.google.android.gms:play-services-auth:21.3.0")
     implementation(libs.play.services.location)
 
-    // 9. WorkManager & Security (ZIP Catalog अनुसार)
+    // WorkManager & Security Crypto
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.security.crypto)
 
-    // 10. QR Code (ZXing)
+    // QR Code
     implementation("com.google.zxing:core:3.5.3")
 
-    // 11. Testing (ZIP Catalog अनुसार)
+    // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
