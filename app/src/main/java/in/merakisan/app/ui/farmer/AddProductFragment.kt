@@ -8,7 +8,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.ImageView
-import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.isVisible
@@ -33,7 +32,6 @@ class AddProductFragment : Fragment() {
     private val viewModel: AddProductViewModel by viewModels()
     private var selectedImageUri: Uri? = null
 
-    // Safe Photo Picker Launcher
     private val pickImageLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -62,12 +60,10 @@ class AddProductFragment : Fragment() {
     }
 
     private fun setupListeners() {
-        // Photo Select Button
         findView("btnSelectPhoto", "btnUploadPhoto", "btnAddPhoto")?.setOnClickListener {
             pickImageLauncher.launch("image/*")
         }
 
-        // Publish / Save Product Button
         findView("btnPublishProduct", "btnSubmitProduct", "btnSaveCrop", "btnSubmit")?.setOnClickListener {
             validateAndSubmitProduct()
         }
@@ -75,13 +71,15 @@ class AddProductFragment : Fragment() {
 
     private fun validateAndSubmitProduct() {
         val name = findEditText("etProductName", "etCropName", "etName")?.text?.toString()?.trim().orEmpty()
-        val category = findEditText("etCategory", "spCategory")?.text?.toString()?.trim().ifBlank { "अनाज" }
+        val category = findEditText("etCategory", "spCategory")?.text?.toString()?.trim().orEmpty().ifBlank { "अनाज" }
         val variety = findEditText("etVariety", "etCropVariety")?.text?.toString()?.trim().orEmpty()
         val quantityStr = findEditText("etQuantity", "etStockQuantity", "etStock")?.text?.toString()?.trim().orEmpty()
-        val unit = findEditText("etUnit", "spUnit")?.text?.toString()?.trim().ifBlank { "kg" }
+        val unit = findEditText("etUnit", "spUnit")?.text?.toString()?.trim().orEmpty().ifBlank { "kg" }
         val priceStr = findEditText("etPrice", "etPricePerUnit")?.text?.toString()?.trim().orEmpty()
-        val minOrderStr = findEditText("etMinOrder", "etMinimumOrder")?.text?.toString()?.trim().orEmpty()
         val description = findEditText("etDescription", "etProductDescription")?.text?.toString()?.trim().orEmpty()
+
+        val villageInput = findEditText("etVillage", "etLocation")?.text?.toString()?.trim().orEmpty()
+        val districtInput = findEditText("etDistrict", "spDistrict")?.text?.toString()?.trim().orEmpty()
 
         if (name.isBlank()) {
             Toast.makeText(requireContext(), "कृपया फसल/उत्पाद का नाम दर्ज करें", Toast.LENGTH_SHORT).show()
@@ -104,12 +102,7 @@ class AddProductFragment : Fragment() {
         val userSession = sessionManager.getUserSession()
         val sellerUid = userSession.uid.ifBlank { "farmer_${System.currentTimeMillis()}" }
         val sellerName = userSession.name.ifBlank { "किसान साथी" }
-        val village = userSession.village
-        val district = userSession.district
-
-        // Master Spec v1.1 Rule 14: Paise based integer calculation (₹12.50 -> 1250 paise)
         val pricePaise = (priceRupees * 100).toLong()
-        val minOrder = minOrderStr.toDoubleOrNull() ?: 1.0
 
         val productDto = ProductDto(
             productId = "PROD_${UUID.randomUUID().toString().take(8).uppercase()}",
@@ -122,12 +115,11 @@ class AddProductFragment : Fragment() {
             stockQuantity = quantity,
             unit = unit,
             pricePaise = pricePaise,
-            minimumOrderQuantity = minOrder,
-            village = village,
-            district = district,
+            village = villageInput,
+            district = districtInput,
             verificationStatus = "farmer_declared",
             photos = if (selectedImageUri != null) listOf(selectedImageUri.toString()) else emptyList(),
-            createdAt = System.currentTimeMillis()
+            createdAt = System.currentTimeMillis().toString()
         )
 
         showLoading(true)
@@ -143,8 +135,7 @@ class AddProductFragment : Fragment() {
                         Toast.makeText(requireContext(), "फसल सफलतापूर्वक सूचीबद्ध हो गई!", Toast.LENGTH_LONG).show()
                         findNavController().navigateUp()
                     } else {
-                        // Offline local save fallback
-                        Toast.makeText(requireContext(), "फसल स्थानीय रूप से सहेजी गई (सफलतापूर्वक पोस्ट)", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(requireContext(), "फसल स्थानीय रूप से सहेजी गई", Toast.LENGTH_SHORT).show()
                         findNavController().navigateUp()
                     }
                 }
