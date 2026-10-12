@@ -1,4 +1,3 @@
-// app/build.gradle.kts
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -22,7 +21,7 @@ android {
             useSupportLibrary = true
         }
 
-        // ApiClient.kt:61 के लिए BASE_URL फील्ड
+        // ApiClient.kt:61 के लिए स्वचालित BASE_URL
         buildConfigField("String", "BASE_URL", "\"https://mera-kisan-backend.vercel.app/\"")
     }
 
@@ -99,7 +98,7 @@ dependencies {
     implementation("com.google.android.gms:play-services-auth:21.3.0")
     implementation(libs.play.services.location)
 
-    // WorkManager & Security Crypto
+    // WorkManager & Security
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.security.crypto)
 
