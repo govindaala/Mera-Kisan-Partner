@@ -9,15 +9,10 @@ data class UserSession(
     val name: String = "",
     val phone: String = "",
     val email: String = "",
-    val role: String = "buyer",
-    val village: String = "",
-    val district: String = "",
-    val state: String = "Madhya Pradesh",
-    val verificationStatus: String = "unverified"
+    val role: String = "both"
 )
 
 class SessionManager(private val context: Context) {
-
     private val prefs: SharedPreferences = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
 
     companion object {
@@ -28,112 +23,82 @@ class SessionManager(private val context: Context) {
         private const val KEY_USER_PHONE = "user_phone"
         private const val KEY_USER_NAME = "user_name"
         private const val KEY_USER_EMAIL = "user_email"
-        private const val KEY_USER_VILLAGE = "user_village"
-        private const val KEY_USER_DISTRICT = "user_district"
-        private const val KEY_USER_STATE = "user_state"
-        private const val KEY_USER_VERIFICATION = "user_verification"
         private const val KEY_FCM_TOKEN = "fcm_token"
 
         @JvmStatic
-        fun getAuthToken(context: Context): String? {
-            val p = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-            return p.getString(KEY_TOKEN, null)
-        }
+        fun getAuthToken(context: Context): String? =
+            context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).getString(KEY_TOKEN, null)
+
+        @JvmStatic
+        fun getUserUid(context: Context): String? =
+            context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).getString(KEY_USER_ID, null)
+
+        @JvmStatic
+        fun getUserId(context: Context): String = getUserUid(context) ?: ""
+
+        @JvmStatic
+        fun getUserRole(context: Context): String =
+            context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).getString(KEY_USER_ROLE, "buyer") ?: "buyer"
 
         @JvmStatic
         fun saveFcmToken(context: Context, token: String) {
-            val p = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-            p.edit().putString(KEY_FCM_TOKEN, token).apply()
+            context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).edit().putString(KEY_FCM_TOKEN, token).apply()
         }
 
         @JvmStatic
-        fun getFcmToken(context: Context): String? {
-            val p = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-            return p.getString(KEY_FCM_TOKEN, null)
-        }
-
-        @JvmStatic
-        fun getUserId(context: Context): String {
-            val p = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-            return p.getString(KEY_USER_ID, "") ?: ""
-        }
-
-        @JvmStatic
-        fun getUserRole(context: Context): String {
-            val p = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-            return p.getString(KEY_USER_ROLE, "buyer") ?: "buyer"
-        }
-
-        @JvmStatic
-        fun isLoggedIn(context: Context): Boolean {
-            val p = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-            return !p.getString(KEY_TOKEN, null).isNullOrBlank()
+        @JvmOverloads
+        fun saveSession(
+            context: Context? = null,
+            token: String = "",
+            uid: String = "",
+            userId: String = uid,
+            name: String = "",
+            phone: String = "",
+            role: String = "both"
+        ) {
+            val ctx = context ?: return
+            val finalUid = if (uid.isNotBlank()) uid else userId
+            val editor = ctx.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).edit()
+                .putString(KEY_USER_ID, finalUid)
+                .putString(KEY_USER_NAME, name)
+                .putString(KEY_USER_PHONE, phone)
+                .putString(KEY_USER_ROLE, role)
+            if (token.isNotBlank()) editor.putString(KEY_TOKEN, token)
+            editor.apply()
         }
     }
 
-    fun saveAuthToken(token: String) {
-        prefs.edit().putString(KEY_TOKEN, token).apply()
-    }
+    fun saveAuthToken(token: String) = prefs.edit().putString(KEY_TOKEN, token).apply()
+    fun getAuthToken(): String? = prefs.getString(KEY_TOKEN, null)
 
-    fun getAuthToken(): String? {
-        return prefs.getString(KEY_TOKEN, null)
-    }
-
-    fun saveUserSession(
-        userId: String,
-        name: String,
-        phone: String,
-        role: String,
-        village: String = "",
-        district: String = "",
-        state: String = "Madhya Pradesh",
-        verificationStatus: String = "unverified"
+    @JvmOverloads
+    fun saveSession(
+        token: String = "",
+        uid: String = "",
+        userId: String = uid,
+        name: String = "",
+        phone: String = "",
+        role: String = "both"
     ) {
-        prefs.edit()
-            .putString(KEY_USER_ID, userId)
+        val finalUid = if (uid.isNotBlank()) uid else userId
+        val editor = prefs.edit()
+            .putString(KEY_USER_ID, finalUid)
             .putString(KEY_USER_NAME, name)
             .putString(KEY_USER_PHONE, phone)
             .putString(KEY_USER_ROLE, role)
-            .putString(KEY_USER_VILLAGE, village)
-            .putString(KEY_USER_DISTRICT, district)
-            .putString(KEY_USER_STATE, state)
-            .putString(KEY_USER_VERIFICATION, verificationStatus)
-            .apply()
+        if (token.isNotBlank()) editor.putString(KEY_TOKEN, token)
+        editor.apply()
     }
 
-    fun saveUserSession(session: UserSession) {
-        saveUserSession(
-            userId = session.uid,
-            name = session.name,
-            phone = session.phone,
-            role = session.role,
-            village = session.village,
-            district = session.district,
-            state = session.state,
-            verificationStatus = session.verificationStatus
-        )
-    }
+    fun saveUserSession(userId: String = "", name: String = "", phone: String = "", role: String = "both") =
+        saveSession(userId = userId, name = name, phone = phone, role = role)
 
-    fun getUserSession(): UserSession {
-        return UserSession(
-            uid = getUserId(),
-            name = getUserName(),
-            phone = getUserPhone(),
-            email = prefs.getString(KEY_USER_EMAIL, "") ?: "",
-            role = getUserRole(),
-            village = prefs.getString(KEY_USER_VILLAGE, "") ?: "",
-            district = prefs.getString(KEY_USER_DISTRICT, "") ?: "",
-            state = prefs.getString(KEY_USER_STATE, "Madhya Pradesh") ?: "Madhya Pradesh",
-            verificationStatus = prefs.getString(KEY_USER_VERIFICATION, "unverified") ?: "unverified"
-        )
-    }
+    fun getUserSession(): UserSession =
+        UserSession(getUserId(), getUserName(), getUserPhone(), prefs.getString(KEY_USER_EMAIL, "") ?: "", getUserRole())
 
     fun getUserId(): String = prefs.getString(KEY_USER_ID, "") ?: ""
     fun getUserName(): String = prefs.getString(KEY_USER_NAME, "") ?: ""
     fun getUserPhone(): String = prefs.getString(KEY_USER_PHONE, "") ?: ""
     fun getUserRole(): String = prefs.getString(KEY_USER_ROLE, "buyer") ?: "buyer"
-
-    fun clearSession() {
-        prefs.edit().clear().apply()
-    }
+    fun clearSession() = prefs.edit().clear().apply()
 }
