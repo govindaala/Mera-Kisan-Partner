@@ -69,9 +69,10 @@ class OrdersViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.value = if (filtered.isEmpty()) OrdersUiState.Empty else OrdersUiState.Success(filtered)
     }
 
-    fun updateOrderStatus(orderId: String, req: UpdateOrderStatusRequest) {
+    fun updateOrderStatus(orderId: String, newStatus: String, notes: String = "") {
         viewModelScope.launch {
             try {
+                val req = UpdateOrderStatusRequest(nextStatus = newStatus, status = newStatus, notes = notes)
                 val resp = apiService.updateOrderStatus(orderId, req)
                 if (resp.isSuccessful) loadOrders()
             } catch (_: Exception) {}
