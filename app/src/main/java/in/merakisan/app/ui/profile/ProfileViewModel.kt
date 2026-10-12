@@ -82,4 +82,10 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         )
         _userProfile.value = current.copy(currentRole = newRole, role = newRole)
     }
+
+    // ProfileFragment:92 के लिए logout फ़ंक्शन
+    fun logout() {
+        sessionManager.clearSession()
+        _userProfile.value = null
+    }
 }
