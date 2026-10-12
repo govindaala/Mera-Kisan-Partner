@@ -6,15 +6,13 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
-import android.widget.TextView
 import android.widget.Toast
 import androidx.core.view.isVisible
-import androidx.fragment.app.activityViewModels
+import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import `in`.merakisan.app.core.network.ApiClient
 import `in`.merakisan.app.core.network.model.BuyerRequestDto
-import `in`.merakisan.app.core.network.model.CreateBuyerRequestPayload
 import `in`.merakisan.app.core.security.SessionManager
 import `in`.merakisan.app.databinding.DialogCreateBuyerRequestBinding
 import kotlinx.coroutines.Dispatchers
@@ -31,7 +29,7 @@ class CreateBuyerRequestDialogFragment : BottomSheetDialogFragment() {
     private var _binding: DialogCreateBuyerRequestBinding? = null
     private val binding get() = _binding!!
 
-    private val viewModel: BuyerRequestsViewModel by activityViewModels()
+    private val viewModel: BuyerRequestsViewModel by viewModels()
     private var defaultCategory: String = "अनाज"
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -99,19 +97,11 @@ class CreateBuyerRequestDialogFragment : BottomSheetDialogFragment() {
         }
 
         val targetPriceRupees = targetPriceStr.toDoubleOrNull() ?: 0.0
-        // Master Spec v1.1 Rule 14: वित्तीय गणना केवल पैसे (Integer minor units) में
+        // Master Spec v1.1 Rule 14: वित्तीय अखंडता — पैसे (Integer minor units) में रूपांतरण
         val targetPricePaise = (targetPriceRupees * 100).toLong()
 
-        val payload = CreateBuyerRequestPayload(
-            productName = productName,
-            category = category,
-            quantity = quantity,
-            unit = unit,
-            targetPricePaise = targetPricePaise,
-            notes = notes
-        )
-
-        val fullDto = BuyerRequestDto(
+        // 100% कंपाइल-सेफ DTO (सीधे BuyerRequestDto में बाइंडिंग)
+        val buyerRequestDto = BuyerRequestDto(
             requestId = "REQ_${UUID.randomUUID().toString().take(8).uppercase()}",
             buyerUid = user.uid,
             buyerName = user.name.ifBlank { "ग्राहक साथी" },
@@ -132,7 +122,7 @@ class CreateBuyerRequestDialogFragment : BottomSheetDialogFragment() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val apiService = ApiClient.getApiService(requireContext())
-                val response = apiService.createBuyerRequest(fullDto)
+                val response = apiService.createBuyerRequest(buyerRequestDto)
 
                 withContext(Dispatchers.Main) {
                     setLoading(false)
@@ -141,8 +131,8 @@ class CreateBuyerRequestDialogFragment : BottomSheetDialogFragment() {
                         Toast.makeText(requireContext(), "आपकी मांग सफलतापूर्वक पोस्ट हो गई! किसान जल्द संपर्क करेंगे।", Toast.LENGTH_LONG).show()
                         dismiss()
                     } else {
-                        // स्थानीय ViewModel फ़ॉलबैक
-                        viewModel.postNewRequest(payload)
+                        // स्थानीय ViewModel फ़ॉलबैक (सीधे DTO पास करना, कोई पेलोड टाइप मिसमैच नहीं)
+                        viewModel.postNewRequest(buyerRequestDto)
                         Toast.makeText(requireContext(), "मांग दर्ज हुई (स्थानीय रूप से सहेजी गई)", Toast.LENGTH_SHORT).show()
                         dismiss()
                     }
@@ -150,7 +140,7 @@ class CreateBuyerRequestDialogFragment : BottomSheetDialogFragment() {
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     setLoading(false)
-                    viewModel.postNewRequest(payload)
+                    viewModel.postNewRequest(buyerRequestDto)
                     Toast.makeText(requireContext(), "मांग दर्ज हुई: $productName", Toast.LENGTH_SHORT).show()
                     dismiss()
                 }
