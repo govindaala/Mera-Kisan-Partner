@@ -48,27 +48,7 @@ class BuyerRequestsViewModel(application: Application) : AndroidViewModel(applic
         }
     }
 
-    // BuyerRequestsFragment:146 के लिए CreateBuyerRequestPayload ओवरलोड
-    fun postNewRequest(payload: CreateBuyerRequestPayload) {
-        val user = sessionManager.getUserSession()
-        val dto = BuyerRequestDto(
-            requestId = UUID.randomUUID().toString(),
-            buyerUid = user.uid,
-            buyerName = user.name.ifBlank { "ग्राहक" },
-            buyerPhone = user.phone,
-            productName = payload.productName,
-            category = payload.category,
-            quantity = payload.quantity,
-            unit = payload.unit,
-            targetPricePaise = payload.targetPricePaise,
-            district = user.role,
-            village = "",
-            notes = payload.notes,
-            status = "active"
-        )
-        postNewRequest(dto)
-    }
-
+    // ओवरलोड 1: सीधा BuyerRequestDto सपोर्ट
     fun postNewRequest(request: BuyerRequestDto) {
         val finalRequest = if (request.requestId.isBlank()) {
             request.copy(requestId = UUID.randomUUID().toString())
@@ -81,6 +61,27 @@ class BuyerRequestsViewModel(application: Application) : AndroidViewModel(applic
                 if (resp.isSuccessful) loadBuyerRequests()
             } catch (_: Exception) {}
         }
+    }
+
+    // ओवरलोड 2: लेगेसी CreateBuyerRequestPayload सपोर्ट (ताकि पुराना कोई भी कॉलर न टूटे)
+    fun postNewRequest(payload: CreateBuyerRequestPayload) {
+        val user = sessionManager.getUserSession()
+        val dto = BuyerRequestDto(
+            requestId = UUID.randomUUID().toString(),
+            buyerUid = user.uid,
+            buyerName = user.name.ifBlank { "ग्राहक साथी" },
+            buyerPhone = user.phone,
+            productName = payload.productName,
+            category = payload.category,
+            quantity = payload.quantity,
+            unit = payload.unit,
+            targetPricePaise = payload.targetPricePaise,
+            district = user.role,
+            village = "",
+            notes = payload.notes,
+            status = "active"
+        )
+        postNewRequest(dto)
     }
 
     fun filterRequests(query: String) {
