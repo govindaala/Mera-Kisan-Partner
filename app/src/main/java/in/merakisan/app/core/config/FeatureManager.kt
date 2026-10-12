@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.SharedPreferences
 
 object FeatureManager {
-
     private const val PREFS_NAME = "mera_kisan_features"
 
     private val DEFAULT_FLAGS: Map<String, Boolean> = mapOf(
@@ -17,7 +16,7 @@ object FeatureManager {
         "buyer_request" to true,
         "admob" to false,
         "chat" to false,
-        "oil_marketplace" to false
+        "banner_enabled" to true
     )
 
     fun isEnabled(context: Context, featureKey: String): Boolean {
@@ -29,4 +28,8 @@ object FeatureManager {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putBoolean(key, enabled).apply()
     }
+
+    suspend fun syncRemoteConfig(context: Context) {}
+    fun isMaintenanceMode(context: Context): Boolean = false
+    fun getMaintenanceMessage(context: Context): String = "सिस्टम मेंटेनेंस जारी है।"
 }
