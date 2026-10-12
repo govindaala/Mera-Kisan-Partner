@@ -1,31 +1,87 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- app/src/main/res/values/strings.xml -->
 <resources>
-    <string name="app_name">MERA KISAN</string>
-    <string name="tagline">किसान से सीधे आपकी जरूरत तक</string>
+    <!-- 1. App Identity & Positioning (Master Spec v1.1) -->
+    <!-- app/src/main/res/values/strings.xml -->
+    <string name="app_name">Mera Kisan</string>
+    <string name="app_tagline">किसान से सीधे आपकी जरूरत तक</string>
+    <string name="app_description">किसान से सीधे ग्राहक तक कृषि उपज का डिजिटल बाज़ार</string>
 
-    <!-- Navigation -->
+    <!-- 2. Google Sign-In & Authentication -->
+    <!-- Note: Yeh Firebase Web Client ID hai jo google-services.json ke client/oauth_client se match hoti hai -->
+    <string name="default_web_client_id" translatable="false">103233863415-p5f7q4k8r8v6s4j2t9m1n3b5c7x9z1a.apps.googleusercontent.com</string>
+    <string name="login_title">MERA KISAN</string>
+    <string name="login_subtitle">अपना Google खाता चुनकर आसानी से लॉगिन करें</string>
+    <string name="btn_google_sign_in">Google से साइन इन करें</string>
+    <string name="btn_continue_as_guest">अतिथि के रूप में जारी रखें</string>
+    <string name="login_phone_hint">मोबाइल नंबर दर्ज करें (वैकल्पिक)</string>
+    <string name="login_welcome">स्वागत है, %1$s!</string>
+    <string name="login_failed">लॉगिन विफल रहा। कृपया पुनः प्रयास करें।</string>
+
+    <!-- 3. Roles & Selection (P0 Foundation) -->
+    <string name="role_selection_title">आपकी मुख्य भूमिका क्या है?</string>
+    <string name="role_farmer">किसान / विक्रेता</string>
+    <string name="role_farmer_desc">अपनी उपज, सब्जियां, अनाज और स्थानीय उत्पाद सीधे बेचें</string>
+    <string name="role_buyer">खरीदार</string>
+    <string name="role_buyer_desc">खेत से सीधे ताजी, देसी और शुद्ध उपज उचित भाव में खरीदें</string>
+    <string name="role_both">दोनों (किसान और खरीदार)</string>
+    <string name="role_both_desc">उपज बेचें भी और अन्य किसानों से जरूरत का सामान खरीदें भी</string>
+    <string name="btn_confirm_role">भूमिका की पुष्टि करें</string>
+
+    <!-- 4. Navigation & Bottom Tabs -->
     <string name="nav_home">होम</string>
-    <string name="nav_marketplace">फसलें</string>
-    <string name="nav_requests">मुझे चाहिए</string>
+    <string name="nav_marketplace">बाज़ार</string>
+    <string name="nav_my_crops">मेरी फसलें</string>
+    <string name="nav_add_product">उपज जोड़ें</string>
     <string name="nav_orders">ऑर्डर्स</string>
-    <string name="nav_profile">प्रोफ़ाइल</string>
+    <string name="nav_buyer_requests">मुझे चाहिए</string>
+    <string name="nav_favorites">पसंदीदा</string>
+    <string name="nav_profile">प्रोफाइल</string>
 
-    <!-- Marketplace -->
+    <!-- 5. Marketplace, Categories & Filters -->
     <string name="search_hint">फसल, किस्म या किसान खोजें...</string>
-    <string name="small_quantity_badge">1–25 kg छोटी मात्रा</string>
-    <string name="verified_farmer">✔ Mera Kisan Verified</string>
-    <string name="organic_certified">🌿 Organic Certified</string>
-    <string name="currency_symbol">₹</string>
+    <string name="filter_all">सभी</string>
+    <string name="filter_grains">अनाज</string>
+    <string name="filter_pulses">दालें व तिलहन</string>
+    <string name="filter_vegetables">ताजी सब्जियां</string>
+    <string name="filter_fruits">फल</string>
+    <string name="filter_cold_pressed_oil">कच्ची घानी तेल</string>
+    <string name="filter_traditional">पारंपरिक व देसी उत्पाद</string>
+    <string name="filter_small_quantity">छोटी मात्रा उपलब्ध (1-25 kg)</string>
+    <string name="filter_organic">जैविक / प्राकृतिक</string>
+    <string name="section_fresh_today">आज खेत से (Fresh Today)</string>
+    <string name="section_nearby">मेरे आसपास की फसलें</string>
 
-    <!-- Actions -->
-    <string name="action_call">कॉल</string>
-    <string name="action_whatsapp">व्हाट्सएप</string>
-    <string name="action_buy_now">अभी खरीदें</string>
-    <string name="action_make_offer">भाव प्रस्ताव</string>
+    <!-- 6. Product Details & Badges -->
+    <string name="label_price_unit">₹%1$s / %2$s</string>
+    <string name="label_available_stock">उपलब्ध स्टॉक: %1$s %2$s</string>
+    <string name="label_min_order">न्यूनतम ऑर्डर: %1$s %2$s</string>
+    <string name="label_harvest_date">कटाई तिथि: %1$s</string>
+    <string name="badge_verified_farmer">सत्यापित किसान</string>
+    <string name="badge_organic_certified">प्रमाणित जैविक</string>
+    <string name="badge_farmer_declared">किसान द्वारा घोषित स्थानीय उपज</string>
+    <string name="btn_buy_now">ऑर्डर करें (Buy Now)</string>
+    <string name="btn_make_offer">भाव प्रस्ताव दें (Make Offer)</string>
+    <string name="btn_contact_call">कॉल करें</string>
+    <string name="btn_contact_whatsapp">WhatsApp पर बात करें</string>
+    <string name="btn_share_product">शेयर करें</string>
 
-    <!-- Errors & States -->
-    <string name="error_network">नेटवर्क संपर्क विफल रहा। पुनः प्रयास करें।</string>
-    <string name="empty_products">कोई फसल उपलब्ध नहीं है</string>
-    <string name="maintenance_default">सिस्टम रखरखाव जारी है। कृपया कुछ समय बाद पुनः प्रयास करें।</string>
+    <!-- 7. Buyer Requests (Demand Board) -->
+    <string name="buyer_request_title">मुझे यह चाहिए (मांग दर्ज करें)</string>
+    <string name="buyer_request_hint">आपको कौन सी फसल या उत्पाद कितनी मात्रा में चाहिए?</string>
+    <string name="btn_submit_request">मांग पोस्ट करें</string>
+
+    <!-- 8. Orders, Statuses & Actions -->
+    <string name="order_status_placed">ऑर्डर दर्ज हुआ</string>
+    <string name="order_status_accepted">किसान द्वारा स्वीकृत</string>
+    <string name="order_status_shipped">रास्ते में है</string>
+    <string name="order_status_delivered">डिलीवर हुआ</string>
+    <string name="order_status_cancelled">रद्द किया गया</string>
+    <string name="payment_method_cod">कैश ऑन डिलीवरी (COD)</string>
+
+    <!-- 9. General Alerts, Errors & Fallbacks -->
+    <string name="empty_products">वर्तमान में कोई उपज उपलब्ध नहीं है।</string>
+    <string name="network_error">इंटरनेट कनेक्शन की जाँच करें।</string>
+    <string name="maintenance_message">सिस्टम मेंटेनेंस जारी है। कृपया कुछ समय बाद प्रयास करें।</string>
+    <string name="dialog_cancel">रद्द करें</string>
+    <string name="dialog_ok">ठीक है</string>
+    <string name="dialog_logout">लॉगआउट करें</string>
 </resources>
