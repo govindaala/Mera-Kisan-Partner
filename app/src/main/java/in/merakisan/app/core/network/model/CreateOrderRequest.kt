@@ -1,4 +1,3 @@
-// app/src/main/java/in/merakisan/app/core/network/model/CreateOrderRequest.kt
 package `in`.merakisan.app.core.network.model
 
 import com.google.gson.annotations.SerializedName
@@ -29,5 +28,8 @@ data class CreateOrderRequest(
     val deliveryAddress: String = "",
 
     @SerializedName("buyerPhone", alternate = ["buyer_phone", "phone"])
-    val buyerPhone: String = ""
+    val buyerPhone: String = "",
+
+    @SerializedName("idempotency_key", alternate = ["idempotencyKey"])
+    val idempotencyKey: String = ""
 )
