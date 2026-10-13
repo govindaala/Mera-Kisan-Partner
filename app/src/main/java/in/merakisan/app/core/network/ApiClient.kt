@@ -1,3 +1,4 @@
+// app/src/main/java/in/merakisan/app/core/network/ApiClient.kt
 package `in`.merakisan.app.core.network
 
 import android.content.Context
@@ -27,7 +28,6 @@ object ApiClient {
                     .header("Accept", "application/json")
                     .header("X-App-Platform", "Android")
 
-                // केवल वास्तविक वैध टोकन संलग्न करें (अमान्य डमी स्ट्रिंग्स को रोकें)
                 if (!token.isNullOrBlank() && token != "guest_session" && !token.startsWith("guest_")) {
                     requestBuilder.header("Authorization", "Bearer $token")
                 }
