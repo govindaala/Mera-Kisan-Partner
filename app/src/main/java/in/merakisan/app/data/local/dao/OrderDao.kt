@@ -1,41 +1,45 @@
-// app/src/main/java/in/merakisan/app/data/local/dao/OrderDao.kt
-package `in`.merakisan.app.data.local.dao
+package `in`.merakisan.app.core.network.model
 
-import androidx.room.*
-import `in`.merakisan.app.data.local.entity.OrderEntity
-import kotlinx.coroutines.flow.Flow
+import com.google.gson.annotations.SerializedName
 
-/**
- * MERA KISAN — ऑर्डर रूम DAO
- * KAPT-सुरक्षित इंटरफ़ेस (बिना डिफ़ॉल्ट पैरामीटर के स्पष्ट SQL मैपिंग)
- */
-@Dao
-interface OrderDao {
+data class OrderDto(
+    @SerializedName("id", alternate = ["_id", "orderId", "order_id"])
+    val id: String = "",
 
-    @Query("SELECT * FROM orders ORDER BY createdAt DESC")
-    fun getAllOrdersFlow(): Flow<List<OrderEntity>>
+    @SerializedName("buyerUid", alternate = ["buyer_uid"])
+    val buyerUid: String = "",
 
-    @Query("SELECT * FROM orders WHERE buyerUid = :buyerUid ORDER BY createdAt DESC")
-    fun getOrdersByBuyer(buyerUid: String): Flow<List<OrderEntity>>
+    @SerializedName("sellerUid", alternate = ["seller_uid"])
+    val sellerUid: String = "",
 
-    @Query("SELECT * FROM orders WHERE sellerUid = :sellerUid ORDER BY createdAt DESC")
-    fun getOrdersBySeller(sellerUid: String): Flow<List<OrderEntity>>
+    @SerializedName("productId", alternate = ["product_id"])
+    val productId: String = "",
 
-    @Query("SELECT * FROM orders WHERE orderId = :orderId LIMIT 1")
-    suspend fun getOrderById(orderId: String): OrderEntity?
+    @SerializedName("productName", alternate = ["product_name"])
+    val productName: String = "",
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertOrders(orders: List<OrderEntity>)
+    @SerializedName("quantity")
+    val quantity: Double = 1.0,
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertOrder(order: OrderEntity)
+    @SerializedName("unit")
+    val unit: String = "kg",
 
-    @Query("UPDATE orders SET orderStatus = :newStatus, updatedAt = :timestamp WHERE orderId = :orderId")
-    suspend fun updateOrderStatus(orderId: String, newStatus: String, timestamp: Long)
+    @SerializedName("totalAmountPaise", alternate = ["total_amount_paise", "totalAmount"])
+    val totalAmountPaise: Long = 0L,
 
-    @Query("DELETE FROM orders WHERE orderId = :orderId")
-    suspend fun deleteOrderById(orderId: String)
+    @SerializedName("paymentStatus", alternate = ["payment_status"])
+    val paymentStatus: String = "COD_PENDING",
 
-    @Query("DELETE FROM orders")
-    suspend fun clearAllOrders()
+    @SerializedName("orderStatus", alternate = ["order_status", "status"])
+    val orderStatus: String = "CREATED",
+
+    @SerializedName("deliveryAddress", alternate = ["delivery_address", "shippingAddress"])
+    val deliveryAddress: String = "",
+
+    @SerializedName("createdAt", alternate = ["created_at"])
+    val createdAt: Long? = null
+) {
+    fun getFormattedTotal(): String {
+        return "₹${totalAmountPaise / 100.0}"
+    }
 }
