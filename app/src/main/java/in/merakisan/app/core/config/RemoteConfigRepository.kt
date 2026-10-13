@@ -1,3 +1,4 @@
+// app/src/main/java/in/merakisan/app/core/config/RemoteConfigRepository.kt
 package `in`.merakisan.app.core.config
 
 import android.content.Context
@@ -7,10 +8,6 @@ import `in`.merakisan.app.core.network.model.AppConfigDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/**
- * MERA KISAN — रिमोट कॉन्फ़िगरेशन एवं फ़ीचर फ़्लैग रिपॉजिटरी
- * Master Spec v1.1 & Audit Security Standard
- */
 class RemoteConfigRepository(private val context: Context) {
 
     private val prefs: SharedPreferences =
@@ -24,9 +21,6 @@ class RemoteConfigRepository(private val context: Context) {
         private const val PREFIX_FEATURE = "feat_"
     }
 
-    /**
-     * सर्वर (/v1/config) से नवीनतम फ़ीचर फ़्लैग्स लाकर SharedPreferences में सुरक्षित करता है।
-     */
     suspend fun fetchAndCacheConfig(): Result<AppConfigDto> = withContext(Dispatchers.IO) {
         try {
             val apiService = ApiClient.getApiService(context)
@@ -38,14 +32,11 @@ class RemoteConfigRepository(private val context: Context) {
                 )
 
                 val editor = prefs.edit()
-
-                // 1. सिस्टम स्तर की सेटिंग्स
                 editor.putBoolean(KEY_MAINTENANCE_MODE, config.maintenanceMode)
                 editor.putString(KEY_MIN_VERSION, config.minAppVersion)
                 editor.putString(KEY_BANNER_TEXT, config.bannerText ?: "")
                 editor.putLong(KEY_LAST_SYNC_TIME, System.currentTimeMillis())
 
-                // 2. 40 फ़ीचर्स की सुरक्षित स्थिति (ON, BETA = true; OFF, 0% = false)
                 config.features.forEach { (key, value) ->
                     val isEnabled = when (value) {
                         is Boolean -> value
@@ -71,11 +62,7 @@ class RemoteConfigRepository(private val context: Context) {
         }
     }
 
-    /**
-     * स्थानीय रूप से कैश्ड फ़ीचर की स्थिति लौटाता है (ऑफ़लाइन सुरक्षित)।
-     */
     fun isFeatureActive(featureKey: String, defaultState: Boolean = false): Boolean {
-        // यदि मेंटेनेंस मोड सक्रिय है, तो केवल आवश्यक सुरक्षा फ़ीचर्स चलेंगे
         if (prefs.getBoolean(KEY_MAINTENANCE_MODE, false)) {
             return false
         }
