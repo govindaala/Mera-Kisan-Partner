@@ -1,8 +1,9 @@
 package `in`.merakisan.app.core.network
 
 import android.content.Context
-import `in`.merakisan.app.BuildConfig
+import com.google.gson.GsonBuilder
 import `in`.merakisan.app.core.security.SessionManager
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -11,52 +12,55 @@ import java.util.concurrent.TimeUnit
 
 object ApiClient {
 
-    private const val FALLBACK_BASE_URL = "https://mera-kisan-backend.vercel.app/"
+    private const val BASE_URL = "https://mera-kisan-backend.vercel.app/"
     private var apiService: ApiService? = null
 
     fun getApiService(context: Context): ApiService {
         return apiService ?: synchronized(this) {
-            apiService ?: buildRetrofit(context).create(ApiService::class.java).also {
-                apiService = it
-            }
-        }
-    }
+            val sessionManager = SessionManager(context.applicationContext)
 
-    private fun buildRetrofit(context: Context): Retrofit {
-        val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
-        }
+            val authInterceptor = Interceptor { chain ->
+                val originalRequest = chain.request()
+                val token = sessionManager.getAuthToken()
 
-        val okHttpClient = OkHttpClient.Builder()
-            .addInterceptor(loggingInterceptor)
-            .addInterceptor { chain ->
-                val original = chain.request()
-                val requestBuilder = original.newBuilder()
+                val requestBuilder = originalRequest.newBuilder()
                     .header("Accept", "application/json")
-                    .header("X-Client-Platform", "Android")
+                    .header("X-App-Platform", "Android")
 
-                val token = SessionManager.getAuthToken(context)
-                if (!token.isNullOrBlank()) {
+                // केवल वास्तविक वैध टोकन संलग्न करें (अमान्य डमी स्ट्रिंग्स को रोकें)
+                if (!token.isNullOrBlank() && token != "guest_session" && !token.startsWith("guest_")) {
                     requestBuilder.header("Authorization", "Bearer $token")
                 }
 
                 chain.proceed(requestBuilder.build())
             }
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .build()
 
-        val resolvedBaseUrl = try {
-            BuildConfig.BASE_URL.ifBlank { FALLBACK_BASE_URL }
-        } catch (_: Exception) {
-            FALLBACK_BASE_URL
+            val loggingInterceptor = HttpLoggingInterceptor().apply {
+                level = HttpLoggingInterceptor.Level.HEADERS
+            }
+
+            val okHttpClient = OkHttpClient.Builder()
+                .addInterceptor(authInterceptor)
+                .addInterceptor(loggingInterceptor)
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(30, TimeUnit.SECONDS)
+                .retryOnConnectionFailure(true)
+                .build()
+
+            val gson = GsonBuilder()
+                .setLenient()
+                .create()
+
+            val retrofit = Retrofit.Builder()
+                .baseUrl(BASE_URL)
+                .client(okHttpClient)
+                .addConverterFactory(GsonConverterFactory.create(gson))
+                .build()
+
+            val service = retrofit.create(ApiService::class.java)
+            apiService = service
+            service
         }
-
-        return Retrofit.Builder()
-            .baseUrl(resolvedBaseUrl)
-            .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
     }
 }
