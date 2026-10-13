@@ -1,6 +1,7 @@
 // app/src/main/java/in/merakisan/app/core/network/ApiService.kt
 package `in`.merakisan.app.core.network
 
+import com.google.gson.annotations.SerializedName
 import `in`.merakisan.app.core.network.model.ApiResponse
 import `in`.merakisan.app.core.network.model.BuyerRequestDto
 import `in`.merakisan.app.core.network.model.CreateOrderRequest as ModelCreateOrderRequest
@@ -21,17 +22,39 @@ import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
 
-// पुराने कॉलर्स के लिए टाइप-एलियास
+// Purane callers ke compatibility ke liye typealias
 typealias CreateOrderRequest = ModelCreateOrderRequest
 typealias UpdateOrderStatusRequest = ModelUpdateOrderStatusRequest
 
 /**
- * MERA KISAN — एकीकृत REST API सर्विस
- * Master Spec v1.1 & Vercel Backend Contract
+ * User Profile DTO (ProfileViewModel ke liye direct response model)
+ */
+data class UserDto(
+    @SerializedName("uid")
+    val uid: String = "",
+    @SerializedName("name")
+    val name: String = "",
+    @SerializedName("phone")
+    val phone: String = "",
+    @SerializedName("email")
+    val email: String = "",
+    @SerializedName("role")
+    val role: String = "both",
+    @SerializedName("village")
+    val village: String = "",
+    @SerializedName("district")
+    val district: String = "",
+    @SerializedName("photo_url")
+    val photoUrl: String = ""
+)
+
+/**
+ * MERA KISAN — Kendriya REST API Service Contract
+ * Master Spec v1.1 & Vercel Backend Alignment
  */
 interface ApiService {
 
-    // 1. प्रोडक्ट्स एवं फ़सलें (सभी कॉलर्स के पैरामीटर्स का पूर्ण समर्थन)
+    // 1. Products & Crops (ProductRepository, MarketplaceViewModel, SyncWorker)
     @GET("api/crops")
     suspend fun getProducts(
         @Query("category") category: String? = null,
@@ -58,7 +81,7 @@ interface ApiService {
         @Body product: ProductDto
     ): Response<ApiResponse<ProductDto>>
 
-    // 2. मीडिया अपलोड (MediaUploadWorker के लिए 100% Multipart समर्थन)
+    // 2. Media Upload (MediaUploadWorker - MultipartBody.Part)
     @Multipart
     @POST("api/media/upload")
     suspend fun uploadMedia(
@@ -67,11 +90,11 @@ interface ApiService {
         @Part body: MultipartBody.Part
     ): Response<ApiResponse<Any>>
 
-    // 3. उपयोगकर्ता प्रोफाइल (UserDto उसी पैकेज से सीधे संदर्भित)
+    // 3. User Profile
     @GET("api/me")
     suspend fun getCurrentUser(): Response<ApiResponse<UserDto>>
 
-    // 4. ऑर्डर्स स्टेट मशीन एवं प्रबंधन
+    // 4. Orders State Machine & Idempotent Management
     @GET("api/orders")
     suspend fun getOrders(): Response<ApiResponse<List<OrderDto>>>
 
@@ -83,16 +106,16 @@ interface ApiService {
     @POST("api/orders")
     suspend fun createOrder(
         @Header("Idempotency-Key") idempotencyKey: String,
-        @Body request: CreateOrderRequest
+        @Body request: ModelCreateOrderRequest
     ): Response<ApiResponse<OrderDto>>
 
     @POST("api/orders/{id}/status")
     suspend fun updateOrderStatus(
         @Path("id") orderId: String,
-        @Body request: UpdateOrderStatusRequest
+        @Body request: ModelUpdateOrderStatusRequest
     ): Response<ApiResponse<Boolean>>
 
-    // 5. ग्राहक मांग बोर्ड ("मुझे यह चाहिए")
+    // 5. Buyer Requests Board ("Mujhe Yeh Chahiye")
     @GET("api/buyer-requests")
     suspend fun getBuyerRequests(
         @Query("category") category: String? = null
@@ -103,7 +126,7 @@ interface ApiService {
         @Body request: BuyerRequestDto
     ): Response<ApiResponse<BuyerRequestDto>>
 
-    // 6. समीक्षा एवं 5-स्टार रेटिंग्स
+    // 6. Verified Delivery Ratings & Reviews
     @GET("api/reviews")
     suspend fun getProductReviews(
         @Query("product_id") productId: String
@@ -114,7 +137,7 @@ interface ApiService {
         @Body request: CreateReviewRequest
     ): Response<ApiResponse<Boolean>>
 
-    // 7. मंडी भाव ट्रैकर
+    // 7. Mandi Prices Tracker
     @GET("api/mandi-prices")
     suspend fun getMandiPrices(
         @Query("district") district: String? = null
