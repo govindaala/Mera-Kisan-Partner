@@ -4,8 +4,8 @@ package `in`.merakisan.app.core.network.model
 import com.google.gson.annotations.SerializedName
 
 /**
- * MERA KISAN — नया ऑर्डर निर्माण पेलोड
- * OrderRepository और CheckoutBottomSheetFragment दोनों के साथ 100% संरेखित
+ * MERA KISAN — Naya Order Payload (Canonical Contract)
+ * OrderRepository aur CheckoutBottomSheetFragment dono ke saath 100% aligned
  */
 data class CreateOrderRequest(
     @SerializedName("productId", alternate = ["product_id"])
