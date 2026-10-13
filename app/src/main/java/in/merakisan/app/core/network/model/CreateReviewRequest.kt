@@ -3,23 +3,44 @@ package `in`.merakisan.app.core.network.model
 
 import com.google.gson.annotations.SerializedName
 
-/**
- * MERA KISAN — समीक्षा सबमिशन नेटवर्क अनुरोध पेलोड
- * ReviewsViewModel और AddReviewDialogFragment दोनों के साथ 100% संरेखित
- */
 data class CreateReviewRequest(
-    @SerializedName("order_id")
+
+    @SerializedName(
+        value = "order_id",
+        alternate = ["orderId"]
+    )
     val orderId: String = "",
-    @SerializedName("product_id")
+
+    @SerializedName(
+        value = "product_id",
+        alternate = ["productId"]
+    )
     val productId: String = "",
-    @SerializedName("target_uid")
+
+    @SerializedName(
+        value = "target_uid",
+        alternate = [
+            "targetUid",
+            "seller_uid"
+        ]
+    )
     val targetUid: String = "",
+
     @SerializedName("rating")
     val rating: Float = 5.0f,
-    @SerializedName("quality_rating")
+
+    @SerializedName(
+        value = "quality_rating",
+        alternate = ["qualityRating"]
+    )
     val qualityRating: Float = 5.0f,
-    @SerializedName("delivery_rating")
+
+    @SerializedName(
+        value = "delivery_rating",
+        alternate = ["deliveryRating"]
+    )
     val deliveryRating: Float = 5.0f,
+
     @SerializedName("comment")
     val comment: String = ""
 )
