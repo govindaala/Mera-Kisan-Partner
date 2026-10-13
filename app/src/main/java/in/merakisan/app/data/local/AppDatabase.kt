@@ -12,7 +12,10 @@ import `in`.merakisan.app.data.local.entity.OrderEntity
 import `in`.merakisan.app.data.local.entity.ProductEntity
 
 @Database(
-    entities = [ProductEntity::class, OrderEntity::class],
+    entities = [
+        ProductEntity::class,
+        OrderEntity::class
+    ],
     version = 1,
     exportSchema = false
 )
@@ -20,21 +23,26 @@ import `in`.merakisan.app.data.local.entity.ProductEntity
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun productDao(): ProductDao
+
     abstract fun orderDao(): OrderDao
 
     companion object {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
+        fun getInstance(context: Context): AppDatabase {
+            return getDatabase(context)
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
-                val instance = Room.databaseBuilder(
+                INSTANCE ?: Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "mera_kisan_database"
-                ).build()
-                INSTANCE = instance
-                instance
+                ).build().also {
+                    INSTANCE = it
+                }
             }
         }
     }
