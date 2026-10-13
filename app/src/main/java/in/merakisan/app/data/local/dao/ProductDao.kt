@@ -1,70 +1,32 @@
-package `in`.merakisan.app.core.network.model
+// app/src/main/java/in/merakisan/app/data/local/dao/ProductDao.kt
+package `in`.merakisan.app.data.local.dao
 
-import com.google.gson.annotations.SerializedName
+import androidx.room.Dao
+import androidx.room.Delete
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import `in`.merakisan.app.data.local.entity.ProductEntity
+import kotlinx.coroutines.flow.Flow
 
-data class ProductDto(
-    @SerializedName("id", alternate = ["_id", "productId", "cropId"])
-    val id: String = "",
+@Dao
+interface ProductDao {
 
-    @SerializedName("sellerUid", alternate = ["seller_uid", "farmerUid", "farmer_uid"])
-    val sellerUid: String = "",
+    @Query("SELECT * FROM products ORDER BY createdAt DESC")
+    fun getAllProducts(): Flow<List<ProductEntity>>
 
-    @SerializedName("name", alternate = ["productName", "cropName"])
-    val name: String = "",
+    @Query("SELECT * FROM products WHERE id = :id")
+    suspend fun getProductById(id: String): ProductEntity?
 
-    @SerializedName("category")
-    val category: String = "grain",
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertProducts(products: List<ProductEntity>)
 
-    @SerializedName("variety")
-    val variety: String = "desi",
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertProduct(product: ProductEntity)
 
-    @SerializedName("description")
-    val description: String = "",
+    @Delete
+    suspend fun deleteProduct(product: ProductEntity)
 
-    @SerializedName("pricePaise", alternate = ["price_paise", "price"])
-    val pricePaise: Long = 0L,
-
-    @SerializedName("stockQuantity", alternate = ["stock_quantity", "stockKg", "quantity"])
-    val stockQuantity: Double = 0.0,
-
-    @SerializedName("unit")
-    val unit: String = "kg",
-
-    @SerializedName("minimumOrderQuantity", alternate = ["min_order", "minimumOrderKg"])
-    val minimumOrderQuantity: Double = 1.0,
-
-    @SerializedName("harvestDate", alternate = ["harvest_date"])
-    val harvestDate: String? = null,
-
-    @SerializedName("village")
-    val village: String = "",
-
-    @SerializedName("district")
-    val district: String = "",
-
-    @SerializedName("photos")
-    val photos: List<String> = emptyList(),
-
-    @SerializedName("videos")
-    val videos: List<String> = emptyList(),
-
-    @SerializedName("verificationStatus", alternate = ["verification_status"])
-    val verificationStatus: String = "farmer_declared",
-
-    @SerializedName("organicVerified", alternate = ["organic_verified"])
-    val organicVerified: Boolean = false,
-
-    @SerializedName("status")
-    val status: String = "ACTIVE",
-
-    @SerializedName("createdAt", alternate = ["created_at"])
-    val createdAt: Long? = null
-) {
-    fun getFormattedPrice(): String {
-        return "₹${pricePaise / 100.0}"
-    }
-
-    fun isSmallQuantityAvailable(): Boolean {
-        return stockQuantity in 1.0..25.0
-    }
+    @Query("DELETE FROM products")
+    suspend fun clearProducts()
 }
