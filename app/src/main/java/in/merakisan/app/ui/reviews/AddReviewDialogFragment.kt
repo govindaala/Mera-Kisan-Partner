@@ -13,14 +13,12 @@ import androidx.core.view.isVisible
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
-import `in`.merakisan.app.core.network.ApiClient
-import `in`.merakisan.app.core.network.model.ReviewDto
+import `in`.merakisan.app.core.network.model.CreateReviewRequest
 import `in`.merakisan.app.core.security.SessionManager
 import `in`.merakisan.app.databinding.DialogAddReviewBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.UUID
 
 /**
  * MERA KISAN — ऑर्डर समीक्षा एवं 5-स्टार रेटिंग डायलॉग
@@ -94,9 +92,10 @@ class AddReviewDialogFragment : BottomSheetDialogFragment() {
         }
 
         val ratingBar = findRatingBar("rbRating", "ratingBar", "rbQualityRating")
-        val ratingValue = ratingBar?.rating?.toDouble() ?: 5.0
+        // RatingBar का नेटिव प्रकार Float है
+        val ratingValue: Float = ratingBar?.rating ?: 5.0f
 
-        if (ratingValue <= 0.0) {
+        if (ratingValue <= 0.0f) {
             Toast.makeText(requireContext(), "कृपया कम से कम 1 स्टार रेटिंग अवश्य चुनें", Toast.LENGTH_SHORT).show()
             return
         }
@@ -108,24 +107,20 @@ class AddReviewDialogFragment : BottomSheetDialogFragment() {
             return
         }
 
-        val newReviewDto = ReviewDto(
-            reviewId = "REV_${UUID.randomUUID().toString().take(8).uppercase()}",
+        // ReviewsViewModel.submitReview के साथ 100% कांट्रैक्ट अलाइनमेंट
+        val reviewRequest = CreateReviewRequest(
             orderId = orderId,
             productId = productId,
-            buyerUid = user.uid,
-            buyerName = user.name.ifBlank { "सत्यापित खरीदार" },
-            sellerUid = sellerUid,
+            targetUid = sellerUid,
             rating = ratingValue,
-            comment = commentText,
-            createdAt = System.currentTimeMillis().toString()
+            comment = commentText
         )
 
         setLoading(true)
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // ViewModel के माध्यम से स्थानीय व नेटवर्क सबमिशन
-                viewModel.submitReview(newReviewDto)
+                viewModel.submitReview(reviewRequest)
 
                 withContext(Dispatchers.Main) {
                     setLoading(false)
