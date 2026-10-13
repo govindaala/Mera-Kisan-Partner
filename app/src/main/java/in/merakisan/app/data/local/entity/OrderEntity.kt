@@ -6,8 +6,8 @@ import androidx.room.PrimaryKey
 import `in`.merakisan.app.core.network.model.OrderDto
 
 /**
- * MERA KISAN — स्थानीय रूम डेटाबेस ऑर्डर एंटिटी
- * ऑफ़लाइन कैशिंग और वित्तीय अखंडता (Paise minor units) समर्थित
+ * MERA KISAN — स्थानीय ऑर्डर कैश
+ * राशि Paise में रखी जाती है।
  */
 @Entity(tableName = "orders")
 data class OrderEntity(
@@ -33,7 +33,7 @@ data class OrderEntity(
 ) {
     fun toDto(): OrderDto {
         return OrderDto(
-            orderId = orderId,
+            id = orderId,
             productId = productId,
             productName = productName,
             sellerUid = sellerUid,
@@ -48,7 +48,10 @@ data class OrderEntity(
     }
 
     companion object {
-        fun fromDto(dto: OrderDto, isSynced: Boolean = true): OrderEntity {
+        fun fromDto(
+            dto: OrderDto,
+            isSynced: Boolean = true
+        ): OrderEntity {
             return OrderEntity(
                 orderId = dto.orderId,
                 productId = dto.productId,
@@ -60,7 +63,8 @@ data class OrderEntity(
                 totalAmountPaise = dto.totalAmountPaise,
                 orderStatus = dto.orderStatus,
                 deliveryAddress = dto.deliveryAddress,
-                createdAt = dto.createdAt.toLongOrNull() ?: System.currentTimeMillis(),
+                createdAt = dto.createdAt.toLongOrNull()
+                    ?: System.currentTimeMillis(),
                 isSynced = isSynced
             )
         }
