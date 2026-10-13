@@ -22,39 +22,20 @@ import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
 
-// Purane callers ke compatibility ke liye typealias
+// पुराने कॉलर्स के लिए टाइप-एलियास
 typealias CreateOrderRequest = ModelCreateOrderRequest
 typealias UpdateOrderStatusRequest = ModelUpdateOrderStatusRequest
 
-/**
- * User Profile DTO (ProfileViewModel ke liye direct response model)
- */
 data class UserDto(
-    @SerializedName("uid")
-    val uid: String = "",
-    @SerializedName("name")
-    val name: String = "",
-    @SerializedName("phone")
-    val phone: String = "",
-    @SerializedName("email")
-    val email: String = "",
-    @SerializedName("role")
-    val role: String = "both",
-    @SerializedName("village")
-    val village: String = "",
-    @SerializedName("district")
-    val district: String = "",
-    @SerializedName("photo_url")
-    val photoUrl: String = ""
+    @SerializedName("uid") val uid: String = "",
+    @SerializedName("name") val name: String = "",
+    @SerializedName("phone") val phone: String = "",
+    @SerializedName("email") val email: String = "",
+    @SerializedName("role") val role: String = "both"
 )
 
-/**
- * MERA KISAN — Kendriya REST API Service Contract
- * Master Spec v1.1 & Vercel Backend Alignment
- */
 interface ApiService {
 
-    // 1. Products & Crops (ProductRepository, MarketplaceViewModel, SyncWorker)
     @GET("api/crops")
     suspend fun getProducts(
         @Query("category") category: String? = null,
@@ -81,7 +62,6 @@ interface ApiService {
         @Body product: ProductDto
     ): Response<ApiResponse<ProductDto>>
 
-    // 2. Media Upload (MediaUploadWorker - MultipartBody.Part)
     @Multipart
     @POST("api/media/upload")
     suspend fun uploadMedia(
@@ -90,11 +70,9 @@ interface ApiService {
         @Part body: MultipartBody.Part
     ): Response<ApiResponse<Any>>
 
-    // 3. User Profile
     @GET("api/me")
     suspend fun getCurrentUser(): Response<ApiResponse<UserDto>>
 
-    // 4. Orders State Machine & Idempotent Management
     @GET("api/orders")
     suspend fun getOrders(): Response<ApiResponse<List<OrderDto>>>
 
@@ -115,7 +93,6 @@ interface ApiService {
         @Body request: ModelUpdateOrderStatusRequest
     ): Response<ApiResponse<Boolean>>
 
-    // 5. Buyer Requests Board ("Mujhe Yeh Chahiye")
     @GET("api/buyer-requests")
     suspend fun getBuyerRequests(
         @Query("category") category: String? = null
@@ -126,7 +103,6 @@ interface ApiService {
         @Body request: BuyerRequestDto
     ): Response<ApiResponse<BuyerRequestDto>>
 
-    // 6. Verified Delivery Ratings & Reviews
     @GET("api/reviews")
     suspend fun getProductReviews(
         @Query("product_id") productId: String
@@ -137,7 +113,6 @@ interface ApiService {
         @Body request: CreateReviewRequest
     ): Response<ApiResponse<Boolean>>
 
-    // 7. Mandi Prices Tracker
     @GET("api/mandi-prices")
     suspend fun getMandiPrices(
         @Query("district") district: String? = null
