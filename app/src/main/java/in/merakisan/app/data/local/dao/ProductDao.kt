@@ -1,4 +1,5 @@
 // app/src/main/java/in/merakisan/app/data/local/dao/ProductDao.kt
+
 package `in`.merakisan.app.data.local.dao
 
 import androidx.room.Dao
@@ -12,21 +13,40 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface ProductDao {
 
-    @Query("SELECT * FROM products ORDER BY createdAt DESC")
+    /**
+     * सभी cached products प्राप्त करें।
+     * वास्तविक Room table: cached_products
+     */
+    @Query("SELECT * FROM cached_products ORDER BY createdAt DESC")
     fun getAllProducts(): Flow<List<ProductEntity>>
 
-    @Query("SELECT * FROM products WHERE id = :id")
+    /**
+     * Product की Primary Key productId के आधार पर product प्राप्त करें।
+     */
+    @Query("SELECT * FROM cached_products WHERE productId = :id LIMIT 1")
     suspend fun getProductById(id: String): ProductEntity?
 
+    /**
+     * Products की सूची स्थानीय डेटाबेस में सेव करें।
+     */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertProducts(products: List<ProductEntity>)
 
+    /**
+     * एक product स्थानीय डेटाबेस में सेव करें।
+     */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertProduct(product: ProductEntity)
 
+    /**
+     * दिए गए product को स्थानीय डेटाबेस से हटाएँ।
+     */
     @Delete
     suspend fun deleteProduct(product: ProductEntity)
 
-    @Query("DELETE FROM products")
+    /**
+     * स्थानीय product cache खाली करें।
+     */
+    @Query("DELETE FROM cached_products")
     suspend fun clearProducts()
 }
