@@ -1,12 +1,9 @@
-// app/src/main/java/in/merakisan/app/ui/auth/AuthViewModel.kt
 package `in`.merakisan.app.ui.auth
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.GoogleAuthProvider
 import `in`.merakisan.app.core.security.SessionManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,9 +14,8 @@ import kotlinx.coroutines.tasks.await
 sealed class AuthUiState {
     object Idle : AuthUiState()
     object Loading : AuthUiState()
-    data class GoogleLinked(val account: GoogleSignInAccount) : AuthUiState()
-    data class Success(val role: String, val name: String = "किसान साथी") : AuthUiState()
-    data class Error(val message: String) : AuthUiState()
+    data class Success(val message: String) : AuthUiState()
+    data class Error(val errorMessage: String) : AuthUiState()
 }
 
 class AuthViewModel(application: Application) : AndroidViewModel(application) {
@@ -30,89 +26,48 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow<AuthUiState>(AuthUiState.Idle)
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
 
-    private var currentAccount: GoogleSignInAccount? = null
-
-    fun resetError() {
-        _uiState.value = AuthUiState.Idle
-    }
-
-    // असली Firebase Google Auth इंटीग्रेशन
-    fun firebaseAuthWithGoogle(account: GoogleSignInAccount) {
-        val idToken = account.idToken
-        if (idToken.isNullOrBlank()) {
-            _uiState.value = AuthUiState.Error("Google idToken प्राप्त नहीं हो सका")
-            return
-        }
-
-        currentAccount = account
+    fun handleFirebaseTokenSuccess(onComplete: (Boolean) -> Unit) {
         _uiState.value = AuthUiState.Loading
-
         viewModelScope.launch {
             try {
-                val credential = GoogleAuthProvider.getCredential(idToken, null)
-                val authResult = firebaseAuth.signInWithCredential(credential).await()
-                val firebaseUser = authResult.user
+                val user = firebaseAuth.currentUser
+                if (user != null) {
+                    val tokenResult = user.getIdToken(true).await()
+                    val idToken = tokenResult.token
 
-                if (firebaseUser != null) {
-                    val uid = firebaseUser.uid
-                    val name = firebaseUser.displayName ?: account.displayName ?: "किसान साथी"
-                    val email = firebaseUser.email ?: account.email ?: ""
-
-                    // असली Firebase टोकन और क्रेडेंशियल सहेजना
-                    sessionManager.saveAuthToken(idToken)
-                    sessionManager.saveSession(
-                        token = idToken,
-                        uid = uid,
-                        name = name,
-                        phone = firebaseUser.phoneNumber.orEmpty(),
-                        role = "both"
-                    )
-
-                    _uiState.value = AuthUiState.GoogleLinked(account)
-                } else {
-                    _uiState.value = AuthUiState.Error("Firebase यूज़र सत्यापन विफल रहा")
+                    if (!idToken.isNullOrBlank()) {
+                        sessionManager.saveAuthToken(idToken)
+                        sessionManager.saveUserSession(
+                            uid = user.uid,
+                            name = user.displayName ?: "किसान साथी",
+                            phone = user.phoneNumber ?: "",
+                            role = "both"
+                        )
+                        _uiState.value = AuthUiState.Success("लॉगिन सफल")
+                        onComplete(true)
+                        return@launch
+                    }
                 }
+                _uiState.value = AuthUiState.Error("प्रमाणीकरण टोकन प्राप्त नहीं हुआ।")
+                onComplete(false)
             } catch (e: Exception) {
-                _uiState.value = AuthUiState.Error(e.localizedMessage ?: "Firebase प्रमाणीकरण त्रुटि")
+                _uiState.value = AuthUiState.Error(e.localizedMessage ?: "लॉगिन विफल")
+                onComplete(false)
             }
         }
     }
 
-    fun finalizeAuthentication(phone: String) {
-        val firebaseUser = firebaseAuth.currentUser
-        if (firebaseUser == null) {
-            _uiState.value = AuthUiState.Error("सत्र समाप्त हुआ। कृपया Google से पुनः साइन इन करें।")
-            return
-        }
-
-        _uiState.value = AuthUiState.Loading
-        viewModelScope.launch {
-            val uid = firebaseUser.uid
-            val name = firebaseUser.displayName ?: "किसान साथी"
-            val token = sessionManager.getAuthToken().orEmpty()
-
-            sessionManager.saveSession(
-                token = token,
-                uid = uid,
-                name = name,
-                phone = phone,
-                role = "both"
-            )
-
-            _uiState.value = AuthUiState.Success("both", name)
-        }
-    }
-
-    fun continueAsGuest() {
-        val guestUid = "guest_${System.currentTimeMillis()}"
-        sessionManager.saveAuthToken("guest_session")
-        sessionManager.saveSession(
-            token = "guest_session",
-            uid = guestUid,
-            name = "अतिथि किसान",
+    /**
+     * सुरक्षित गेस्ट मोड: डमी टोकन के स्थान पर प्रतिबंधित सत्र
+     */
+    fun continueAsGuest(onComplete: () -> Unit) {
+        sessionManager.clearSession()
+        sessionManager.saveUserSession(
+            uid = "guest_${System.currentTimeMillis()}",
+            name = "अतिथि खरीदार",
             phone = "",
-            role = "buyer"
+            role = "BUYER"
         )
-        _uiState.value = AuthUiState.Success("buyer", "अतिथि किसान")
+        onComplete()
     }
 }
