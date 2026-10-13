@@ -1,3 +1,4 @@
+// app/src/main/java/in/merakisan/app/ui/home/HomeViewModel.kt
 package `in`.merakisan.app.ui.home
 
 import android.app.Application
@@ -82,7 +83,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     smallQuantityProducts = smallQty
                 )
             } catch (_: Exception) {
-                // सुरक्षित फ़ॉलबैक: कच्चे अपवाद को छुपाकर स्थिर अवस्था बनाए रखना
                 _uiState.value = HomeUiState.Error(
                     message = "डेटा लोड नहीं हो सका। कृपया इंटरनेट चेक करें।"
                 )
