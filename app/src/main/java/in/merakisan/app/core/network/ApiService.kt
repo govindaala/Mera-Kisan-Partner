@@ -3,7 +3,6 @@ package `in`.merakisan.app.core.network
 
 import `in`.merakisan.app.core.network.model.ApiResponse
 import `in`.merakisan.app.core.network.model.BuyerRequestDto
-import `in`.merakisan.app.core.network.model.CreateBuyerRequestPayload
 import `in`.merakisan.app.core.network.model.CreateOrderRequest as ModelCreateOrderRequest
 import `in`.merakisan.app.core.network.model.CreateReviewRequest
 import `in`.merakisan.app.core.network.model.MandiPriceDto
@@ -11,17 +10,18 @@ import `in`.merakisan.app.core.network.model.OrderDto
 import `in`.merakisan.app.core.network.model.ProductDto
 import `in`.merakisan.app.core.network.model.ReviewDto
 import `in`.merakisan.app.core.network.model.UpdateOrderStatusRequest as ModelUpdateOrderStatusRequest
-import `in`.merakisan.app.core.network.model.UserDto
-import okhttp3.RequestBody
+import okhttp3.MultipartBody
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.Multipart
 import retrofit2.http.POST
+import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
 
-// पुराने कॉलर्स के लिए टाइप-एलियास (ताकि बिना किसी मिसिंग एरर के तुरंत हल हो सकें)
+// पुराने कॉलर्स के लिए टाइप-एलियास
 typealias CreateOrderRequest = ModelCreateOrderRequest
 typealias UpdateOrderStatusRequest = ModelUpdateOrderStatusRequest
 
@@ -58,15 +58,16 @@ interface ApiService {
         @Body product: ProductDto
     ): Response<ApiResponse<ProductDto>>
 
-    // 2. मीडिया अपलोड (MediaUploadWorker के लिए)
+    // 2. मीडिया अपलोड (MediaUploadWorker के लिए 100% Multipart समर्थन)
+    @Multipart
     @POST("api/media/upload")
     suspend fun uploadMedia(
         @Query("productId") productId: String,
         @Query("mediaType") mediaType: String,
-        @Body body: RequestBody
+        @Part body: MultipartBody.Part
     ): Response<ApiResponse<Any>>
 
-    // 3. उपयोगकर्ता प्रोफाइल (ProfileViewModel के लिए)
+    // 3. उपयोगकर्ता प्रोफाइल (UserDto उसी पैकेज से सीधे संदर्भित)
     @GET("api/me")
     suspend fun getCurrentUser(): Response<ApiResponse<UserDto>>
 
