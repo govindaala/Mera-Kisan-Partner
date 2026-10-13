@@ -1,4 +1,3 @@
-// app/src/main/java/in/merakisan/app/ui/home/HomeViewModel.kt
 package `in`.merakisan.app.ui.home
 
 import android.app.Application
@@ -16,7 +15,7 @@ import kotlinx.coroutines.withContext
 
 sealed class HomeUiState {
     object Loading : HomeUiState()
-    
+
     data class Success(
         val userName: String = "किसान साथी",
         val locationText: String = "मध्य प्रदेश",
@@ -51,7 +50,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 val session = sessionManager.getUserSession()
-                
+
                 val response = withContext(Dispatchers.IO) {
                     apiService.getProducts()
                 }
@@ -62,12 +61,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     emptyList()
                 }
 
-                val fresh = productList.filter { 
-                    it.verificationStatus == "farmer_declared" || it.createdAt != null 
+                val fresh = productList.filter {
+                    it.verificationStatus == "farmer_declared" || it.createdAt != null
                 }.ifEmpty { productList }.take(10)
 
-                val smallQty = productList.filter { 
-                    it.stockQuantity in 1.0..25.0 
+                val smallQty = productList.filter {
+                    it.stockQuantity in 1.0..25.0
                 }
 
                 _uiState.value = HomeUiState.Success(
@@ -82,7 +81,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     nearbyProducts = productList,
                     smallQuantityProducts = smallQty
                 )
-            } catch (e: Exception) {
+            } catch (_: Exception) {
+                // सुरक्षित फ़ॉलबैक: कच्चे अपवाद को छुपाकर स्थिर अवस्था बनाए रखना
                 _uiState.value = HomeUiState.Error(
                     message = "डेटा लोड नहीं हो सका। कृपया इंटरनेट चेक करें।"
                 )
