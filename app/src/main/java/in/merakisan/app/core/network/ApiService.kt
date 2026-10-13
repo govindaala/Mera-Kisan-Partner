@@ -1,3 +1,4 @@
+// app/src/main/java/in/merakisan/app/core/network/ApiService.kt
 package `in`.merakisan.app.core.network
 
 import com.google.gson.annotations.SerializedName
@@ -23,7 +24,6 @@ import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
 
-// पुराने कॉलर्स के लिए बैकवर्ड-कम्पैटिबल टाइप-एलियास
 typealias CreateOrderRequest = ModelCreateOrderRequest
 typealias UpdateOrderStatusRequest = ModelUpdateOrderStatusRequest
 
@@ -38,13 +38,8 @@ data class UserDto(
     @SerializedName("photo_url") val photoUrl: String = ""
 )
 
-/**
- * MERA KISAN — केंद्रीकृत REST API सेवा
- * Canonical Vercel Backend Contract (/v1)
- */
 interface ApiService {
 
-    // 1. उत्पाद एवं फ़सलें (/v1/products)
     @GET("v1/products")
     suspend fun getProducts(
         @Query("category") category: String? = null,
@@ -71,7 +66,6 @@ interface ApiService {
         @Body product: ProductDto
     ): Response<ApiResponse<ProductDto>>
 
-    // 2. मीडिया एवं वीडियो जॉब क्यू
     @Multipart
     @POST("v1/products/media/upload")
     suspend fun uploadMedia(
@@ -80,11 +74,9 @@ interface ApiService {
         @Part body: MultipartBody.Part
     ): Response<ApiResponse<Any>>
 
-    // 3. प्रमाणीकरण एवं प्रोफ़ाइल (/v1/auth)
     @GET("v1/auth/me")
     suspend fun getCurrentUser(): Response<ApiResponse<UserDto>>
 
-    // 4. ऑर्डर्स स्टेट मशीन (/v1/orders)
     @GET("v1/orders")
     suspend fun getOrders(): Response<ApiResponse<List<OrderDto>>>
 
@@ -105,7 +97,6 @@ interface ApiService {
         @Body request: ModelUpdateOrderStatusRequest
     ): Response<ApiResponse<Boolean>>
 
-    // 5. खरीदार मांग बोर्ड (/v1/buyer-requests)
     @GET("v1/buyer-requests")
     suspend fun getBuyerRequests(
         @Query("category") category: String? = null
@@ -116,7 +107,6 @@ interface ApiService {
         @Body request: BuyerRequestDto
     ): Response<ApiResponse<BuyerRequestDto>>
 
-    // 6. सत्यापित समीक्षाएं (/v1/products/{id}/reviews)
     @GET("v1/products/{id}/reviews")
     suspend fun getProductReviews(
         @Path("id") productId: String
@@ -128,11 +118,9 @@ interface ApiService {
         @Body request: CreateReviewRequest
     ): Response<ApiResponse<Boolean>>
 
-    // 7. रिमोट फ़ीचर कॉन्फ़िगरेशन
     @GET("v1/config")
     suspend fun getRemoteConfig(): Response<ApiResponse<AppConfigDto>>
 
-    // 8. मंडी भाव ट्रैकर
     @GET("v1/mandi-prices")
     suspend fun getMandiPrices(
         @Query("district") district: String? = null
