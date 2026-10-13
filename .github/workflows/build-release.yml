@@ -24,6 +24,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: 1.1 Print Keystore SHA Fingerprints
+        run: |
+          keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android
+          
+
       - name: 2. जावा JDK 17 सेटअप
         uses: actions/setup-java@v4
         with:
