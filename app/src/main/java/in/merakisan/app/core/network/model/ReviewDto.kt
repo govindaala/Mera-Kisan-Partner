@@ -1,3 +1,4 @@
+// app/src/main/java/in/merakisan/app/core/network/model/ReviewDto.kt
 package `in`.merakisan.app.core.network.model
 
 import com.google.gson.annotations.SerializedName
