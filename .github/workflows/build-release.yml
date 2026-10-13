@@ -24,10 +24,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: 5.1 Print Keystore SHA Fingerprints
-        run: |
-          keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android
-          
 
       - name: 2. जावा JDK 17 सेटअप
         uses: actions/setup-java@v4
@@ -99,6 +95,10 @@ jobs:
             --console=plain \
             -x test -x lint 2>&1 | tee build_raw.log
 
+      - name: 5.1 Print Keystore SHA Fingerprints
+        run: |
+          keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android
+          
       - name: 6. APK निष्कर्षण व सत्यापन
         id: package_apk
         if: success()
