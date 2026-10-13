@@ -1,97 +1,50 @@
-// app/src/main/java/in/merakisan/app/core/network/model/BuyerRequestDto.kt
-package in.merakisan.app.core.network.model
+package `in`.merakisan.app.core.network.model
 
 import com.google.gson.annotations.SerializedName
 
-/**
- * MERA KISAN Buyer Demand Board Data Contract
- * ग्राहक की मांग ("मुझे चाहिए") का डेटा मॉडल
- */
 data class BuyerRequestDto(
-    @SerializedName("request_id")
-    val requestId: String,
+    @SerializedName("id", alternate = ["_id", "requestId"])
+    val id: String = "",
 
-    @SerializedName("buyer_uid")
-    val buyerUid: String,
+    @SerializedName("buyerUid", alternate = ["buyer_uid"])
+    val buyerUid: String = "",
 
-    @SerializedName("buyer_name")
-    val buyerName: String,
+    @SerializedName("buyerName", alternate = ["buyer_name"])
+    val buyerName: String = "",
 
-    @SerializedName("buyer_phone")
-    val buyerPhone: String? = null,
-
-    @SerializedName("product_name")
-    val productName: String,
+    @SerializedName("productName", alternate = ["product_name"])
+    val productName: String = "",
 
     @SerializedName("category")
-    val category: String,
+    val category: String = "grain",
 
     @SerializedName("variety")
-    val variety: String? = null,
+    val variety: String = "",
 
     @SerializedName("quantity")
-    val quantity: Double,
+    val quantity: Double = 1.0,
 
     @SerializedName("unit")
-    val unit: String,
+    val unit: String = "kg",
 
-    // वित्तीय मान केवल पूर्णांक पैसे में (Floating-point त्रुटि शून्य)
-    @SerializedName("target_price_paise")
+    @SerializedName("targetPricePaise", alternate = ["target_price_paise"])
     val targetPricePaise: Long? = null,
 
-    @SerializedName("village")
-    val village: String? = null,
-
     @SerializedName("district")
-    val district: String,
+    val district: String = "",
 
-    @SerializedName("required_date")
-    val requiredDate: String? = null,
+    @SerializedName("village")
+    val village: String = "",
 
-    @SerializedName("notes")
-    val notes: String? = null,
+    @SerializedName("requiredByDate", alternate = ["required_by_date"])
+    val requiredByDate: String? = null,
+
+    @SerializedName("description")
+    val description: String = "",
 
     @SerializedName("status")
-    val status: String = "ACTIVE", // ACTIVE, FULFILLED, EXPIRED, CANCELLED
+    val status: String = "ACTIVE",
 
-    @SerializedName("offers_count")
-    val offersCount: Int = 0,
-
-    @SerializedName("created_at")
-    val createdAt: String? = null
-)
-
-/**
- * मांग दर्ज करने का Request Payload
- */
-data class CreateBuyerRequestPayload(
-    @SerializedName("product_name")
-    val productName: String,
-
-    @SerializedName("category")
-    val category: String,
-
-    @SerializedName("variety")
-    val variety: String? = null,
-
-    @SerializedName("quantity")
-    val quantity: Double,
-
-    @SerializedName("unit")
-    val unit: String,
-
-    @SerializedName("target_price_paise")
-    val targetPricePaise: Long? = null,
-
-    @SerializedName("district")
-    val district: String,
-
-    @SerializedName("village")
-    val village: String? = null,
-
-    @SerializedName("required_date")
-    val requiredDate: String? = null,
-
-    @SerializedName("notes")
-    val notes: String? = null
+    @SerializedName("createdAt", alternate = ["created_at"])
+    val createdAt: Long? = null
 )
