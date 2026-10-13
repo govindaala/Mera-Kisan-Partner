@@ -1,3 +1,4 @@
+// app/src/main/java/in/merakisan/app/core/security/SessionManager.kt
 package `in`.merakisan.app.core.security
 
 import android.content.Context
@@ -25,8 +26,7 @@ class SessionManager(context: Context) {
     }
 
     fun saveAuthToken(token: String) {
-        // अमान्य डमी स्ट्रिंग्स को टोकन की तरह सेव न करें
-        if (token.isNotBlank() && token != "guest_session") {
+        if (token.isNotBlank() && token != "guest_session" && !token.startsWith("guest_")) {
             prefs.edit().putString(KEY_TOKEN, token).apply()
         }
     }
