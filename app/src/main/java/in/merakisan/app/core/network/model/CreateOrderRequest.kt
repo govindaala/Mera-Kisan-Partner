@@ -4,13 +4,27 @@ package `in`.merakisan.app.core.network.model
 import com.google.gson.annotations.SerializedName
 
 data class CreateOrderRequest(
-    @SerializedName("productId", alternate = ["product_id"])
+
+    @SerializedName(
+        value = "product_id",
+        alternate = ["productId"]
+    )
     val productId: String = "",
 
-    @SerializedName("sellerUid", alternate = ["seller_uid", "farmerUid", "farmer_uid"])
+    @SerializedName(
+        value = "seller_uid",
+        alternate = [
+            "sellerUid",
+            "farmerUid",
+            "farmer_uid"
+        ]
+    )
     val sellerUid: String = "",
 
-    @SerializedName("buyerUid", alternate = ["buyer_uid"])
+    @SerializedName(
+        value = "buyer_uid",
+        alternate = ["buyerUid"]
+    )
     val buyerUid: String = "",
 
     @SerializedName("quantity")
@@ -19,18 +33,48 @@ data class CreateOrderRequest(
     @SerializedName("unit")
     val unit: String = "kg",
 
-    @SerializedName("totalAmountPaise", alternate = ["total_amount_paise", "totalAmount"])
+    @SerializedName(
+        value = "total_amount_paise",
+        alternate = [
+            "totalAmountPaise",
+            "totalAmount"
+        ]
+    )
     val totalAmountPaise: Long = 0L,
 
-    @SerializedName("paymentMethod", alternate = ["payment_method"])
+    @SerializedName(
+        value = "payment_method",
+        alternate = ["paymentMethod"]
+    )
     val paymentMethod: String = "cod",
 
-    @SerializedName("deliveryAddress", alternate = ["delivery_address", "address"])
+    @SerializedName(
+        value = "delivery_address",
+        alternate = [
+            "deliveryAddress",
+            "address"
+        ]
+    )
     val deliveryAddress: String = "",
 
-    @SerializedName("buyerPhone", alternate = ["buyer_phone", "phone"])
+    @SerializedName(
+        value = "buyer_phone",
+        alternate = [
+            "buyerPhone",
+            "phone"
+        ]
+    )
     val buyerPhone: String = "",
 
-    @SerializedName("idempotency_key", alternate = ["idempotencyKey"])
-    val idempotencyKey: String = ""
+    @SerializedName(
+        value = "idempotency_key",
+        alternate = ["idempotencyKey"]
+    )
+    val idempotencyKey: String = "",
+
+    @SerializedName(
+        value = "delivery_type",
+        alternate = ["deliveryType"]
+    )
+    val deliveryType: String = "pickup"
 )
