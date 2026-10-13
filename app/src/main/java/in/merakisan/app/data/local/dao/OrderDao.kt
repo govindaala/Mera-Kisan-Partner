@@ -1,45 +1,32 @@
-package `in`.merakisan.app.core.network.model
+// app/src/main/java/in/merakisan/app/data/local/dao/OrderDao.kt
+package `in`.merakisan.app.data.local.dao
 
-import com.google.gson.annotations.SerializedName
+import androidx.room.Dao
+import androidx.room.Delete
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import `in`.merakisan.app.data.local.entity.OrderEntity
+import kotlinx.coroutines.flow.Flow
 
-data class OrderDto(
-    @SerializedName("id", alternate = ["_id", "orderId", "order_id"])
-    val id: String = "",
+@Dao
+interface OrderDao {
 
-    @SerializedName("buyerUid", alternate = ["buyer_uid"])
-    val buyerUid: String = "",
+    @Query("SELECT * FROM orders ORDER BY createdAt DESC")
+    fun getAllOrders(): Flow<List<OrderEntity>>
 
-    @SerializedName("sellerUid", alternate = ["seller_uid"])
-    val sellerUid: String = "",
+    @Query("SELECT * FROM orders WHERE id = :id")
+    suspend fun getOrderById(id: String): OrderEntity?
 
-    @SerializedName("productId", alternate = ["product_id"])
-    val productId: String = "",
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrders(orders: List<OrderEntity>)
 
-    @SerializedName("productName", alternate = ["product_name"])
-    val productName: String = "",
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrder(order: OrderEntity)
 
-    @SerializedName("quantity")
-    val quantity: Double = 1.0,
+    @Delete
+    suspend fun deleteOrder(order: OrderEntity)
 
-    @SerializedName("unit")
-    val unit: String = "kg",
-
-    @SerializedName("totalAmountPaise", alternate = ["total_amount_paise", "totalAmount"])
-    val totalAmountPaise: Long = 0L,
-
-    @SerializedName("paymentStatus", alternate = ["payment_status"])
-    val paymentStatus: String = "COD_PENDING",
-
-    @SerializedName("orderStatus", alternate = ["order_status", "status"])
-    val orderStatus: String = "CREATED",
-
-    @SerializedName("deliveryAddress", alternate = ["delivery_address", "shippingAddress"])
-    val deliveryAddress: String = "",
-
-    @SerializedName("createdAt", alternate = ["created_at"])
-    val createdAt: Long? = null
-) {
-    fun getFormattedTotal(): String {
-        return "₹${totalAmountPaise / 100.0}"
-    }
+    @Query("DELETE FROM orders")
+    suspend fun clearOrders()
 }
