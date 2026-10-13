@@ -1,3 +1,4 @@
+// app/src/main/java/in/merakisan/app/ui/auth/AuthViewModel.kt
 package `in`.merakisan.app.ui.auth
 
 import android.app.Application
@@ -57,9 +58,6 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /**
-     * सुरक्षित गेस्ट मोड: डमी टोकन के स्थान पर प्रतिबंधित सत्र
-     */
     fun continueAsGuest(onComplete: () -> Unit) {
         sessionManager.clearSession()
         sessionManager.saveUserSession(
