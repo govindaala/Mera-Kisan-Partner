@@ -5,19 +5,45 @@ import android.content.Context
 
 object FeatureManager {
 
-    suspend fun syncRemoteConfig(context: Context): Boolean {
-        val repo = RemoteConfigRepository(context)
-        val result = repo.fetchAndCacheConfig()
+    suspend fun syncRemoteConfig(
+        context: Context
+    ): Boolean {
+        val repository = RemoteConfigRepository(context)
+        val result = repository.fetchAndCacheConfig()
+
         return result.isSuccess
     }
 
-    fun isFeatureEnabled(context: Context, featureKey: String, defaultValue: Boolean = false): Boolean {
-        val repo = RemoteConfigRepository(context)
-        return repo.isFeatureActive(featureKey, defaultValue)
+    fun isEnabled(
+        context: Context,
+        featureKey: String,
+        defaultValue: Boolean = false
+    ): Boolean {
+        return isFeatureEnabled(
+            context,
+            featureKey,
+            defaultValue
+        )
     }
 
-    fun isMaintenanceMode(context: Context): Boolean {
-        val repo = RemoteConfigRepository(context)
-        return repo.isMaintenanceMode()
+    fun isFeatureEnabled(
+        context: Context,
+        featureKey: String,
+        defaultValue: Boolean = false
+    ): Boolean {
+        val repository = RemoteConfigRepository(context)
+
+        return repository.isFeatureActive(
+            featureKey,
+            defaultValue
+        )
+    }
+
+    fun isMaintenanceMode(
+        context: Context
+    ): Boolean {
+        val repository = RemoteConfigRepository(context)
+
+        return repository.isMaintenanceMode()
     }
 }
