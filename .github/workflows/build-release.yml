@@ -94,11 +94,10 @@ jobs:
             --no-build-cache \
             --console=plain \
             -x test -x lint 2>&1 | tee build_raw.log
-
       - name: 5.1 Print Keystore SHA Fingerprints
         run: |
-          keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android
-          
+          keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android | grep -E "SHA1:|SHA256:"
+
       - name: 6. APK निष्कर्षण व सत्यापन
         id: package_apk
         if: success()
