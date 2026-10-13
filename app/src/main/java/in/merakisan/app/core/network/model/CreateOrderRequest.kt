@@ -3,10 +3,6 @@ package `in`.merakisan.app.core.network.model
 
 import com.google.gson.annotations.SerializedName
 
-/**
- * MERA KISAN — Naya Order Payload (Canonical Contract)
- * OrderRepository aur CheckoutBottomSheetFragment dono ke saath 100% aligned
- */
 data class CreateOrderRequest(
     @SerializedName("productId", alternate = ["product_id"])
     val productId: String = "",
