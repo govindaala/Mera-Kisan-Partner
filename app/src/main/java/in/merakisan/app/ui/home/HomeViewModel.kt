@@ -83,7 +83,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     smallQuantityProducts = smallQty
                 )
             } catch (e: Exception) {
-                // क्रैश से सुरक्षित: भ्रामक कच्चे एरर के स्थान पर मित्रवत संदेश
                 _uiState.value = HomeUiState.Error(
                     message = "डेटा लोड नहीं हो सका। कृपया इंटरनेट चेक करें।"
                 )
@@ -91,7 +90,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // लेगेसी कॉलर कम्पैटिबिलिटी
     fun loadDashboardData() {
         loadHomeData()
     }
