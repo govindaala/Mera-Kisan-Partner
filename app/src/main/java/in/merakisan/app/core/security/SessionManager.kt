@@ -15,7 +15,10 @@ data class UserSession(
 class SessionManager(context: Context) {
 
     private val prefs: SharedPreferences =
-        context.getSharedPreferences("mera_kisan_secure_session", Context.MODE_PRIVATE)
+        context.applicationContext.getSharedPreferences(
+            "mera_kisan_secure_session",
+            Context.MODE_PRIVATE
+        )
 
     companion object {
         private const val KEY_TOKEN = "auth_id_token"
@@ -23,11 +26,47 @@ class SessionManager(context: Context) {
         private const val KEY_NAME = "user_name"
         private const val KEY_PHONE = "user_phone"
         private const val KEY_ROLE = "user_role"
+        private const val KEY_FCM_TOKEN = "fcm_token"
+
+        private fun preferences(
+            context: Context
+        ): SharedPreferences {
+            return context.applicationContext.getSharedPreferences(
+                "mera_kisan_secure_session",
+                Context.MODE_PRIVATE
+            )
+        }
+
+        fun saveFcmToken(
+            context: Context,
+            token: String
+        ) {
+            if (token.isNotBlank()) {
+                preferences(context)
+                    .edit()
+                    .putString(KEY_FCM_TOKEN, token)
+                    .apply()
+            }
+        }
+
+        fun getUserUid(
+            context: Context
+        ): String? {
+            return preferences(context)
+                .getString(KEY_UID, null)
+                ?.takeIf { it.isNotBlank() }
+        }
     }
 
     fun saveAuthToken(token: String) {
-        if (token.isNotBlank() && token != "guest_session" && !token.startsWith("guest_")) {
-            prefs.edit().putString(KEY_TOKEN, token).apply()
+        if (
+            token.isNotBlank() &&
+            token != "guest_session" &&
+            !token.startsWith("guest_")
+        ) {
+            prefs.edit()
+                .putString(KEY_TOKEN, token)
+                .apply()
         }
     }
 
@@ -35,7 +74,12 @@ class SessionManager(context: Context) {
         return prefs.getString(KEY_TOKEN, null)
     }
 
-    fun saveUserSession(uid: String, name: String, phone: String, role: String) {
+    fun saveUserSession(
+        uid: String,
+        name: String,
+        phone: String,
+        role: String
+    ) {
         prefs.edit()
             .putString(KEY_UID, uid)
             .putString(KEY_NAME, name)
@@ -47,12 +91,14 @@ class SessionManager(context: Context) {
     fun getUserSession(): UserSession {
         val uid = prefs.getString(KEY_UID, "") ?: ""
         val token = getAuthToken()
+
         return UserSession(
             uid = uid,
             name = prefs.getString(KEY_NAME, "") ?: "",
             phone = prefs.getString(KEY_PHONE, "") ?: "",
             role = prefs.getString(KEY_ROLE, "BUYER") ?: "BUYER",
-            isAuthenticated = uid.isNotBlank() && !token.isNullOrBlank()
+            isAuthenticated = uid.isNotBlank() &&
+                !token.isNullOrBlank()
         )
     }
 
