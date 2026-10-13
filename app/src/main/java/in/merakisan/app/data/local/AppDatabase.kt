@@ -11,13 +11,9 @@ import `in`.merakisan.app.data.local.dao.ProductDao
 import `in`.merakisan.app.data.local.entity.OrderEntity
 import `in`.merakisan.app.data.local.entity.ProductEntity
 
-/**
- * MERA KISAN — मुख्य स्थानीय रूम डेटाबेस
- * ProductEntity और OrderEntity दोनों का एकीकृत डेटा स्टोर
- */
 @Database(
     entities = [ProductEntity::class, OrderEntity::class],
-    version = 2,
+    version = 1,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -30,15 +26,13 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
-        fun getInstance(context: Context): AppDatabase {
+        fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "mera_kisan_database"
-                )
-                .fallbackToDestructiveMigration()
-                .build()
+                ).build()
                 INSTANCE = instance
                 instance
             }
