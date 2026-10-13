@@ -92,7 +92,6 @@ class AddReviewDialogFragment : BottomSheetDialogFragment() {
         }
 
         val ratingBar = findRatingBar("rbRating", "ratingBar", "rbQualityRating")
-        // RatingBar का नेटिव प्रकार Float है
         val ratingValue: Float = ratingBar?.rating ?: 5.0f
 
         if (ratingValue <= 0.0f) {
@@ -107,12 +106,14 @@ class AddReviewDialogFragment : BottomSheetDialogFragment() {
             return
         }
 
-        // ReviewsViewModel.submitReview के साथ 100% कांट्रैक्ट अलाइनमेंट
+        // ReviewDto.kt के मूल CreateReviewRequest और ReviewsViewModel के साथ 100% कांट्रैक्ट अलाइनमेंट
         val reviewRequest = CreateReviewRequest(
             orderId = orderId,
             productId = productId,
             targetUid = sellerUid,
             rating = ratingValue,
+            qualityRating = ratingValue,
+            deliveryRating = ratingValue,
             comment = commentText
         )
 
