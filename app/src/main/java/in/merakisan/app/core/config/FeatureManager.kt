@@ -1,40 +1,64 @@
-// app/src/main/java/in/merakisan/app/core/config/FeatureManager.kt
 package `in`.merakisan.app.core.config
 
 import android.content.Context
 import android.content.SharedPreferences
+import `in`.merakisan.app.core.network.ApiClient
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 object FeatureManager {
-    private const val PREFS_NAME = "mera_kisan_features"
 
-    private val DEFAULT_FLAGS: Map<String, Boolean> = mapOf(
-        "payment" to false,
-        "crop_boost" to false,
-        "online_order" to true,
-        "offers" to false,
-        "mandi_price" to true,
-        "buyer_request" to true,
-        "admob" to false,
-        "chat" to false,
-        "banner_enabled" to true,
-        "oil_marketplace" to false
-    )
+    private const val PREF_NAME = "mera_kisan_features"
+    private const val KEY_MAINTENANCE = "sys_maintenance_mode"
 
-    fun isEnabled(context: Context, featureKey: String): Boolean {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getBoolean(featureKey, DEFAULT_FLAGS[featureKey] ?: false)
+    private fun getPrefs(context: Context): SharedPreferences {
+        return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
     }
 
-    fun setFeature(context: Context, key: String, enabled: Boolean) {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putBoolean(key, enabled).apply()
+    /**
+     * बैकएंड /v1/config से रिमोट सेटिंग्स सिंक करता है
+     */
+    suspend fun syncRemoteConfig(context: Context): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val apiService = ApiClient.getApiService(context)
+            val response = apiService.getRemoteConfig()
+
+            if (response.isSuccessful && response.body()?.success == true) {
+                val config = response.body()?.data ?: return@withContext false
+                val editor = getPrefs(context).edit()
+
+                editor.putBoolean(KEY_MAINTENANCE, config.maintenanceMode)
+
+                // 40 फ़ीचर्स की कैनोनिकल मैपिंग
+                config.features.forEach { (key, value) ->
+                    val isEnabled = when (value) {
+                        is Boolean -> value
+                        is String -> value.equals("ON", ignoreCase = true) || value.equals("BETA", ignoreCase = true)
+                        is Number -> value.toInt() > 0
+                        else -> false
+                    }
+                    editor.putBoolean("feat_$key", isEnabled)
+                }
+
+                editor.apply()
+                true
+            } else {
+                false
+            }
+        } catch (_: Exception) {
+            false
+        }
     }
 
-    suspend fun syncRemoteConfig(context: Context): Boolean {
-        return true
+    fun isFeatureEnabled(context: Context, featureKey: String, defaultValue: Boolean = false): Boolean {
+        val prefs = getPrefs(context)
+        if (prefs.getBoolean(KEY_MAINTENANCE, false)) {
+            return false // मेंटेनेंस मोड सक्रिय होने पर सभी गैर-ज़रूरी फ़ीचर्स बंद
+        }
+        return prefs.getBoolean("feat_$featureKey", defaultValue)
     }
 
-    fun isMaintenanceMode(context: Context): Boolean = false
-
-    fun getMaintenanceMessage(context: Context): String = "सिस्टम मेंटेनेंस जारी है।"
+    fun isMaintenanceMode(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_MAINTENANCE, false)
+    }
 }
