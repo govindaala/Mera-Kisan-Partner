@@ -1,44 +1,70 @@
-// app/src/main/java/in/merakisan/app/data/local/dao/ProductDao.kt
-package `in`.merakisan.app.data.local.dao
+package `in`.merakisan.app.core.network.model
 
-import androidx.room.Dao
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
-import androidx.room.Query
-import `in`.merakisan.app.data.local.entity.ProductEntity
-import kotlinx.coroutines.flow.Flow
+import com.google.gson.annotations.SerializedName
 
-/**
- * MERA KISAN Room Database Data Access Object (DAO)
- * ऑफ़लाइन-फ़र्स्ट आर्किटेक्चर एवं सुरक्षित कैश प्रबंधन
- */
-@Dao
-interface ProductDao {
+data class ProductDto(
+    @SerializedName("id", alternate = ["_id", "productId", "cropId"])
+    val id: String = "",
 
-    @Query("SELECT * FROM cached_products ORDER BY createdAt DESC")
-    fun getAllProducts(): Flow<List<ProductEntity>>
+    @SerializedName("sellerUid", alternate = ["seller_uid", "farmerUid", "farmer_uid"])
+    val sellerUid: String = "",
 
-    @Query("SELECT * FROM cached_products WHERE category = :category ORDER BY createdAt DESC")
-    fun getProductsByCategory(category: String): Flow<List<ProductEntity>>
+    @SerializedName("name", alternate = ["productName", "cropName"])
+    val name: String = "",
 
-    @Query("SELECT * FROM cached_products WHERE sellerUid = :sellerUid ORDER BY createdAt DESC")
-    fun getProductsBySeller(sellerUid: String): Flow<List<ProductEntity>>
+    @SerializedName("category")
+    val category: String = "grain",
 
-    @Query("SELECT * FROM cached_products WHERE isFeatured = 1 OR boosted = 1 ORDER BY createdAt DESC")
-    fun getFeaturedProducts(): Flow<List<ProductEntity>>
+    @SerializedName("variety")
+    val variety: String = "desi",
 
-    @Query("SELECT * FROM cached_products WHERE productId = :productId LIMIT 1")
-    fun getProductById(productId: String): Flow<ProductEntity?>
+    @SerializedName("description")
+    val description: String = "",
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertProducts(products: List<ProductEntity>)
+    @SerializedName("pricePaise", alternate = ["price_paise", "price"])
+    val pricePaise: Long = 0L,
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertProduct(product: ProductEntity)
+    @SerializedName("stockQuantity", alternate = ["stock_quantity", "stockKg", "quantity"])
+    val stockQuantity: Double = 0.0,
 
-    @Query("DELETE FROM cached_products WHERE productId = :productId")
-    suspend fun deleteProductById(productId: String)
+    @SerializedName("unit")
+    val unit: String = "kg",
 
-    @Query("DELETE FROM cached_products")
-    suspend fun clearAllProducts()
+    @SerializedName("minimumOrderQuantity", alternate = ["min_order", "minimumOrderKg"])
+    val minimumOrderQuantity: Double = 1.0,
+
+    @SerializedName("harvestDate", alternate = ["harvest_date"])
+    val harvestDate: String? = null,
+
+    @SerializedName("village")
+    val village: String = "",
+
+    @SerializedName("district")
+    val district: String = "",
+
+    @SerializedName("photos")
+    val photos: List<String> = emptyList(),
+
+    @SerializedName("videos")
+    val videos: List<String> = emptyList(),
+
+    @SerializedName("verificationStatus", alternate = ["verification_status"])
+    val verificationStatus: String = "farmer_declared",
+
+    @SerializedName("organicVerified", alternate = ["organic_verified"])
+    val organicVerified: Boolean = false,
+
+    @SerializedName("status")
+    val status: String = "ACTIVE",
+
+    @SerializedName("createdAt", alternate = ["created_at"])
+    val createdAt: Long? = null
+) {
+    fun getFormattedPrice(): String {
+        return "₹${pricePaise / 100.0}"
+    }
+
+    fun isSmallQuantityAvailable(): Boolean {
+        return stockQuantity in 1.0..25.0
+    }
 }
