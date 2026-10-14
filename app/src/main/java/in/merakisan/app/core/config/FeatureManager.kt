@@ -5,7 +5,8 @@ import android.content.Context
 
 object FeatureManager {
 
-    // Master Spec v1.1 ke anusaar Approved P0/P1 Core Features jo hamesha default ON rahenge
+    // Master Spec v1.1 के अनुसार Approved P0/P1 Core Features जो डिफ़ॉल्ट रूप से ON रहेंगे
+    // (Future/HOLD फ़ीचर्स जैसे admob, auction, wallet, chat डिफ़ॉल्ट OFF रहेंगे)
     private val DEFAULT_ENABLED_CORE_FEATURES = setOf(
         "authentication",
         "farmer_mode",
@@ -37,7 +38,10 @@ object FeatureManager {
         "telegram_share",
         "sms_share",
         "qr_share",
-        "ai_poster"
+        "ai_poster",
+        "media_upload",
+        "video_upload",
+        "photo_upload"
     )
 
     suspend fun syncRemoteConfig(context: Context): Boolean {
@@ -65,20 +69,47 @@ object FeatureManager {
         }
     }
 
-    fun isEnabled(featureKey: String): Boolean {
-        return isCoreFeatureDefaultOn(featureKey)
+    // Adapters, Fragments और Workers के लिए Context के साथ isEnabled ओवरलोड
+    fun isEnabled(
+        context: Context,
+        featureKey: String,
+        defaultValue: Boolean = isCoreFeatureDefaultOn(featureKey)
+    ): Boolean {
+        return isFeatureEnabled(context, featureKey, defaultValue)
+    }
+
+    // बिना Context के कॉल करने वाले हिस्सों के लिए ओवरलोड
+    fun isEnabled(
+        featureKey: String,
+        defaultValue: Boolean = isCoreFeatureDefaultOn(featureKey)
+    ): Boolean {
+        return defaultValue || isCoreFeatureDefaultOn(featureKey)
     }
 
     fun isCoreFeatureDefaultOn(featureKey: String): Boolean {
         return DEFAULT_ENABLED_CORE_FEATURES.contains(featureKey.trim().lowercase())
     }
 
-    fun isMaintenanceMode(context: Context): Boolean {
+    fun isMaintenanceMode(context: Context? = null): Boolean {
+        if (context == null) return false
         return try {
             val repo = RemoteConfigRepository(context.applicationContext)
             repo.isMaintenanceMode()
         } catch (_: Throwable) {
             false
         }
+    }
+
+    // MainActivity.kt:92 के लिए आवश्यक मेथड
+    fun getMaintenanceMessage(context: Context? = null): String {
+        if (context != null) {
+            try {
+                val repo = RemoteConfigRepository(context.applicationContext)
+                val banner = repo.getBannerText()
+                if (!banner.isNullOrBlank()) return banner
+            } catch (_: Throwable) {
+            }
+        }
+        return "Mera Kisan पर रखरखाव (Maintenance) कार्य चल रहा है। कृपया कुछ समय बाद प्रयास करें।"
     }
 }
