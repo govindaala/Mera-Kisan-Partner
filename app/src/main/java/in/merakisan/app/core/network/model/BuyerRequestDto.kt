@@ -7,13 +7,13 @@ data class BuyerRequestDto(
 
     @SerializedName(
         value = "request_id",
-        alternate = ["requestId", "id", "_id"]
+        alternate = ["id", "_id", "requestId"]
     )
-    val id: String = "",
+    val requestId: String = "",
 
     @SerializedName(
         value = "buyer_uid",
-        alternate = ["buyerUid", "buyer_uid"]
+        alternate = ["buyerUid"]
     )
     val buyerUid: String = "",
 
@@ -22,6 +22,12 @@ data class BuyerRequestDto(
         alternate = ["buyerName"]
     )
     val buyerName: String = "",
+
+    @SerializedName(
+        value = "buyer_phone",
+        alternate = ["buyerPhone", "phone"]
+    )
+    val buyerPhone: String = "",
 
     @SerializedName(
         value = "product_name",
@@ -33,7 +39,7 @@ data class BuyerRequestDto(
     val category: String = "grain",
 
     @SerializedName("variety")
-    val variety: String = "",
+    val variety: String? = null,
 
     @SerializedName("quantity")
     val quantity: Double = 1.0,
@@ -55,15 +61,15 @@ data class BuyerRequestDto(
 
     @SerializedName(
         value = "required_by_date",
-        alternate = ["requiredByDate", "requiredDate"]
+        alternate = ["requiredByDate"]
     )
     val requiredByDate: String? = null,
 
     @SerializedName(
         value = "notes",
-        alternate = ["description", "note"]
+        alternate = ["description"]
     )
-    val description: String = "",
+    val notes: String? = null,
 
     @SerializedName("status")
     val status: String = "active",
@@ -72,31 +78,5 @@ data class BuyerRequestDto(
         value = "created_at",
         alternate = ["createdAt"]
     )
-    val createdAt: Long? = null,
-
-    @SerializedName(
-        value = "offers_count",
-        alternate = ["offersCount"]
-    )
-    val offersCount: Int = 0,
-
-    // Backend से फोन नंबर न मिलने पर खाली रहेगा।
-    // किसी दूसरे उपयोगकर्ता का नंबर अनुमान से नहीं भरा जाएगा।
-    @SerializedName(
-        value = "buyer_phone",
-        alternate = ["buyerPhone"]
-    )
-    val buyerPhone: String = ""
-) {
-
-    // पुराने UI कोड के साथ compatibility properties
-
-    val requestId: String
-        get() = id
-
-    val requiredDate: String?
-        get() = requiredByDate
-
-    val notes: String
-        get() = description
-}
+    val createdAt: Long? = null
+)
