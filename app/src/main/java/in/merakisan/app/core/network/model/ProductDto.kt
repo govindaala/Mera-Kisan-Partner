@@ -11,7 +11,7 @@ data class ProductDto(
     val sellerUid: String = "",
 
     @SerializedName("sellerName", alternate = ["seller_name", "farmerName", "farmer_name"])
-    val sellerName: String? = "किसान साथी",
+    val sellerName: String = "किसान साथी",
 
     @SerializedName("sellerPhone", alternate = ["seller_phone", "farmerPhone", "farmer_phone", "phone"])
     val sellerPhone: String? = "",
@@ -55,6 +55,12 @@ data class ProductDto(
     @SerializedName("longitudeApprox", alternate = ["longitude_approx", "lng", "lon"])
     val longitudeApprox: Double? = null,
 
+    @SerializedName("approxLat", alternate = ["approx_lat"])
+    val approxLat: Double? = latitudeApprox,
+
+    @SerializedName("approxLng", alternate = ["approx_lng"])
+    val approxLng: Double? = longitudeApprox,
+
     @SerializedName("photos", alternate = ["images"])
     val photos: List<String> = emptyList(),
 
@@ -94,7 +100,6 @@ data class ProductDto(
     @SerializedName("updatedAt", alternate = ["updated_at"])
     val updatedAt: String? = null
 ) {
-    // सहायक प्रॉपर्टीज (बिना बैकिंग फ़ील्ड के, ताकि Gson में डुप्लिकेट की एरर न आए)
     val id: String
         get() = productId
 
@@ -102,9 +107,9 @@ data class ProductDto(
         get() = minOrderQuantity
 
     fun getFormattedPrice(): String {
-        val displayRupees = if (pricePaise >= 100L) pricePaise / 100.0 else pricePaise.toDouble()
+        val displayRupees = if (pricePaise >= 100L) pricePaise / 100L else pricePaise
         val safeUnit = (unit as String?)?.ifBlank { "kg" } ?: "kg"
-        return "₹${String.format("\%.0f", displayRupees)} / $safeUnit"
+        return "₹$displayRupees / $safeUnit"
     }
 
     fun isSmallQuantityAvailable(): Boolean {
@@ -119,6 +124,9 @@ data class ProductDto(
 
         val rawVideos = (videos as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
         val safeVideoUrl = (videoUrl as String?) ?: rawVideos.firstOrNull()
+
+        val resolvedLat = latitudeApprox ?: approxLat
+        val resolvedLng = longitudeApprox ?: approxLng
 
         return ProductDto(
             productId = (productId as String?) ?: "",
@@ -136,8 +144,10 @@ data class ProductDto(
             village = (village as String?) ?: "",
             district = (district as String?) ?: "",
             state = (state as String?)?.ifBlank { "Madhya Pradesh" } ?: "Madhya Pradesh",
-            latitudeApprox = latitudeApprox,
-            longitudeApprox = longitudeApprox,
+            latitudeApprox = resolvedLat,
+            longitudeApprox = resolvedLng,
+            approxLat = resolvedLat,
+            approxLng = resolvedLng,
             photos = mergedImages,
             imageUrls = mergedImages,
             videos = rawVideos,
