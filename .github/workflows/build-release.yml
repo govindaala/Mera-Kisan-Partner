@@ -95,12 +95,11 @@ jobs:
             --console=plain \
             -x test -x lint 2>&1 | tee build_raw.log
       - name: 5.1 Print Keystore SHA Fingerprints
-      shell: bash
-      run: |
-        KS="$HOME/.android/debug.keystore"
-
-        if [ ! -f "$KS" ]; then
-          echo "Debug keystore नहीं मिली; SHA fingerprints छोड़ रहे हैं।"
+        shell: bash
+        run: |
+         KS="$HOME/.android/debug.keystore"
+       if [ ! -f "$KS" ]; then
+         echo "Debug keystore नहीं मिली; SHA fingerprints छोड़ रहे हैं।"
           exit 0
         fi
 
