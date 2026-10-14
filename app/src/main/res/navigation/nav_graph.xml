@@ -5,6 +5,28 @@
     android:id="@+id/nav_graph"
     app:startDestination="@id/splashFragment">
 
+    <!-- Global Actions: Agar kisi bhi Fragment se R.id.nav_* call ho to crash na ho balki sahi Fragment khule -->
+    <action
+        android:id="@+id/nav_home"
+        app:destination="@id/homeFragment"
+        app:launchSingleTop="true" />
+    <action
+        android:id="@+id/nav_marketplace"
+        app:destination="@id/marketplaceFragment"
+        app:launchSingleTop="true" />
+    <action
+        android:id="@+id/nav_buyer_requests"
+        app:destination="@id/buyerRequestsFragment"
+        app:launchSingleTop="true" />
+    <action
+        android:id="@+id/nav_orders"
+        app:destination="@id/ordersFragment"
+        app:launchSingleTop="true" />
+    <action
+        android:id="@+id/nav_profile"
+        app:destination="@id/profileFragment"
+        app:launchSingleTop="true" />
+
     <!-- 1. Splash Screen -->
     <fragment
         android:id="@+id/splashFragment"
@@ -44,7 +66,7 @@
             app:popUpToInclusive="true" />
     </fragment>
 
-    <!-- 3. Role Selection Screen (action_roleSelection_to_home & action_role_to_home dono included) -->
+    <!-- 3. Role Selection Screen -->
     <fragment
         android:id="@+id/roleSelectionFragment"
         android:name="in.merakisan.app.ui.auth.RoleSelectionFragment"
