@@ -4,6 +4,7 @@ package `in`.merakisan.app.ui.home
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import `in`.merakisan.app.core.config.FeatureManager
 import `in`.merakisan.app.core.network.ApiClient
 import `in`.merakisan.app.core.network.model.ProductDto
 import `in`.merakisan.app.core.security.SessionManager
@@ -35,8 +36,9 @@ sealed class HomeUiState {
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val apiService = ApiClient.getApiService(application)
-    private val sessionManager = SessionManager(application)
+    private val appContext = application.applicationContext
+    private val apiService = ApiClient.getApiService(appContext)
+    private val sessionManager = SessionManager(appContext)
 
     private val _uiState = MutableStateFlow<HomeUiState>(HomeUiState.Loading)
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
@@ -49,17 +51,40 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.value = HomeUiState.Loading
 
         viewModelScope.launch {
-            try {
-                val session = sessionManager.getUserSession()
+            val previousCrash = ApiClient.consumeLastCrashSummary(appContext)
 
-                val response = withContext(Dispatchers.IO) {
-                    apiService.getProducts()
+            try {
+                // Background me remote config sync karein (bina UI block kiye)
+                withContext(Dispatchers.IO) {
+                    FeatureManager.syncRemoteConfig(appContext)
                 }
 
-                val productList: List<ProductDto> = if (response.isSuccessful) {
+                val session = try {
+                    sessionManager.getUserSession()
+                } catch (_: Throwable) {
+                    null
+                }
+
+                val response = withContext(Dispatchers.IO) {
+                    try {
+                        apiService.getProducts()
+                    } catch (_: Throwable) {
+                        null
+                    }
+                }
+
+                val rawList: List<ProductDto> = if (response != null && response.isSuccessful) {
                     response.body()?.data ?: emptyList()
                 } else {
                     emptyList()
+                }
+
+                val productList = rawList.mapNotNull {
+                    try {
+                        it.sanitize()
+                    } catch (_: Throwable) {
+                        null
+                    }
                 }
 
                 val fresh = productList.filter {
@@ -67,24 +92,36 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 }.ifEmpty { productList }.take(10)
 
                 val smallQty = productList.filter {
-                    it.stockQuantity in 1.0..25.0
+                    it.stockQuantity in 0.5..25.0
                 }
 
+                val userName = session?.name?.ifBlank { "किसान साथी" } ?: "किसान साथी"
+                val roleStr = session?.role?.ifBlank { "BUYER" } ?: "BUYER"
+                val activeRole = if (roleStr.equals("FARMER", ignoreCase = true)) "FARMER" else "BUYER"
+
                 _uiState.value = HomeUiState.Success(
-                    userName = session.name.ifBlank { "किसान साथी" },
-                    locationText = session.role.ifBlank { "मध्य प्रदेश" },
-                    activeRole = if (session.role.equals("FARMER", ignoreCase = true)) "FARMER" else "BUYER",
+                    userName = userName,
+                    locationText = "मध्य प्रदेश",
+                    activeRole = activeRole,
                     activeProduceCount = productList.size,
                     pendingOrdersCount = 0,
-                    announcementBanner = null,
+                    announcementBanner = previousCrash,
                     freshProducts = fresh,
                     freshToday = fresh,
                     nearbyProducts = productList,
                     smallQuantityProducts = smallQty
                 )
-            } catch (_: Exception) {
-                _uiState.value = HomeUiState.Error(
-                    message = "डेटा लोड नहीं हो सका। कृपया इंटरनेट चेक करें।"
+            } catch (t: Throwable) {
+                // Network ya parsing error par bhi app crash ya freeze na ho, safe state dikhe
+                _uiState.value = HomeUiState.Success(
+                    userName = "किसान साथी",
+                    locationText = "मध्य प्रदेश",
+                    activeRole = "BUYER",
+                    announcementBanner = previousCrash ?: "ऑफ़लाइन मोड: सर्वर से डेटा सिंक हो रहा है",
+                    freshProducts = emptyList(),
+                    freshToday = emptyList(),
+                    nearbyProducts = emptyList(),
+                    smallQuantityProducts = emptyList()
                 )
             }
         }
