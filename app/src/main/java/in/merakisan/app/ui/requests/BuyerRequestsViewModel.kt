@@ -52,11 +52,11 @@ class BuyerRequestsViewModel(
             try {
                 val response = apiService.getBuyerRequests()
 
-                if (response.isSuccessful &&
+                if (
+                    response.isSuccessful &&
                     response.body()?.success == true
                 ) {
-                    val requests =
-                        response.body()?.data.orEmpty()
+                    val requests = response.body()?.data.orEmpty()
 
                     allRequests = requests
 
@@ -74,7 +74,8 @@ class BuyerRequestsViewModel(
                 }
             } catch (e: Exception) {
                 _uiState.value = BuyerRequestsUiState.Error(
-                    e.localizedMessage ?: "मांगें लोड करने में त्रुटि हुई।"
+                    e.localizedMessage
+                        ?: "मांगें लोड करने में त्रुटि हुई।"
                 )
             }
         }
@@ -94,7 +95,8 @@ class BuyerRequestsViewModel(
                 val response =
                     apiService.createBuyerRequest(finalRequest)
 
-                if (response.isSuccessful &&
+                if (
+                    response.isSuccessful &&
                     response.body()?.success == true
                 ) {
                     loadBuyerRequests()
@@ -107,7 +109,8 @@ class BuyerRequestsViewModel(
                 }
             } catch (e: Exception) {
                 _uiState.value = BuyerRequestsUiState.Error(
-                    e.localizedMessage ?: "मांग पोस्ट करने में त्रुटि हुई।"
+                    e.localizedMessage
+                        ?: "मांग पोस्ट करने में त्रुटि हुई।"
                 )
             }
         }
@@ -123,13 +126,13 @@ class BuyerRequestsViewModel(
             buyerPhone = user.phone,
             productName = payload.productName,
             category = payload.category,
-            variety = payload.variety,
+            variety = payload.variety.orEmpty(),
             quantity = payload.quantity,
             unit = payload.unit,
             targetPricePaise = payload.targetPricePaise,
             district = payload.district,
             village = "",
-            notes = payload.notes,
+            notes = payload.notes.orEmpty(),
             status = "active"
         )
 
