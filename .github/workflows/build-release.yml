@@ -26,6 +26,8 @@ jobs:
 
       - name: 3. Gradle टूल सेटअप
         uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.7
 
       - name: 4. स्थायी Debug Keystore कैशिंग (ताकि SHA-1 कभी न बदले)
         uses: actions/cache@v4
@@ -33,9 +35,17 @@ jobs:
           path: app/debug.keystore
           key: mera-kisan-app-debug-keystore-v2
 
-      - name: 5. स्थायी Keystore सुनिश्चित करें (केवल तभी बनाएं जब मौजूद न हो)
+      - name: 5. स्थायी Keystore और Gradle Wrapper सुनिश्चित करें
         run: |
+          # 1. यदि रिपॉजिटरी में gradlew नहीं है, तो उसे स्वतः जनरेट करें
+          if [ ! -f "gradlew" ]; then
+            echo "⚠️ gradlew file not found! Generating gradle wrapper automatically..."
+            gradle wrapper
+          fi
           chmod +x gradlew
+
+          # 2. स्थायी Debug Keystore सुनिश्चित करें
+          mkdir -p app
           if [ ! -f "app/debug.keystore" ]; then
             echo "Generating persistent app/debug.keystore..."
             keytool -genkey -v -keystore app/debug.keystore \
@@ -59,7 +69,7 @@ jobs:
           echo "=========================================================="
 
       - name: 7. APK क्लीन संकलन (ऑटो-वर्शनिंग के साथ — Direct Update)
-        # versionCode = github.run_number से ऐप सीधे फोन में Update होगा
+        # versionCode = github.run_number से हर बार नया वर्शन बनेगा और ऐप सीधे Update होगा
         run: |
           ./gradlew assembleDebug \
             -PversionCode=${{ github.run_number }} \
