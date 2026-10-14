@@ -104,6 +104,42 @@ object ApiClient {
                 .retryOnConnectionFailure(true)
                 .build()
 
+            val safeStringAdapter = object : TypeAdapter<String?>() {
+                override fun write(out: JsonWriter, value: String?) {
+                    if (value == null) out.nullValue() else out.value(value)
+                }
+
+                override fun read(reader: JsonReader): String? {
+                    return when (reader.peek()) {
+                        JsonToken.NULL -> {
+                            reader.nextNull()
+                            null
+                        }
+                        JsonToken.STRING -> reader.nextString()
+                        JsonToken.NUMBER -> reader.nextString()
+                        JsonToken.BOOLEAN -> reader.nextBoolean().toString()
+                        JsonToken.BEGIN_OBJECT -> {
+                            var seconds = 0L
+                            reader.beginObject()
+                            while (reader.hasNext()) {
+                                val name = reader.nextName()
+                                if (name == "_seconds" || name == "seconds") {
+                                    seconds = try { reader.nextLong() } catch (_: Throwable) { reader.skipValue(); 0L }
+                                } else {
+                                    reader.skipValue()
+                                }
+                            }
+                            reader.endObject()
+                            if (seconds > 0L) (seconds * 1000L).toString() else ""
+                        }
+                        else -> {
+                            reader.skipValue()
+                            ""
+                        }
+                    }
+                }
+            }
+
             val safeLongAdapter = object : TypeAdapter<Long>() {
                 override fun write(out: JsonWriter, value: Long?) {
                     if (value == null) out.nullValue() else out.value(value)
@@ -203,6 +239,7 @@ object ApiClient {
 
             val gson = GsonBuilder()
                 .setLenient()
+                .registerTypeAdapter(String::class.java, safeStringAdapter)
                 .registerTypeAdapter(Long::class.java, safeLongAdapter)
                 .registerTypeAdapter(java.lang.Long::class.java, safeLongAdapter)
                 .registerTypeAdapter(Double::class.java, safeDoubleAdapter)
