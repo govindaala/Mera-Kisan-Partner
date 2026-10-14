@@ -63,8 +63,10 @@ data class BuyerRequestDto(
         value = "required_by_date",
         alternate = ["requiredByDate"]
     )
-    val requiredByDate: String? = null,
-
+    {
+    val requiredDate: String?
+        get() = requiredByDate
+}
     @SerializedName(
         value = "notes",
         alternate = ["description"]
