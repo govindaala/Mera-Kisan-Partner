@@ -4,16 +4,29 @@ package `in`.merakisan.app.core.network.model
 import com.google.gson.annotations.SerializedName
 
 data class BuyerRequestDto(
-    @SerializedName("id", alternate = ["_id", "requestId"])
+
+    @SerializedName(
+        value = "request_id",
+        alternate = ["requestId", "id", "_id"]
+    )
     val id: String = "",
 
-    @SerializedName("buyerUid", alternate = ["buyer_uid"])
+    @SerializedName(
+        value = "buyer_uid",
+        alternate = ["buyerUid", "buyer_uid"]
+    )
     val buyerUid: String = "",
 
-    @SerializedName("buyerName", alternate = ["buyer_name"])
+    @SerializedName(
+        value = "buyer_name",
+        alternate = ["buyerName"]
+    )
     val buyerName: String = "",
 
-    @SerializedName("productName", alternate = ["product_name"])
+    @SerializedName(
+        value = "product_name",
+        alternate = ["productName"]
+    )
     val productName: String = "",
 
     @SerializedName("category")
@@ -28,7 +41,10 @@ data class BuyerRequestDto(
     @SerializedName("unit")
     val unit: String = "kg",
 
-    @SerializedName("targetPricePaise", alternate = ["target_price_paise"])
+    @SerializedName(
+        value = "target_price_paise",
+        alternate = ["targetPricePaise"]
+    )
     val targetPricePaise: Long? = null,
 
     @SerializedName("district")
@@ -37,15 +53,50 @@ data class BuyerRequestDto(
     @SerializedName("village")
     val village: String = "",
 
-    @SerializedName("requiredByDate", alternate = ["required_by_date"])
+    @SerializedName(
+        value = "required_by_date",
+        alternate = ["requiredByDate", "requiredDate"]
+    )
     val requiredByDate: String? = null,
 
-    @SerializedName("description")
+    @SerializedName(
+        value = "notes",
+        alternate = ["description", "note"]
+    )
     val description: String = "",
 
     @SerializedName("status")
-    val status: String = "ACTIVE",
+    val status: String = "active",
 
-    @SerializedName("createdAt", alternate = ["created_at"])
-    val createdAt: Long? = null
-)
+    @SerializedName(
+        value = "created_at",
+        alternate = ["createdAt"]
+    )
+    val createdAt: Long? = null,
+
+    @SerializedName(
+        value = "offers_count",
+        alternate = ["offersCount"]
+    )
+    val offersCount: Int = 0,
+
+    // Backend से फोन नंबर न मिलने पर खाली रहेगा।
+    // किसी दूसरे उपयोगकर्ता का नंबर अनुमान से नहीं भरा जाएगा।
+    @SerializedName(
+        value = "buyer_phone",
+        alternate = ["buyerPhone"]
+    )
+    val buyerPhone: String = ""
+) {
+
+    // पुराने UI कोड के साथ compatibility properties
+
+    val requestId: String
+        get() = id
+
+    val requiredDate: String?
+        get() = requiredByDate
+
+    val notes: String
+        get() = description
+}
