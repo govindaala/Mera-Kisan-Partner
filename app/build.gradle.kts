@@ -5,8 +5,6 @@ plugins {
     id("com.google.gms.google-services")
 }
 
-// app/build.gradle.kts
-
 android {
     namespace = "in.merakisan.app"
     compileSdk = 34
@@ -23,6 +21,12 @@ android {
         versionName = buildVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        vectorDrawables {
+            useSupportLibrary = true
+        }
+
+        // ApiClient के लिए स्वचालित BASE_URL
+        buildConfigField("String", "BASE_URL", "\"https://mera-kisan-backend.vercel.app/\"")
     }
 
     // 2. स्थायी Signing Configuration (प्रोजेक्ट के अंदर की debug.keystore)
@@ -41,49 +45,13 @@ android {
             isDebuggable = true
         }
         getByName("release") {
-            // डेवलपमेंट/टेस्टिंग रिलीज़ के लिए भी इसी स्थिर की का उपयोग करें जब तक प्रॉडक्शन की न बने
+            // डेवलपमेंट/टेस्टिंग रिलीज़ के लिए भी इसी स्थिर की का उपयोग करें
             signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-        }
-    }
-    
-    // बाकी का कोड पूर्ववत रहेगा...
-}
- 
-    namespace = "in.merakisan.app"
-    compileSdk = 35
-
-    defaultConfig {
-        applicationId = "in.merakisan.app"
-        minSdk = 24
-        targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
-
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        vectorDrawables {
-            useSupportLibrary = true
-        }
-
-        // ApiClient.kt:61 के लिए स्वचालित BASE_URL
-        buildConfigField("String", "BASE_URL", "\"https://mera-kisan-backend.vercel.app/\"")
-    }
-
-    buildTypes {
-        release {
-            isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
-        }
-        debug {
-            // applicationIdSuffix हटाया गया ताकि google-services.json से 100% मेल खाए
-            isDebuggable = true
         }
     }
 
