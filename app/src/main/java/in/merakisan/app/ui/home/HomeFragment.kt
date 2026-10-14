@@ -1,5 +1,5 @@
 // app/src/main/java/in/merakisan/app/ui/home/HomeFragment.kt
-package in.merakisan.app.ui.home
+package `in`.merakisan.app.ui.home
 
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -11,9 +11,9 @@ import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
-import in.merakisan.app.R
-import in.merakisan.app.databinding.FragmentHomeBinding
-import in.merakisan.app.ui.marketplace.ProductAdapter
+import `in`.merakisan.app.R
+import `in`.merakisan.app.databinding.FragmentHomeBinding
+import `in`.merakisan.app.ui.marketplace.ProductAdapter
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -42,12 +42,23 @@ class HomeFragment : Fragment() {
         observeViewModel()
     }
 
+    private fun safeNavigate(destinationId: Int, args: Bundle? = null) {
+        try {
+            val navController = findNavController()
+            if (navController.currentDestination?.id != destinationId) {
+                navController.navigate(destinationId, args)
+            }
+        } catch (e: Throwable) {
+            Toast.makeText(requireContext(), "स्क्रीन खुल रही है...", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun setupRecyclerView() {
         freshTodayAdapter = ProductAdapter { product ->
             val bundle = Bundle().apply {
                 putString("productId", product.productId)
             }
-            findNavController().navigate(R.id.action_home_to_productDetail, bundle)
+            safeNavigate(R.id.productDetailFragment, bundle)
         }
 
         binding.rvFreshToday.apply {
@@ -62,108 +73,109 @@ class HomeFragment : Fragment() {
     }
 
     private fun setupClickListeners() {
-        // सर्च ट्रिगर ➔ बाज़ार फ़ीड नेविगेशन
+        // 1. सर्च ट्रिगर ➔ बाज़ार फ़ीड नेविगेशन (marketplaceFragment)
         binding.cardSearchTrigger.setOnClickListener {
-            findNavController().navigate(R.id.nav_marketplace)
+            safeNavigate(R.id.marketplaceFragment)
         }
 
-        // छोटी मात्रा (1-25 kg) फ़िल्टर ट्रिगर
+        // 2. छोटी मात्रा (1-25 kg) फ़िल्टर ट्रिगर ➔ बाज़ार
         binding.cardSmallQtyHero.setOnClickListener {
-            findNavController().navigate(R.id.nav_marketplace)
+            val bundle = Bundle().apply {
+                putBoolean("filterSmallQty", true)
+            }
+            safeNavigate(R.id.marketplaceFragment, bundle)
         }
 
-        // "मुझे चाहिए" मांग बोर्ड शॉर्टकट
+        // 3. "मुझे चाहिए" मांग बोर्ड शॉर्टकट ➔ buyerRequestsFragment
         binding.cardDemandBoardCallout.setOnClickListener {
-            findNavController().navigate(R.id.nav_buyer_requests)
+            safeNavigate(R.id.buyerRequestsFragment)
         }
 
-        // ताज़ा फसलें 'सभी देखें'
+        // 4. ताज़ा फसलें 'सभी देखें' ➔ बाज़ार
         binding.tvViewAllMarketplace.setOnClickListener {
-            findNavController().navigate(R.id.nav_marketplace)
+            safeNavigate(R.id.marketplaceFragment)
         }
 
-        // किसान त्वरित फसल जोड़ें बटन
+        // 5. किसान त्वरित फसल जोड़ें बटन ➔ addProductFragment
         binding.btnQuickAddProduce.setOnClickListener {
-            findNavController().navigate(R.id.action_home_to_addProduct)
+            safeNavigate(R.id.addProductFragment)
         }
 
-        // किसान ऑर्डर्स शॉर्टकट
+        // 6. किसान ऑर्डर्स शॉर्टकट ➔ ordersFragment
         binding.cardFarmerOrders.setOnClickListener {
-            findNavController().navigate(R.id.nav_orders)
+            safeNavigate(R.id.ordersFragment)
         }
 
-        // किसान फसलें शॉर्टकट
+        // 7. किसान फसलें शॉर्टकट ➔ marketplaceFragment
         binding.cardFarmerListings.setOnClickListener {
-            findNavController().navigate(R.id.nav_marketplace)
+            safeNavigate(R.id.marketplaceFragment)
         }
 
-        // रोल चिप पर क्लिक करने पर प्रोफ़ाइल (रोल स्विचर) खोलना
+        // 8. रोल चिप पर क्लिक करने पर प्रोफ़ाइल (रोल स्विचर) खोलना ➔ profileFragment
         binding.chipActiveRole.setOnClickListener {
-            findNavController().navigate(R.id.nav_profile)
+            safeNavigate(R.id.profileFragment)
         }
     }
 
     private fun observeViewModel() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.uiState.collectLatest { state ->
-                binding.swipeRefreshHome.isRefreshing = (state is HomeUiState.Loading)
+                val b = _binding ?: return@collectLatest
+                b.swipeRefreshHome.isRefreshing = (state is HomeUiState.Loading)
 
                 when (state) {
                     is HomeUiState.Loading -> {
-                        binding.pbHomeLoading.visibility = View.VISIBLE
-                        binding.tvEmptyHomeProducts.visibility = View.GONE
+                        b.pbHomeLoading.visibility = View.VISIBLE
+                        b.tvEmptyHomeProducts.visibility = View.GONE
                     }
                     is HomeUiState.Success -> {
-                        binding.pbHomeLoading.visibility = View.GONE
+                        b.pbHomeLoading.visibility = View.GONE
 
-                        // 1. उपयोगकर्ता विवरण व प्राइवेसी-सम्मत लोकेशन
-                        binding.tvHomeGreeting.text = "नमस्ते, ${state.userName}"
-                        binding.tvHomeLocation.text = state.locationText
+                        b.tvHomeGreeting.text = "नमस्ते, ${state.userName}"
+                        b.tvHomeLocation.text = state.locationText
 
-                        // 2. सक्रिय भूमिका अनुकूलन (Role Adaptation)
                         when (state.activeRole) {
                             "FARMER" -> {
-                                binding.chipActiveRole.text = "🌾 किसान मोड"
-                                binding.llFarmerSection.visibility = View.VISIBLE
-                                binding.llBuyerSection.visibility = View.GONE
+                                b.chipActiveRole.text = "🌾 किसान मोड"
+                                b.llFarmerSection.visibility = View.VISIBLE
+                                b.llBuyerSection.visibility = View.GONE
                             }
                             "BUYER" -> {
-                                binding.chipActiveRole.text = "🛒 खरीदार मोड"
-                                binding.llFarmerSection.visibility = View.GONE
-                                binding.llBuyerSection.visibility = View.VISIBLE
+                                b.chipActiveRole.text = "🛒 खरीदार मोड"
+                                b.llFarmerSection.visibility = View.GONE
+                                b.llBuyerSection.visibility = View.VISIBLE
                             }
-                            else -> { // BOTH
-                                binding.chipActiveRole.text = "🤝 संयुक्त मोड (Both)"
-                                binding.llFarmerSection.visibility = View.VISIBLE
-                                binding.llBuyerSection.visibility = View.VISIBLE
+                            else -> {
+                                b.chipActiveRole.text = "🤝 संयुक्त मोड (Both)"
+                                b.llFarmerSection.visibility = View.VISIBLE
+                                b.llBuyerSection.visibility = View.VISIBLE
                             }
                         }
 
-                        // 3. किसान आँकड़े
-                        binding.tvActiveProduceCount.text = state.activeProduceCount.toString()
-                        binding.tvPendingOrdersCount.text = state.pendingOrdersCount.toString()
+                        b.tvActiveProduceCount.text = state.activeProduceCount.toString()
+                        b.tvPendingOrdersCount.text = state.pendingOrdersCount.toString()
 
-                        // 4. रिमोट घोषणा बैनर
                         if (!state.announcementBanner.isNullOrBlank()) {
-                            binding.cardRemoteBanner.visibility = View.VISIBLE
-                            binding.tvRemoteBannerText.text = state.announcementBanner
+                            b.cardRemoteBanner.visibility = View.VISIBLE
+                            b.tvRemoteBannerText.text = state.announcementBanner
                         } else {
-                            binding.cardRemoteBanner.visibility = View.GONE
+                            b.cardRemoteBanner.visibility = View.GONE
                         }
 
-                        // 5. ताज़ा फसलें प्रीव्यू
                         if (state.freshProducts.isNotEmpty()) {
-                            binding.tvEmptyHomeProducts.visibility = View.GONE
-                            binding.rvFreshToday.visibility = View.VISIBLE
+                            b.tvEmptyHomeProducts.visibility = View.GONE
+                            b.rvFreshToday.visibility = View.VISIBLE
                             freshTodayAdapter.submitList(state.freshProducts)
                         } else {
-                            binding.rvFreshToday.visibility = View.GONE
-                            binding.tvEmptyHomeProducts.visibility = View.VISIBLE
+                            b.rvFreshToday.visibility = View.GONE
+                            b.tvEmptyHomeProducts.visibility = View.VISIBLE
                         }
                     }
                     is HomeUiState.Error -> {
-                        binding.pbHomeLoading.visibility = View.GONE
-                        Toast.makeText(requireContext(), state.message, Toast.LENGTH_SHORT).show()
+                        b.pbHomeLoading.visibility = View.GONE
+                        if (state.message.isNotBlank()) {
+                            Toast.makeText(requireContext(), state.message, Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
             }
