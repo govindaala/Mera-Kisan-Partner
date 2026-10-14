@@ -24,7 +24,7 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: 3. Gradle 8.5 सेटअप (स्थिर KAPT कम्पैटिबिलिटी)
+      - name: 3. Gradle 8.5 सेटअप
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: 8.5
@@ -49,10 +49,51 @@ jobs:
           fi
 
           if [ ! -f "gradlew" ]; then
-            echo "Generating gradlew wrapper with Gradle 8.5..."
+            echo "Generating gradlew wrapper..."
             gradle wrapper --gradle-version 8.5
           fi
           chmod +x gradlew
+
+      - name: 5.1 सभी Kotlin फाइलों में 'in' पैकेज और इम्पोर्ट सिंटैक्स ऑटो-फिक्स
+        run: |
+          python3 - << 'EOF'
+          import glob, re
+
+          kt_files = glob.glob("app/src/**/*.kt", recursive=True)
+          fixed_count = 0
+
+          for path in kt_files:
+              with open(path, "r", encoding="utf-8") as f:
+                  content = f.read()
+
+              original = content
+
+              # 1. यदि किसी फाइल में गलती से markdown ```kotlin या ``` आ गया हो तो हटाएँ
+              content = re.sub(r"^\s*```(?:kotlin)?\s*$", "", content, flags=re.MULTILINE)
+
+              # 2. package और import में बिना बैकटिक वाले in.merakisan को `in`.merakisan में बदलें
+              content = re.sub(
+                  r"^(\s*(?:package|import)\s+)in\.merakisan\b",
+                  r"\1`in`.merakisan",
+                  content,
+                  flags=re.MULTILINE
+              )
+
+              # 3. कोड के अंदर बिना बैकटिक या कोट्स वाले in.merakisan रेफरेंस को भी सुरक्षित करें
+              content = re.sub(
+                  r"(?<![`\"\w/])in\.merakisan\b",
+                  r"`in`.merakisan",
+                  content
+              )
+
+              if content != original:
+                  with open(path, "w", encoding="utf-8") as f:
+                      f.write(content)
+                  fixed_count += 1
+                  print(f"Sanitized 'in' syntax in: {path}")
+
+          print(f"Total Kotlin files sanitized: {fixed_count} / {len(kt_files)}")
+          EOF
 
       - name: 6. स्थायी Firebase SHA फिंगरप्रिंट्स प्रिंट करें
         run: |
@@ -67,6 +108,8 @@ jobs:
           ./gradlew assembleDebug \
             -PversionCode=${{ github.run_number }} \
             -PversionName="1.1.${{ github.run_number }}" \
+            -Pkapt.verbose=true \
+            --continue \
             --stacktrace
 
       - name: 8. APK निष्कर्षण व सत्यापन
@@ -92,10 +135,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 10. विफलता पर डायग्नोस्टिक लॉग
+      - name: 10. विफलता पर सटीक Kotlin एरर लाइन प्रिंट करें
         if: failure()
         run: |
-          ./gradlew assembleDebug --stacktrace > build_raw.log 2>&1 || true
+          echo "=========================================================="
+          echo "🔍 EXACT KOTLIN COMPILER ERRORS (FILE & LINE NUMBER):"
+          echo "=========================================================="
+          ./gradlew compileDebugKotlin --console=plain > build_raw.log 2>&1 || true
+          grep -E "^e: " build_raw.log || tail -n 100 build_raw.log
+          echo "=========================================================="
 
       - name: 11. एरर रिपोर्ट अपलोड
         if: always()
