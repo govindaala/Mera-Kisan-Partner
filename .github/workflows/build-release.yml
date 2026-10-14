@@ -24,58 +24,49 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: 3. Gradle टूल सेटअप
+      - name: 3. Gradle 8.5 सेटअप (स्थिर KAPT कम्पैटिबिलिटी)
         uses: gradle/actions/setup-gradle@v3
         with:
-          gradle-version: 8.7
+          gradle-version: 8.5
 
       - name: 4. स्थायी Debug Keystore कैशिंग (ताकि SHA-1 कभी न बदले)
         uses: actions/cache@v4
         with:
-          path: app/debug.keystore
-          key: mera-kisan-app-debug-keystore-v2
+          path: ~/.android/debug.keystore
+          key: mera-kisan-permanent-debug-keystore-v1
 
-      - name: 5. स्थायी Keystore और Gradle Wrapper सुनिश्चित करें
+      - name: 5. स्थायी Keystore और Wrapper सुनिश्चित करें
         run: |
-          # 1. यदि रिपॉजिटरी में gradlew नहीं है, तो उसे स्वतः जनरेट करें
-          if [ ! -f "gradlew" ]; then
-            echo "⚠️ gradlew file not found! Generating gradle wrapper automatically..."
-            gradle wrapper
-          fi
-          chmod +x gradlew
-
-          # 2. स्थायी Debug Keystore सुनिश्चित करें
-          mkdir -p app
-          if [ ! -f "app/debug.keystore" ]; then
-            echo "Generating persistent app/debug.keystore..."
-            keytool -genkey -v -keystore app/debug.keystore \
-              -storepass android \
-              -alias androiddebugkey \
-              -keypass android \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
+          mkdir -p ~/.android
+          if [ ! -f ~/.android/debug.keystore ]; then
+            echo "Creating permanent debug keystore..."
+            keytool -genkey -v -keystore ~/.android/debug.keystore \
+              -storepass android -alias androiddebugkey -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
               -dname "CN=MeraKisanDebug, OU=Partner, O=MeraKisan, L=Mandsaur, ST=MP, C=IN"
           else
-            echo "Persistent app/debug.keystore restored successfully from cache."
+            echo "Permanent debug keystore restored from cache."
           fi
+
+          if [ ! -f "gradlew" ]; then
+            echo "Generating gradlew wrapper with Gradle 8.5..."
+            gradle wrapper --gradle-version 8.5
+          fi
+          chmod +x gradlew
 
       - name: 6. स्थायी Firebase SHA फिंगरप्रिंट्स प्रिंट करें
         run: |
           echo "=========================================================="
-          echo "🌾 MERA KISAN — PERMANENT FIREBASE SHA KEYS"
+          echo "🌾 MERA KISAN — FIREBASE PERMANENT SHA KEYS"
           echo "=========================================================="
-          keytool -list -v -keystore app/debug.keystore -alias androiddebugkey -storepass android -keypass android | grep -E "SHA1:|SHA256:"
+          keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android | grep -E "SHA1:|SHA256:"
           echo "=========================================================="
 
-      - name: 7. APK क्लीन संकलन (ऑटो-वर्शनिंग के साथ — Direct Update)
-        # versionCode = github.run_number से हर बार नया वर्शन बनेगा और ऐप सीधे Update होगा
+      - name: 7. APK संकलन (ऑटो-वर्शनिंग — Direct Update)
         run: |
           ./gradlew assembleDebug \
             -PversionCode=${{ github.run_number }} \
             -PversionName="1.1.${{ github.run_number }}" \
-            -Pandroid.injected.version.code=${{ github.run_number }} \
-            -Pandroid.injected.version.name="1.1.${{ github.run_number }}" \
             --stacktrace
 
       - name: 8. APK निष्कर्षण व सत्यापन
@@ -104,7 +95,7 @@ jobs:
       - name: 10. विफलता पर डायग्नोस्टिक लॉग
         if: failure()
         run: |
-          ./gradlew assembleDebug --info > build_raw.log 2>&1 || true
+          ./gradlew assembleDebug --stacktrace > build_raw.log 2>&1 || true
 
       - name: 11. एरर रिपोर्ट अपलोड
         if: always()
