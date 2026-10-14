@@ -5,7 +5,55 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+// app/build.gradle.kts
+
 android {
+    namespace = "in.merakisan.app"
+    compileSdk = 34
+
+    // 1. ऑटो-वर्शनिंग: GitHub Actions का run_number इस्तेमाल होगा, लोकल में डिफ़ॉल्ट 1
+    val buildVersionCode = project.findProperty("versionCode")?.toString()?.toIntOrNull() ?: 1
+    val buildVersionName = project.findProperty("versionName")?.toString() ?: "1.1.0"
+
+    defaultConfig {
+        applicationId = "in.merakisan.app"
+        minSdk = 24
+        targetSdk = 34
+        versionCode = buildVersionCode
+        versionName = buildVersionName
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    // 2. स्थायी Signing Configuration (प्रोजेक्ट के अंदर की debug.keystore)
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
+    buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("debug")
+            isDebuggable = true
+        }
+        getByName("release") {
+            // डेवलपमेंट/टेस्टिंग रिलीज़ के लिए भी इसी स्थिर की का उपयोग करें जब तक प्रॉडक्शन की न बने
+            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+    }
+    
+    // बाकी का कोड पूर्ववत रहेगा...
+}
+ {
     namespace = "in.merakisan.app"
     compileSdk = 35
 
