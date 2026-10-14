@@ -94,7 +94,7 @@ jobs:
             --no-build-cache \
             --console=plain \
             -x test -x lint 2>&1 | tee build_raw.log
-          - name: 5.1 Print Keystore SHA Fingerprints
+      - name: 5.1 Print Keystore SHA Fingerprints
       shell: bash
       run: |
         KS="$HOME/.android/debug.keystore"
