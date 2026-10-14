@@ -1,296 +1,107 @@
-name: Build, SHA Fingerprint & Release Mera Kisan APK
+name: Build & Release Mera Kisan APK
 
 on:
   push:
     branches:
       - main
-      - master
-    tags:
-      - 'v*'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build-and-publish-apk:
-    name: Build APK and Get SHA Fingerprints
+  build:
+    name: Build & Direct Release APK
     runs-on: ubuntu-latest
-    timeout-minutes: 40
 
     steps:
-      # --------------------------------------------------
-      # 1. Repository checkout
-      # --------------------------------------------------
-      - name: 1. Repository Checkout
+      - name: 1. रिपॉजिटरी चेकआउट
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      # --------------------------------------------------
-      # 2. Java 17
-      # --------------------------------------------------
-      - name: 2. Setup Java 17
+      - name: 2. जावा JDK 17 सेटअप
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: 'temurin'
           java-version: '17'
 
-      # --------------------------------------------------
-      # 3. Gradle 8.5
-      # --------------------------------------------------
-      - name: 3. Setup Gradle
+      - name: 3. Gradle टूल सेटअप
         uses: gradle/actions/setup-gradle@v3
+
+      - name: 4. स्थायी Debug Keystore कैशिंग (ताकि SHA-1 कभी न बदले)
+        uses: actions/cache@v4
         with:
-          gradle-version: '8.5'
-          cache-disabled: true
+          path: app/debug.keystore
+          key: mera-kisan-app-debug-keystore-v2
 
-      # --------------------------------------------------
-      # 4. Environment preparation
-      # --------------------------------------------------
-      - name: 4. Prepare Android Build Environment
-        shell: bash
+      - name: 5. स्थायी Keystore सुनिश्चित करें (केवल तभी बनाएं जब मौजूद न हो)
         run: |
-          set -euo pipefail
-
-          echo "Checking Android project..."
-
-          if [ ! -d "app" ]; then
-            echo "::error::Android app directory not found."
-            exit 1
-          fi
-
-          # Preserve the package/import sanitization
-          # used by the previous workflow.
-          if [ -d "app/src/main/java" ]; then
-            find app/src/main/java -type f -name "*.kt" \
-              -exec sed -i -E \
-              's/^package[[:space:]]+in\./package `in`./g' {} +
-
-            find app/src/main/java -type f -name "*.kt" \
-              -exec sed -i -E \
-              's/^import[[:space:]]+in\./import `in`./g' {} +
-          fi
-
-          # Verify Gradle wrapper.
-          if [ ! -f "./gradlew" ]; then
-            echo "Gradle wrapper missing. Creating wrapper..."
-
-            gradle wrapper \
-              --gradle-version 8.5 \
-              --no-configuration-cache
-          fi
-
-          chmod +x ./gradlew
-
-          touch gradle.properties
-
-          grep -qxF 'kapt.verbose=true' gradle.properties ||
-            echo 'kapt.verbose=true' >> gradle.properties
-
-          grep -qxF 'kapt.use.worker.api=false' gradle.properties ||
-            echo 'kapt.use.worker.api=false' >> gradle.properties
-
-          grep -qxF 'kotlin.compiler.execution.strategy=in-process' gradle.properties ||
-            echo 'kotlin.compiler.execution.strategy=in-process' >> gradle.properties
-
-          grep -qxF 'org.gradle.configuration-cache=false' gradle.properties ||
-            echo 'org.gradle.configuration-cache=false' >> gradle.properties
-
-          echo "Build environment prepared."
-
-      # --------------------------------------------------
-      # 5. Generate SHA fingerprint report
-      # --------------------------------------------------
-      - name: 5. Generate SHA-1 and SHA-256 Report
-        id: fingerprints
-        shell: bash
-        run: |
-          set -uo pipefail
-
-          echo "Generating Android signing report..."
-
-          ./gradlew :app:signingReport \
-            --no-daemon \
-            --no-configuration-cache \
-            --console=plain 2>&1 | tee signing_report.log
-
-          REPORT_STATUS=${PIPESTATUS[0]}
-
-          if [ "$REPORT_STATUS" -ne 0 ]; then
-            echo "::warning::Signing report task failed. Build will continue."
-          fi
-
-          echo ""
-          echo "========== DEBUG KEYSTORE =========="
-
-          mkdir -p "$HOME/.android"
-
-          if [ ! -f "$HOME/.android/debug.keystore" ]; then
-            keytool -genkeypair \
-              -keystore "$HOME/.android/debug.keystore" \
+          chmod +x gradlew
+          if [ ! -f "app/debug.keystore" ]; then
+            echo "Generating persistent app/debug.keystore..."
+            keytool -genkey -v -keystore app/debug.keystore \
               -storepass android \
               -alias androiddebugkey \
               -keypass android \
               -keyalg RSA \
               -keysize 2048 \
               -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US" \
-              -noprompt || true
+              -dname "CN=MeraKisanDebug, OU=Partner, O=MeraKisan, L=Mandsaur, ST=MP, C=IN"
+          else
+            echo "Persistent app/debug.keystore restored successfully from cache."
           fi
 
-          if [ -f "$HOME/.android/debug.keystore" ]; then
-            keytool -list -v \
-              -keystore "$HOME/.android/debug.keystore" \
-              -alias androiddebugkey \
-              -storepass android \
-              -keypass android 2>&1 | tee debug_fingerprint.txt || true
-          fi
-
-          echo ""
-          echo "========== SIGNING REPORT =========="
-
-          if [ -f signing_report.log ]; then
-            grep -E -A 8 \
-              'Variant: debug|SHA1:|SHA-1:|SHA-256:' \
-              signing_report.log || true
-          fi
-
-          echo "Fingerprint reporting step finished."
-
-      # --------------------------------------------------
-      # 6. Build Debug APK
-      # --------------------------------------------------
-      - name: 6. Build Debug APK (KAPT Tasks Excluded)
-        id: build_apk
-        shell: bash
+      - name: 6. स्थायी Firebase SHA फिंगरप्रिंट्स प्रिंट करें
         run: |
-          set -uo pipefail
+          echo "=========================================================="
+          echo "🌾 MERA KISAN — PERMANENT FIREBASE SHA KEYS"
+          echo "=========================================================="
+          keytool -list -v -keystore app/debug.keystore -alias androiddebugkey -storepass android -keypass android | grep -E "SHA1:|SHA256:"
+          echo "=========================================================="
 
-          echo "Starting Android APK build..."
-          echo "Excluding selected KAPT tasks for this build."
-
+      - name: 7. APK क्लीन संकलन (ऑटो-वर्शनिंग के साथ — Direct Update)
+        # versionCode = github.run_number से ऐप सीधे फोन में Update होगा
+        run: |
           ./gradlew assembleDebug \
-            --no-daemon \
-            --no-configuration-cache \
-            --no-build-cache \
-            --console=plain \
-            -x test \
-            -x lint \
-            -x kaptGenerateStubsDebugKotlin \
-            -x kaptDebugKotlin \
-            2>&1 | tee build_raw.log
+            -PversionCode=${{ github.run_number }} \
+            -PversionName="1.1.${{ github.run_number }}" \
+            -Pandroid.injected.version.code=${{ github.run_number }} \
+            -Pandroid.injected.version.name="1.1.${{ github.run_number }}" \
+            --stacktrace
 
-          BUILD_STATUS=${PIPESTATUS[0]}
-
-          if [ "$BUILD_STATUS" -ne 0 ]; then
-            echo "::error::Android APK build failed."
-            exit "$BUILD_STATUS"
-          fi
-
-          echo "Android APK build completed successfully."
-
-      # --------------------------------------------------
-      # 7. Verify APK and extract certificate fingerprint
-      # --------------------------------------------------
-      - name: 7. Verify APK and Read Signing Certificate
-        id: package_apk
-        if: success()
-        shell: bash
+      - name: 8. APK निष्कर्षण व सत्यापन
+        id: apk_verify
         run: |
-          set -euo pipefail
-
-          APK="$(find app/build/outputs/apk \
-            -type f \
-            -name '*.apk' \
-            ! -path '*/intermediates/*' \
-            | head -n 1)"
-
-          if [ -z "$APK" ]; then
-            echo "::error::No APK file was generated."
+          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ] || [ ! -f "$APK_PATH" ]; then
+            echo "Error: APK not found!"
             exit 1
           fi
+          echo "Found APK: $APK_PATH"
+          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
 
-          mkdir -p release_assets
-
-          cp "$APK" release_assets/MeraKisan-App.apk
-
-          echo "APK_PATH=release_assets/MeraKisan-App.apk" >> "$GITHUB_ENV"
-
-          echo "APK_SIZE=$(du -h release_assets/MeraKisan-App.apk | cut -f1)" >> "$GITHUB_ENV"
-
-          echo "APK successfully copied:"
-          ls -lh release_assets/MeraKisan-App.apk
-
-          # Locate Android SDK apksigner.
-          APKSIGNER=""
-
-          if [ -n "${ANDROID_HOME:-}" ] &&
-             [ -d "$ANDROID_HOME/build-tools" ]; then
-            APKSIGNER="$(find "$ANDROID_HOME/build-tools" \
-              -type f -name apksigner 2>/dev/null \
-              | sort -V | tail -n 1 || true)"
-          fi
-
-          if [ -n "$APKSIGNER" ]; then
-            "$APKSIGNER" verify --print-certs \
-              release_assets/MeraKisan-App.apk \
-              2>&1 | tee apk_certificate.txt || true
-          else
-            echo "apksigner not found." | tee apk_certificate.txt
-          fi
-
-      # --------------------------------------------------
-      # 8. Upload APK and reports
-      # --------------------------------------------------
-      - name: 8. Upload APK and Fingerprint Reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Mera-Kisan-Build-Reports
-          path: |
-            release_assets/MeraKisan-App.apk
-            signing_report.log
-            debug_fingerprint.txt
-            apk_certificate.txt
-            build_raw.log
-          if-no-files-found: ignore
-          retention-days: 30
-
-      # --------------------------------------------------
-      # 9. Publish GitHub Release
-      # --------------------------------------------------
-      - name: 9. Publish APK to GitHub Release
-        if: success()
+      - name: 9. GitHub Releases में APK पब्लिश
         uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
         with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: MERA KISAN APK - Build ${{ github.run_number }}
-          body: |
-            MERA KISAN Android Application
-
-            Build number: #${{ github.run_number }}
-            APK size: ${{ env.APK_SIZE }}
-
-            Download MeraKisan-App.apk from the Assets section.
+          files: ${{ steps.apk_verify.outputs.apk_path }}
+          tag_name: "v1.1-build-${{ github.run_number }}"
+          name: "Mera Kisan Release v1.1 (#${{ github.run_number }})"
           draft: false
           prerelease: false
-          files: release_assets/MeraKisan-App.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # --------------------------------------------------
-      # 10. Diagnostics on failure
-      # --------------------------------------------------
-      - name: 10. Upload Build Diagnostics
+      - name: 10. विफलता पर डायग्नोस्टिक लॉग
         if: failure()
+        run: |
+          ./gradlew assembleDebug --info > build_raw.log 2>&1 || true
+
+      - name: 11. एरर रिपोर्ट अपलोड
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Mera-Kisan-Build-Diagnostics
+          name: mera-kisan-build-diagnostics-${{ github.run_number }}
           path: |
             build_raw.log
-            signing_report.log
-            debug_fingerprint.txt
-            apk_certificate.txt
+            app/build/reports/
           if-no-files-found: ignore
-          retention-days: 14
