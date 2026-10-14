@@ -53,7 +53,7 @@ android {
     
     // बाकी का कोड पूर्ववत रहेगा...
 }
- {
+ 
     namespace = "in.merakisan.app"
     compileSdk = 35
 
