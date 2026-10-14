@@ -61,6 +61,29 @@ class SessionManager(context: Context) {
                 email = email
             )
         }
+                private const val KEY_FCM_TOKEN = "fcm_registration_token"
+
+        fun saveFcmToken(context: Context, token: String) {
+            if (token.isBlank()) return
+
+            context.applicationContext
+                .getSharedPreferences(
+                    "mera_kisan_secure_session",
+                    Context.MODE_PRIVATE
+                )
+                .edit()
+                .putString(KEY_FCM_TOKEN, token)
+                .apply()
+        }
+
+        fun getFcmToken(context: Context): String? {
+            return context.applicationContext
+                .getSharedPreferences(
+                    "mera_kisan_secure_session",
+                    Context.MODE_PRIVATE
+                )
+                .getString(KEY_FCM_TOKEN, null)
+        }
     }
 
     fun saveAuthToken(token: String) {
