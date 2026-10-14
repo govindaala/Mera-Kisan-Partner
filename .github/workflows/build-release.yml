@@ -94,10 +94,32 @@ jobs:
             --no-build-cache \
             --console=plain \
             -x test -x lint 2>&1 | tee build_raw.log
-      - name: 5.1 Print Keystore SHA Fingerprints
-        run: |
-          keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android | grep -E "SHA1:|SHA256:"
+          - name: 5.1 Print Keystore SHA Fingerprints
+      shell: bash
+      run: |
+        KS="$HOME/.android/debug.keystore"
 
+        if [ ! -f "$KS" ]; then
+          echo "Debug keystore नहीं मिली; SHA fingerprints छोड़ रहे हैं।"
+          exit 0
+        fi
+
+        OUTPUT=$(keytool -list -v \
+          -keystore "$KS" \
+          -alias androiddebugkey \
+          -storepass android \
+          -keypass android 2>&1) || {
+            echo "Keystore पढ़ने में समस्या हुई:"
+            echo "$OUTPUT"
+            echo "SHA fingerprints उपलब्ध नहीं; Workflow जारी रहेगी।"
+            exit 0
+          }
+
+        echo "$OUTPUT"
+
+        if ! printf '%s\n' "$OUTPUT" | grep -E 'SHA1:|SHA256:'; then
+          echo "SHA fingerprint lines नहीं मिलीं; Workflow जारी रहेगी।"
+        fi
       - name: 6. APK निष्कर्षण व सत्यापन
         id: package_apk
         if: success()
