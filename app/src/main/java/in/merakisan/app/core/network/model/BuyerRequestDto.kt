@@ -7,7 +7,7 @@ data class BuyerRequestDto(
 
     @SerializedName(
         value = "request_id",
-        alternate = ["id", "_id", "requestId"]
+        alternate = ["requestId", "id", "_id"]
     )
     val requestId: String = "",
 
@@ -39,7 +39,7 @@ data class BuyerRequestDto(
     val category: String = "grain",
 
     @SerializedName("variety")
-    val variety: String? = null,
+    val variety: String = "",
 
     @SerializedName("quantity")
     val quantity: Double = 1.0,
@@ -61,24 +61,46 @@ data class BuyerRequestDto(
 
     @SerializedName(
         value = "required_by_date",
-        alternate = ["requiredByDate"]
+        alternate = ["requiredByDate", "requiredDate"]
     )
-    {
-    val requiredDate: String?
-        get() = requiredByDate
-}
-    @SerializedName(
-        value = "notes",
-        alternate = ["description"]
-    )
-    val notes: String? = null,
+    val requiredByDate: String? = null,
+
+    @SerializedName("notes", alternate = ["description"])
+    val notes: String = "",
 
     @SerializedName("status")
-    val status: String = "active",
+    val status: String = "ACTIVE",
 
     @SerializedName(
         value = "created_at",
         alternate = ["createdAt"]
     )
-    val createdAt: Long? = null
-)
+    val createdAt: Long? = null,
+
+    @SerializedName(
+        value = "offers_count",
+        alternate = ["offersCount"]
+    )
+    val offersCount: Int = 0
+
+) {
+    /**
+     * Adapter compatibility property.
+     * requiredDate और requiredByDate दोनों एक ही तारीख दर्शाते हैं।
+     */
+    val requiredDate: String?
+        get() = requiredByDate
+
+    /**
+     * पुराने UI को description के नाम से टेक्स्ट चाहिए
+     * तो यह property notes से वही टेक्स्ट उपलब्ध कराती है।
+     */
+    val description: String
+        get() = notes
+
+    /**
+     * पुराने UI में id का उपयोग होने पर compatibility के लिए।
+     */
+    val id: String
+        get() = requestId
+}
