@@ -5,25 +5,14 @@ import android.content.Context
 
 object FeatureManager {
 
-    suspend fun syncRemoteConfig(
-        context: Context
-    ): Boolean {
-        val repository = RemoteConfigRepository(context)
-        val result = repository.fetchAndCacheConfig()
-
-        return result.isSuccess
-    }
-
-    fun isEnabled(
-        context: Context,
-        featureKey: String,
-        defaultValue: Boolean = false
-    ): Boolean {
-        return isFeatureEnabled(
-            context,
-            featureKey,
-            defaultValue
-        )
+    suspend fun syncRemoteConfig(context: Context): Boolean {
+        return try {
+            val repository = RemoteConfigRepository(context.applicationContext)
+            val result = repository.fetchAndCacheConfig()
+            result.isSuccess
+        } catch (_: Exception) {
+            false
+        }
     }
 
     fun isFeatureEnabled(
@@ -31,19 +20,40 @@ object FeatureManager {
         featureKey: String,
         defaultValue: Boolean = false
     ): Boolean {
-        val repository = RemoteConfigRepository(context)
-
-        return repository.isFeatureActive(
-            featureKey,
+        return try {
+            RemoteConfigRepository(context.applicationContext)
+                .isFeatureActive(featureKey, defaultValue)
+        } catch (_: Exception) {
             defaultValue
-        )
+        }
     }
 
-    fun isMaintenanceMode(
-        context: Context
+    // पुराने और नए दोनों तरह के कॉल सपोर्ट करने के लिए
+    fun isEnabled(
+        context: Context,
+        featureKey: String,
+        defaultValue: Boolean = false
     ): Boolean {
-        val repository = RemoteConfigRepository(context)
+        return isFeatureEnabled(context, featureKey, defaultValue)
+    }
 
-        return repository.isMaintenanceMode()
+    fun isMaintenanceMode(context: Context): Boolean {
+        return try {
+            RemoteConfigRepository(context.applicationContext)
+                .isMaintenanceMode()
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun getMaintenanceMessage(context: Context): String {
+        return try {
+            RemoteConfigRepository(context.applicationContext)
+                .getBannerText()
+                ?.takeIf { it.isNotBlank() }
+                ?: "ऐप पर रखरखाव का कार्य चल रहा है। कृपया बाद में पुनः प्रयास करें।"
+        } catch (_: Exception) {
+            "ऐप पर रखरखाव का कार्य चल रहा है। कृपया बाद में पुनः प्रयास करें।"
+        }
     }
 }
