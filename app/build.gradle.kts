@@ -7,51 +7,33 @@ plugins {
 
 android {
     namespace = "in.merakisan.app"
-    compileSdk = 34
-
-    // 1. ऑटो-वर्शनिंग: GitHub Actions का run_number इस्तेमाल होगा, लोकल में डिफ़ॉल्ट 1
-    val buildVersionCode = project.findProperty("versionCode")?.toString()?.toIntOrNull() ?: 1
-    val buildVersionName = project.findProperty("versionName")?.toString() ?: "1.1.0"
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "in.merakisan.app"
         minSdk = 24
-        targetSdk = 34
-        versionCode = buildVersionCode
-        versionName = buildVersionName
+        targetSdk = 35
+        versionCode = project.findProperty("versionCode")?.toString()?.toIntOrNull() ?: 1
+        versionName = project.findProperty("versionName")?.toString() ?: "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
         }
 
-        // ApiClient के लिए स्वचालित BASE_URL
         buildConfigField("String", "BASE_URL", "\"https://mera-kisan-backend.vercel.app/\"")
     }
 
-    // 2. स्थायी Signing Configuration (प्रोजेक्ट के अंदर की debug.keystore)
-    signingConfigs {
-        getByName("debug") {
-            storeFile = file("debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
-        }
-    }
-
     buildTypes {
-        getByName("debug") {
-            signingConfig = signingConfigs.getByName("debug")
-            isDebuggable = true
-        }
-        getByName("release") {
-            // डेवलपमेंट/टेस्टिंग रिलीज़ के लिए भी इसी स्थिर की का उपयोग करें
-            signingConfig = signingConfigs.getByName("debug")
+        release {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        debug {
+            isDebuggable = true
         }
     }
 
@@ -77,36 +59,27 @@ dependencies {
     implementation(libs.material)
     implementation(libs.androidx.constraintlayout)
 
-    // SwipeRefreshLayout (Home, Favorites, Mandi, Orders, BuyerRequests के लिए अनिवार्य)
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
-
-    // Image Loading: Coil (ProductAdapter, ProductDetail, ShareBottomSheet के लिए अनिवार्य)
     implementation("io.coil-kt:coil:2.6.0")
 
-    // Navigation
     implementation(libs.androidx.navigation.fragment.ktx)
     implementation(libs.androidx.navigation.ui.ktx)
 
-    // Lifecycle & ViewModel
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation(libs.androidx.lifecycle.livedata.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
 
-    // Room Database
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     kapt(libs.androidx.room.compiler)
 
-    // Network & Retrofit
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.gson)
     implementation(libs.okhttp.logging)
 
-    // Coroutines
     implementation(libs.kotlinx.coroutines.android)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
 
-    // Google Play Services & Firebase BoM
     implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-auth")
@@ -114,14 +87,11 @@ dependencies {
     implementation("com.google.android.gms:play-services-auth:21.3.0")
     implementation(libs.play.services.location)
 
-    // WorkManager & Security
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.security.crypto)
 
-    // QR Code
     implementation("com.google.zxing:core:3.5.3")
 
-    // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
