@@ -1,4 +1,4 @@
-name: Build, Fingerprint & Release Mera Kisan APK
+name: Build, SHA Fingerprint & Release Mera Kisan APK
 
 on:
   push:
@@ -16,35 +16,44 @@ jobs:
   build-and-publish-apk:
     name: Build APK and Get SHA Fingerprints
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
-      # 1. Repository checkout
+      # 1. Checkout repository
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # 2. Java 17 setup
+      # 2. Setup Java 17
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      # 3. Gradle setup
+      # 3. Setup Gradle
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.5'
           cache-disabled: true
 
-      # 4. Prepare project and Gradle wrapper
-      - name: Prepare Android Project
+      # 4. Prepare environment
+      - name: Prepare Android Build Environment
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
+
+          echo "Checking project files..."
+
+          if [ ! -d "app" ]; then
+            echo "::error::Android app directory not found."
+            exit 1
+          fi
 
           if [ ! -f "./gradlew" ]; then
+            echo "Gradle wrapper not found. Creating wrapper..."
             gradle wrapper --gradle-version 8.5
           fi
 
@@ -52,78 +61,73 @@ jobs:
 
           touch gradle.properties
 
-          grep -qxF 'kapt.verbose=true' gradle.properties || \
+          grep -qxF 'kapt.verbose=true' gradle.properties ||
             echo 'kapt.verbose=true' >> gradle.properties
 
-          grep -qxF 'kapt.use.worker.api=false' gradle.properties || \
+          grep -qxF 'kapt.use.worker.api=false' gradle.properties ||
             echo 'kapt.use.worker.api=false' >> gradle.properties
 
-          grep -qxF 'kotlin.compiler.execution.strategy=in-process' gradle.properties || \
+          grep -qxF 'kotlin.compiler.execution.strategy=in-process' gradle.properties ||
             echo 'kotlin.compiler.execution.strategy=in-process' >> gradle.properties
 
-          grep -qxF 'org.gradle.configuration-cache=false' gradle.properties || \
+          grep -qxF 'org.gradle.configuration-cache=false' gradle.properties ||
             echo 'org.gradle.configuration-cache=false' >> gradle.properties
 
-      # 5. Print SHA-1 and SHA-256 fingerprints
-      - name: Get SHA-1 and SHA-256 Fingerprints
+          echo "Environment prepared."
+
+      # 5. Generate the debug signing report
+      # This runs separately from APK compilation.
+      - name: Generate SHA-1 and SHA-256 Report
+        id: fingerprints
         shell: bash
         run: |
-          set -o pipefail
+          set -uo pipefail
 
-          echo "=========================================="
-          echo "ANDROID SIGNING FINGERPRINT REPORT"
-          echo "=========================================="
+          echo "Generating Android signing report..."
 
           ./gradlew :app:signingReport \
             --no-daemon \
             --no-configuration-cache \
             --console=plain 2>&1 | tee signing_report.log
 
+          REPORT_STATUS=${PIPESTATUS[0]}
+
+          if [ "$REPORT_STATUS" -ne 0 ]; then
+            echo "::warning::Gradle signingReport task failed."
+          fi
+
           echo ""
-          echo "=========================================="
-          echo "FINGERPRINTS FOR DEBUG VARIANT"
-          echo "=========================================="
+          echo "========== DEBUG FINGERPRINTS =========="
 
-          python3 - <<'PY'
-          import re
+          if [ -f "$HOME/.android/debug.keystore" ]; then
+            keytool -list -v \
+              -keystore "$HOME/.android/debug.keystore" \
+              -alias androiddebugkey \
+              -storepass android \
+              -keypass android 2>&1 | tee debug_fingerprint.txt || true
+          else
+            echo "Debug keystore not found yet."
+            echo "It may be generated during the Android build."
+          fi
 
-          path = "signing_report.log"
-          text = open(path, encoding="utf-8", errors="replace").read()
+          echo ""
+          echo "========== SIGNING REPORT SUMMARY =========="
 
-          blocks = re.split(r"(?m)^\s*Variant:\s*", text)
-          found = False
+          if [ -f signing_report.log ]; then
+            grep -E -A 8 'Variant: debug|SHA1:|SHA-1:|SHA-256:' \
+              signing_report.log || true
+          fi
 
-          for block in blocks:
-              if not block.strip():
-                  continue
+          echo "Fingerprint step finished."
 
-              variant = block.splitlines()[0].strip()
-
-              if variant.lower() != "debug":
-                  continue
-
-              found = True
-              print("Variant:", variant)
-
-              for label in ("Store", "Alias", "SHA1", "SHA-1", "SHA-256", "SHA256"):
-                  match = re.search(
-                      rf"(?im)^\s*{re.escape(label)}:\s*(.*?)\s*$",
-                      block
-                  )
-                  if match:
-                      print(f"{label}: {match.group(1)}")
-
-          if not found:
-              print("Debug variant report mein nahi mila.")
-              print("Neeche signing_report.log artifact mein dekhein.")
-          PY
-
-      # 6. Build debug APK
+      # 6. Build APK
       - name: Build Debug APK
-        id: assemble_gradle
+        id: build_apk
         shell: bash
         run: |
-          set -o pipefail
+          set -uo pipefail
+
+          echo "Starting Android APK build..."
 
           ./gradlew assembleDebug \
             --no-daemon \
@@ -133,50 +137,78 @@ jobs:
             -x test \
             -x lint 2>&1 | tee build_raw.log
 
-      # 7. Verify and copy APK
-      - name: Prepare APK
+          BUILD_STATUS=${PIPESTATUS[0]}
+
+          if [ "$BUILD_STATUS" -ne 0 ]; then
+            echo "::error::Android APK build failed."
+            exit "$BUILD_STATUS"
+          fi
+
+          echo "APK build completed."
+
+      # 7. Verify APK and extract its signing certificate
+      - name: Verify APK and Read Certificate Fingerprints
         id: package_apk
         if: success()
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
-          FOUND_APK=$(find app/build/outputs/apk \
+          APK="$(find app/build/outputs/apk \
             -type f \
-            -name "*.apk" \
-            ! -path "*/intermediates/*" \
-            | head -n 1)
+            -name '*.apk' \
+            ! -path '*/intermediates/*' \
+            | head -n 1)"
 
-          if [ -z "$FOUND_APK" ]; then
-            echo "::error::APK file nahi mili."
+          if [ -z "$APK" ]; then
+            echo "::error::No APK was generated."
             exit 1
           fi
 
           mkdir -p release_assets
 
-          cp "$FOUND_APK" release_assets/MeraKisan-App.apk
+          cp "$APK" release_assets/MeraKisan-App.apk
 
           echo "APK_PATH=release_assets/MeraKisan-App.apk" >> "$GITHUB_ENV"
           echo "APK_SIZE=$(du -h release_assets/MeraKisan-App.apk | cut -f1)" >> "$GITHUB_ENV"
 
-          echo "APK successfully prepared."
+          echo "APK generated:"
           ls -lh release_assets/MeraKisan-App.apk
 
-      # 8. Upload APK and signing report as artifacts
-      - name: Upload APK and Fingerprint Report
-        if: success()
+          # Read the certificate from the actual APK.
+          if command -v apksigner >/dev/null 2>&1; then
+            APKSIGNER="$(command -v apksigner)"
+          else
+            APKSIGNER="$(find "$ANDROID_HOME/build-tools" \
+              -type f -name apksigner 2>/dev/null | sort -V | tail -n 1 || true)"
+          fi
+
+          if [ -n "$APKSIGNER" ]; then
+            "$APKSIGNER" verify --print-certs \
+              release_assets/MeraKisan-App.apk \
+              2>&1 | tee apk_certificate.txt || true
+          else
+            echo "apksigner not found; debug keystore report is available instead."
+          fi
+
+      # 8. Upload APK and reports as downloadable artifacts
+      - name: Upload APK and Fingerprint Reports
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Mera-Kisan-APK-and-SHA-Report
+          name: Mera-Kisan-Build-Reports
           path: |
             release_assets/MeraKisan-App.apk
             signing_report.log
-          if-no-files-found: error
+            debug_fingerprint.txt
+            apk_certificate.txt
+            build_raw.log
+          if-no-files-found: ignore
           retention-days: 30
 
-      # 9. Publish APK to GitHub Releases
-      - name: Publish APK Release
-        if: success() && (startsWith(github.ref, 'refs/heads/') || startsWith(github.ref, 'refs/tags/'))
+      # 9. Publish release only after successful build
+      - name: Publish GitHub Release
+        if: success()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
@@ -184,24 +216,26 @@ jobs:
           body: |
             MERA KISAN Android Application
 
-            Build: #${{ github.run_number }}
+            Build number: ${{ github.run_number }}
             APK size: ${{ env.APK_SIZE }}
 
-            Download MeraKisan-App.apk from Assets below.
+            Download MeraKisan-App.apk from the Assets section.
           draft: false
           prerelease: false
           files: release_assets/MeraKisan-App.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 10. Save diagnostic logs if build fails
+      # 10. Save diagnostics on failure
       - name: Upload Build Diagnostics
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: Mera-Kisan-Build-Diagnostics
           path: |
-            signing_report.log
             build_raw.log
+            signing_report.log
+            debug_fingerprint.txt
+            apk_certificate.txt
           if-no-files-found: ignore
           retention-days: 14
