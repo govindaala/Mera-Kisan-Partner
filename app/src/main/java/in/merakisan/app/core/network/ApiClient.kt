@@ -1,5 +1,4 @@
-// app/src/main/java/in/merakisan/app/core/network/ApiClient.kt
-package `in`.merakisan.app.core.network
+package in.merakisan.app.core.network
 
 import android.content.Context
 import com.google.gson.GsonBuilder
@@ -7,7 +6,6 @@ import com.google.gson.TypeAdapter
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
 import com.google.gson.stream.JsonWriter
-import `in`.merakisan.app.core.security.SessionManager
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -16,181 +14,105 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 object ApiClient {
+    private const val BASE_URL = "https://mera-kisan-backend.vercel.app/api/"
 
-    private const val BASE_URL = "https://mera-kisan-backend.vercel.app/"
-    private const val CRASH_PREFS = "mera_kisan_crash_diagnostics"
-    private const val KEY_LAST_CRASH = "last_crash_trace"
+    private var authTokenProvider: (() -> String?)? = null
 
-    @Volatile
-    private var apiService: ApiService? = null
-
-    /**
-     * पिछले रन के क्रैश का सारांश पढ़ने और रीसेट करने के लिए (जो अब शामिल कर दिया गया है)
-     */
-    fun consumeLastCrashSummary(context: Context): String? {
-        val prefs = context.applicationContext.getSharedPreferences(CRASH_PREFS, Context.MODE_PRIVATE)
-        val trace = prefs.getString(KEY_LAST_CRASH, null)
-        if (!trace.isNullOrBlank()) {
-            prefs.edit().remove(KEY_LAST_CRASH).apply()
-        }
-        return trace
+    fun setAuthTokenProvider(provider: () -> String?) {
+        authTokenProvider = provider
     }
 
-    fun getApiService(context: Context): ApiService {
-        return apiService ?: synchronized(this) {
-            val sessionManager = SessionManager(context.applicationContext)
-
-            val authInterceptor = Interceptor { chain ->
-                val originalRequest = chain.request()
-                val token = try {
-                    sessionManager.getAuthToken()
-                } catch (_: Throwable) {
-                    null
-                }
-
-                val requestBuilder = originalRequest.newBuilder()
-                    .header("Accept", "application/json")
-                    .header("X-App-Platform", "Android")
-
-                if (!token.isNullOrBlank() && token != "guest_session" && !token.startsWith("guest_")) {
-                    requestBuilder.header("Authorization", "Bearer $token")
-                }
-
-                chain.proceed(requestBuilder.build())
-            }
-
-            val loggingInterceptor = HttpLoggingInterceptor().apply {
-                level = HttpLoggingInterceptor.Level.HEADERS
-            }
-
-            val okHttpClient = OkHttpClient.Builder()
-                .addInterceptor(authInterceptor)
-                .addInterceptor(loggingInterceptor)
-                .connectTimeout(25, TimeUnit.SECONDS)
-                .readTimeout(25, TimeUnit.SECONDS)
-                .writeTimeout(25, TimeUnit.SECONDS)
-                .retryOnConnectionFailure(true)
-                .build()
-
-            val safeStringAdapter = object : TypeAdapter<String?>() {
-                override fun write(out: JsonWriter, value: String?) {
-                    if (value == null) out.nullValue() else out.value(value)
-                }
-
-                override fun read(reader: JsonReader): String? {
-                    return when (reader.peek()) {
-                        JsonToken.NULL -> {
-                            reader.nextNull()
-                            ""
-                        }
-                        JsonToken.STRING -> reader.nextString()
-                        JsonToken.NUMBER -> reader.nextString()
-                        JsonToken.BOOLEAN -> reader.nextBoolean().toString()
-                        JsonToken.BEGIN_OBJECT -> {
-                            var seconds = 0L
-                            reader.beginObject()
-                            while (reader.hasNext()) {
-                                val name = reader.nextName()
-                                if (name == "_seconds" || name == "seconds") {
-                                    seconds = try { reader.nextLong() } catch (_: Throwable) { reader.skipValue(); 0L }
-                                } else {
-                                    reader.skipValue()
-                                }
-                            }
-                            reader.endObject()
-                            if (seconds > 0L) (seconds * 1000L).toString() else ""
-                        }
-                        else -> {
-                            reader.skipValue()
-                            ""
-                        }
-                    }
-                }
-            }
-
-            val safeLongAdapter = object : TypeAdapter<Long>() {
-                override fun write(out: JsonWriter, value: Long?) {
-                    if (value == null) out.nullValue() else out.value(value)
-                }
-
-                override fun read(reader: JsonReader): Long {
-                    return when (reader.peek()) {
-                        JsonToken.NULL -> {
-                            reader.nextNull()
-                            0L
-                        }
-                        JsonToken.NUMBER -> {
-                            try { reader.nextDouble().toLong() } catch (_: Throwable) { 0L }
-                        }
-                        JsonToken.STRING -> {
-                            val str = reader.nextString()
-                            str.toLongOrNull() ?: str.toDoubleOrNull()?.toLong() ?: 0L
-                        }
-                        JsonToken.BEGIN_OBJECT -> {
-                            var seconds = 0L
-                            reader.beginObject()
-                            while (reader.hasNext()) {
-                                val name = reader.nextName()
-                                if (name == "_seconds" || name == "seconds") {
-                                    seconds = try { reader.nextLong() } catch (_: Throwable) { reader.skipValue(); 0L }
-                                } else {
-                                    reader.skipValue()
-                                }
-                            }
-                            reader.endObject()
-                            if (seconds > 0L) seconds * 1000L else 0L
-                        }
-                        else -> {
-                            reader.skipValue()
-                            0L
-                        }
-                    }
-                }
-            }
-
-            val safeDoubleAdapter = object : TypeAdapter<Double>() {
-                override fun write(out: JsonWriter, value: Double?) {
-                    if (value == null) out.nullValue() else out.value(value)
-                }
-
-                override fun read(reader: JsonReader): Double {
-                    return when (reader.peek()) {
-                        JsonToken.NULL -> {
-                            reader.nextNull()
-                            0.0
-                        }
-                        JsonToken.NUMBER -> {
-                            try { reader.nextDouble() } catch (_: Throwable) { 0.0 }
-                        }
-                        JsonToken.STRING -> {
-                            reader.nextString().toDoubleOrNull() ?: 0.0
-                        }
-                        else -> {
-                            reader.skipValue()
-                            0.0
-                        }
-                    }
-                }
-            }
-
-            val gson = GsonBuilder()
-                .setLenient()
-                .registerTypeAdapter(String::class.java, safeStringAdapter)
-                .registerTypeAdapter(Long::class.java, safeLongAdapter)
-                .registerTypeAdapter(java.lang.Long::class.java, safeLongAdapter)
-                .registerTypeAdapter(Double::class.java, safeDoubleAdapter)
-                .registerTypeAdapter(java.lang.Double::class.java, safeDoubleAdapter)
-                .create()
-
-            val retrofit = Retrofit.Builder()
-                .baseUrl(BASE_URL)
-                .client(okHttpClient)
-                .addConverterFactory(GsonConverterFactory.create(gson))
-                .build()
-
-            val service = retrofit.create(ApiService::class.java)
-            apiService = service
-            service
+    // Safe String Adapter to prevent null/type mismatch crashes
+    private val safeStringAdapter = object : TypeAdapter<String>() {
+        override fun write(out: JsonWriter, value: String?) {
+            out.value(value ?: "")
         }
+        override fun read(reader: JsonReader): String {
+            return when (reader.peek()) {
+                JsonToken.NULL -> { reader.nextNull(); "" }
+                JsonToken.BOOLEAN -> reader.nextBoolean().toString()
+                JsonToken.NUMBER -> reader.nextString()
+                JsonToken.STRING -> reader.nextString()
+                else -> { reader.skipValue(); "" }
+            }
+        }
+    }
+
+    // Safe Long Adapter
+    private val safeLongAdapter = object : TypeAdapter<Long>() {
+        override fun write(out: JsonWriter, value: Long?) {
+            out.value(value ?: 0L)
+        }
+        override fun read(reader: JsonReader): Long {
+            return when (reader.peek()) {
+                JsonToken.NULL -> { reader.nextNull(); 0L }
+                JsonToken.NUMBER -> reader.nextLong()
+                JsonToken.STRING -> {
+                    val str = reader.nextString()
+                    str.toLongOrNull() ?: 0L
+                }
+                else -> { reader.skipValue(); 0L }
+            }
+        }
+    }
+
+    // Safe Double Adapter
+    private val safeDoubleAdapter = object : TypeAdapter<Double>() {
+        override fun write(out: JsonWriter, value: Double?) {
+            out.value(value ?: 0.0)
+        }
+        override fun read(reader: JsonReader): Double {
+            return when (reader.peek()) {
+                JsonToken.NULL -> { reader.nextNull(); 0.0 }
+                JsonToken.NUMBER -> reader.nextDouble()
+                JsonToken.STRING -> {
+                    val str = reader.nextString()
+                    str.toDoubleOrNull() ?: 0.0
+                }
+                else -> { reader.skipValue(); 0.0 }
+            }
+        }
+    }
+
+    private val gson = GsonBuilder()
+        .registerTypeAdapter(String::class.java, safeStringAdapter)
+        .registerTypeAdapter(Long::class.java, safeLongAdapter)
+        .registerTypeAdapter(Long.javaPrimitiveType, safeLongAdapter)
+        .registerTypeAdapter(Double::class.java, safeDoubleAdapter)
+        .registerTypeAdapter(Double.javaPrimitiveType, safeDoubleAdapter)
+        .setLenient()
+        .create()
+
+    private val authInterceptor = Interceptor { chain ->
+        val original = chain.request()
+        val token = authTokenProvider?.invoke()
+        val requestBuilder = original.newBuilder()
+        
+        if (!token.isNullOrEmpty()) {
+            requestBuilder.addHeader("Authorization", "Bearer $token")
+        }
+        
+        chain.proceed(requestBuilder.build())
+    }
+
+    private val loggingInterceptor = HttpLoggingInterceptor().apply {
+        level = HttpLoggingInterceptor.Level.BODY
+    }
+
+    private val okHttpClient = OkHttpClient.Builder()
+        .addInterceptor(authInterceptor)
+        .addInterceptor(loggingInterceptor)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
+        .build()
+
+    val apiService: ApiService by lazy {
+        Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create(gson))
+            .build()
+            .create(ApiService::class.java)
     }
 }
