@@ -34,6 +34,8 @@ jobs:
         with:
           path: ~/.android/debug.keystore
           key: mera-kisan-permanent-debug-keystore-v1
+          restore-keys: |
+            mera-kisan-permanent-debug-keystore-
 
       - name: 5. स्थायी Keystore और Wrapper सुनिश्चित करें
         run: |
@@ -103,33 +105,36 @@ jobs:
           keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android | grep -E "SHA1:|SHA256:"
           echo "=========================================================="
 
-      - name: 7. APK संकलन (ऑटो-वर्शनिंग — Direct Update)
+      - name: 7. APK संकलन (वर्कफ़्लो रन नंबर = ऐप वर्जन)
         run: |
           ./gradlew assembleDebug \
             -PversionCode=${{ github.run_number }} \
-            -PversionName="1.1.${{ github.run_number }}" \
+            -PversionName="v${{ github.run_number }}" \
             -Pkapt.verbose=true \
             --continue \
             --stacktrace
 
-      - name: 8. APK निष्कर्षण व सत्यापन
+      - name: 8. APK निष्कर्षण व वर्जन नामकरण
         id: apk_verify
         run: |
-          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
-          if [ -z "$APK_PATH" ] || [ ! -f "$APK_PATH" ]; then
+          RAW_APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          if [ -z "$RAW_APK" ] \vert{}\vert{} [ ! -f "$RAW_APK" ]; then
             echo "Error: APK not found!"
             exit 1
           fi
-          echo "Found APK: $APK_PATH"
-          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+          VERSIONED_APK="app/build/outputs/apk/debug/Mera-Kisan-v${{ github.run_number }}.apk"
+          cp "$RAW_APK" "$VERSIONED_APK"
+          echo "Prepared APK: $VERSIONED_APK"
+          echo "apk_path=$VERSIONED_APK" >> $GITHUB_OUTPUT
 
       - name: 9. GitHub Releases में APK पब्लिश
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
         with:
           files: ${{ steps.apk_verify.outputs.apk_path }}
-          tag_name: "v1.1-build-${{ github.run_number }}"
-          name: "Mera Kisan Release v1.1 (#${{ github.run_number }})"
+          tag_name: "v${{ github.run_number }}"
+          name: "Mera Kisan v${{ github.run_number }}"
+          body: "Automated build from GitHub Actions Run #${{ github.run_number }} (versionCode: ${{ github.run_number }}, versionName: v${{ github.run_number }})"
           draft: false
           prerelease: false
         env:
