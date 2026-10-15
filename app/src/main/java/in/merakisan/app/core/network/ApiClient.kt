@@ -8,7 +8,7 @@ import com.google.gson.TypeAdapter
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
 import com.google.gson.stream.JsonWriter
-import `in`.merakisan.app.core.security.AuthTokenProvider
+import `in`.merakisan.app.core.config.FeatureManager
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -22,10 +22,28 @@ object ApiClient {
     @Volatile
     private var appContext: Context? = null
 
+    @Volatile
+    private var lastCrashOrErrorSummary: String? = null
+
     private var customTokenProvider: (() -> String?)? = null
 
     fun setAuthTokenProvider(provider: () -> String?) {
         customTokenProvider = provider
+    }
+
+    fun consumeLastCrashSummary(context: Context? = null): String? {
+        val inMemory = lastCrashOrErrorSummary
+        if (!inMemory.isNullOrBlank()) {
+            lastCrashOrErrorSummary = null
+            return inMemory
+        }
+        return FeatureManager.consumeLastCrashSummary(context ?: appContext)
+    }
+
+    fun recordCrashSummary(summary: String, context: Context? = null) {
+        if (summary.isBlank()) return
+        lastCrashOrErrorSummary = summary
+        FeatureManager.recordCrashSummary(context ?: appContext, summary)
     }
 
     private val safeStringAdapter = object : TypeAdapter<String>() {
