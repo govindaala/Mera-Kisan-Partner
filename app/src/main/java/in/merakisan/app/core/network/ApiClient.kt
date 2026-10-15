@@ -24,15 +24,6 @@ object ApiClient {
     @Volatile
     private var apiService: ApiService? = null
 
-    fun consumeLastCrashSummary(context: Context): String? {
-        val prefs = context.applicationContext.getSharedPreferences(CRASH_PREFS, Context.MODE_PRIVATE)
-        val trace = prefs.getString(KEY_LAST_CRASH, null)
-        if (!trace.isNullOrBlank()) {
-            prefs.edit().remove(KEY_LAST_CRASH).apply()
-        }
-        return trace
-    }
-
     fun getApiService(context: Context): ApiService {
         return apiService ?: synchronized(this) {
             val sessionManager = SessionManager(context.applicationContext)
