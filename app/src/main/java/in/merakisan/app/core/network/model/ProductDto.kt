@@ -22,10 +22,10 @@ data class ProductDto(
     val category: String = "",
 
     @SerializedName("variety")
-    val variety: String = "",
+    val variety: String? = "",
 
     @SerializedName("description")
-    val description: String = "",
+    val description: String? = "",
 
     @SerializedName("pricePaise", alternate = ["price_paise", "price"])
     val pricePaise: Long = 0L,
@@ -40,7 +40,7 @@ data class ProductDto(
     val minOrderQuantity: Double = 1.0,
 
     @SerializedName("village")
-    val village: String = "",
+    val village: String? = "",
 
     @SerializedName("district")
     val district: String = "",
@@ -64,13 +64,13 @@ data class ProductDto(
     val photos: List<String> = emptyList(),
 
     @SerializedName("imageUrls")
-    val imageUrls: List<String>? = emptyList(),
+    val imageUrls: List<String> = emptyList(),
 
     @SerializedName("videoUrl", alternate = ["video_url"])
     val videoUrl: String? = null,
 
     @SerializedName("harvestDate", alternate = ["harvest_date"])
-    val harvestDate: String = "",
+    val harvestDate: String? = "",
 
     @SerializedName("farmingType", alternate = ["farming_type"])
     val farmingType: String = "conventional",
@@ -88,10 +88,10 @@ data class ProductDto(
     val boosted: Boolean = false,
 
     @SerializedName("createdAt", alternate = ["created_at"])
-    val createdAt: String = "",
+    val createdAt: String? = "",
 
     @SerializedName("updatedAt", alternate = ["updated_at"])
-    val updatedAt: String = ""
+    val updatedAt: String? = ""
 ) {
     @Suppress("USELESS_ELVIS")
     fun sanitize(): ProductDto {
