@@ -24,6 +24,18 @@ object ApiClient {
     @Volatile
     private var apiService: ApiService? = null
 
+    /**
+     * पिछले रन के क्रैश का सारांश पढ़ने और रीसेट करने के लिए (जो अब शामिल कर दिया गया है)
+     */
+    fun consumeLastCrashSummary(context: Context): String? {
+        val prefs = context.applicationContext.getSharedPreferences(CRASH_PREFS, Context.MODE_PRIVATE)
+        val trace = prefs.getString(KEY_LAST_CRASH, null)
+        if (!trace.isNullOrBlank()) {
+            prefs.edit().remove(KEY_LAST_CRASH).apply()
+        }
+        return trace
+    }
+
     fun getApiService(context: Context): ApiService {
         return apiService ?: synchronized(this) {
             val sessionManager = SessionManager(context.applicationContext)
@@ -96,9 +108,78 @@ object ApiClient {
                 }
             }
 
+            val safeLongAdapter = object : TypeAdapter<Long>() {
+                override fun write(out: JsonWriter, value: Long?) {
+                    if (value == null) out.nullValue() else out.value(value)
+                }
+
+                override fun read(reader: JsonReader): Long {
+                    return when (reader.peek()) {
+                        JsonToken.NULL -> {
+                            reader.nextNull()
+                            0L
+                        }
+                        JsonToken.NUMBER -> {
+                            try { reader.nextDouble().toLong() } catch (_: Throwable) { 0L }
+                        }
+                        JsonToken.STRING -> {
+                            val str = reader.nextString()
+                            str.toLongOrNull() ?: str.toDoubleOrNull()?.toLong() ?: 0L
+                        }
+                        JsonToken.BEGIN_OBJECT -> {
+                            var seconds = 0L
+                            reader.beginObject()
+                            while (reader.hasNext()) {
+                                val name = reader.nextName()
+                                if (name == "_seconds" || name == "seconds") {
+                                    seconds = try { reader.nextLong() } catch (_: Throwable) { reader.skipValue(); 0L }
+                                } else {
+                                    reader.skipValue()
+                                }
+                            }
+                            reader.endObject()
+                            if (seconds > 0L) seconds * 1000L else 0L
+                        }
+                        else -> {
+                            reader.skipValue()
+                            0L
+                        }
+                    }
+                }
+            }
+
+            val safeDoubleAdapter = object : TypeAdapter<Double>() {
+                override fun write(out: JsonWriter, value: Double?) {
+                    if (value == null) out.nullValue() else out.value(value)
+                }
+
+                override fun read(reader: JsonReader): Double {
+                    return when (reader.peek()) {
+                        JsonToken.NULL -> {
+                            reader.nextNull()
+                            0.0
+                        }
+                        JsonToken.NUMBER -> {
+                            try { reader.nextDouble() } catch (_: Throwable) { 0.0 }
+                        }
+                        JsonToken.STRING -> {
+                            reader.nextString().toDoubleOrNull() ?: 0.0
+                        }
+                        else -> {
+                            reader.skipValue()
+                            0.0
+                        }
+                    }
+                }
+            }
+
             val gson = GsonBuilder()
                 .setLenient()
                 .registerTypeAdapter(String::class.java, safeStringAdapter)
+                .registerTypeAdapter(Long::class.java, safeLongAdapter)
+                .registerTypeAdapter(java.lang.Long::class.java, safeLongAdapter)
+                .registerTypeAdapter(Double::class.java, safeDoubleAdapter)
+                .registerTypeAdapter(java.lang.Double::class.java, safeDoubleAdapter)
                 .create()
 
             val retrofit = Retrofit.Builder()
