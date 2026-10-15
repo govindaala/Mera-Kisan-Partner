@@ -17,15 +17,20 @@
         <item name="colorSurface">@color/surface_white</item>
         <item name="colorOnSurface">@color/text_primary</item>
 
-            <!-- Input Text Colors Fix -->
-       <item name="android:textColorPrimary">@color/text_primary</item>
-       <item name="android:editTextColor">@color/text_primary</item>
-       <item name="editTextStyle">@style/Widget.MeraKisan.EditText</item>
-        
-
         <!-- Status & Navigation Bars -->
         <item name="android:statusBarColor">@color/primary_green</item>
         <item name="android:navigationBarColor">@color/surface_white</item>
         <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">true</item>
+
+        <!-- 👇 इनपुट बॉक्स और टेक्स्ट कलर की समस्या का स्थायी समाधान -->
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:editTextColor">@color/text_primary</item>
+        <item name="editTextStyle">@style/Widget.MeraKisan.EditText</item>
+    </style>
+
+    <!-- 👇 इनपुट स्टाइल ताकि टाइप किया गया अक्षर हमेशा साफ और काला दिखे -->
+    <style name="Widget.MeraKisan.EditText" parent="Widget.MaterialComponents.TextInputEditText.OutlinedBox">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textColorHint">@color/text_secondary</item>
     </style>
 </resources>
