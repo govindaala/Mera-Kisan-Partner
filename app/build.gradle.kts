@@ -1,9 +1,20 @@
+import java.io.File
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.kapt)
     id("com.google.gms.google-services")
 }
+
+// GitHub Actions के वर्कफ़्लो रन नंबर को सीधे वर्जन के रूप में पढ़ें
+val githubRunNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
+val resolvedVersionCode = project.findProperty("versionCode")?.toString()?.toIntOrNull()
+    ?: githubRunNumber
+    ?: 1
+val resolvedVersionName = project.findProperty("versionName")?.toString()
+    ?: githubRunNumber?.let { "v$it" }
+    ?: "v1"
 
 android {
     namespace = "in.merakisan.app"
@@ -13,8 +24,8 @@ android {
         applicationId = "in.merakisan.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = project.findProperty("versionCode")?.toString()?.toIntOrNull() ?: 1
-        versionName = project.findProperty("versionName")?.toString() ?: "1.0.0"
+        versionCode = resolvedVersionCode
+        versionName = resolvedVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -24,9 +35,22 @@ android {
         buildConfigField("String", "BASE_URL", "\"https://mera-kisan-backend.vercel.app/\"")
     }
 
+    signingConfigs {
+        getByName("debug") {
+            val permanentKeystore = File(System.getProperty("user.home"), ".android/debug.keystore")
+            if (permanentKeystore.exists()) {
+                storeFile = permanentKeystore
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -34,6 +58,7 @@ android {
         }
         debug {
             isDebuggable = true
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
