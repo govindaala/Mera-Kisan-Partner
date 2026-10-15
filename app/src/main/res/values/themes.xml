@@ -17,6 +17,12 @@
         <item name="colorSurface">@color/surface_white</item>
         <item name="colorOnSurface">@color/text_primary</item>
 
+            <!-- Input Text Colors Fix -->
+       <item name="android:textColorPrimary">@color/text_primary</item>
+       <item name="android:editTextColor">@color/text_primary</item>
+       <item name="editTextStyle">@style/Widget.MeraKisan.EditText</item>
+        
+
         <!-- Status & Navigation Bars -->
         <item name="android:statusBarColor">@color/primary_green</item>
         <item name="android:navigationBarColor">@color/surface_white</item>
