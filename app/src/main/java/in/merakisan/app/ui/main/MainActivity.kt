@@ -1,18 +1,16 @@
-// app/src/main/java/in/merakisan/app/ui/main/MainActivity.kt
-package `in`.merakisan.app.ui.main
+package `in`.merakisan.app.ui
 
 import android.os.Bundle
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavOptions
 import androidx.navigation.fragment.NavHostFragment
+import androidx.navigation.ui.setupWithNavController
+import com.google.android.material.bottomnavigation.BottomNavigationView
 import `in`.merakisan.app.R
-import `in`.merakisan.app.core.config.FeatureManager
-import `in`.merakisan.app.core.security.SessionManager
 import `in`.merakisan.app.databinding.ActivityMainBinding
-import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
@@ -24,124 +22,76 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        setupNavigation()
-        syncRemoteConfiguration()
-    }
-
-    private fun setupNavigation() {
         val navHostFragment = supportFragmentManager
-            .findFragmentById(R.id.navHostFragment) as NavHostFragment
+            .findFragmentById(R.id.nav_host_fragment) as NavHostFragment
         navController = navHostFragment.navController
 
-        val navOptions = NavOptions.Builder()
-            .setLaunchSingleTop(true)
-            .setRestoreState(true)
-            .setPopUpTo(R.id.homeFragment, inclusive = false, saveState = true)
-            .build()
+        setupBottomNavigation(binding.bottomNavigation)
+    }
 
-        // Menu IDs (nav_*) ko nav_graph ke Fragment IDs (*Fragment) se seedha jodein
-        binding.bottomNavigation.setOnItemSelectedListener { item ->
-            val targetDestId = when (item.itemId) {
-                R.id.nav_home, R.id.homeFragment -> R.id.homeFragment
-                R.id.nav_marketplace, R.id.marketplaceFragment -> R.id.marketplaceFragment
-                R.id.nav_buyer_requests, R.id.buyerRequestsFragment -> R.id.buyerRequestsFragment
-                R.id.nav_orders, R.id.ordersFragment -> R.id.ordersFragment
-                R.id.nav_profile, R.id.profileFragment -> R.id.profileFragment
-                else -> null
-            }
+    private fun setupBottomNavigation(bottomNav: BottomNavigationView) {
+        // डिफ़ॉल्ट व्यवहार के स्थान पर कस्टम लिसनर ताकि बैक-स्टैक और सही डेस्टिनेशन सुनिश्चित रहे
+        bottomNav.setOnItemSelectedListener { item ->
+            val builder = NavOptions.Builder()
+                .setLaunchSingleTop(true)
+                .setRestoreState(true)
+                .setEnterAnim(android.R.anim.fade_in)
+                .setExitAnim(android.R.anim.fade_out)
 
-            if (targetDestId != null) {
-                if (navController.currentDestination?.id != targetDestId) {
-                    try {
-                        navController.navigate(targetDestId, null, navOptions)
-                    } catch (_: Throwable) {
-                        try {
-                            navController.navigate(targetDestId)
-                        } catch (_: Throwable) {
-                        }
-                    }
+            // पैरेंट टैब पर लौटने पर चाइल्ड स्क्रीन (Add Crop आदि) को बैक-स्टैक से हटाना
+            builder.setPopUpTo(
+                navController.graph.findStartDestination().id,
+                inclusive = false,
+                saveState = true
+            )
+
+            val options = builder.build()
+
+            when (item.itemId) {
+                R.id.navigation_home -> {
+                    navController.navigate(R.id.navigation_home, null, options)
+                    true
                 }
-                true
-            } else {
-                false
+                R.id.navigation_demand -> {
+                    navController.navigate(R.id.navigation_demand, null, options)
+                    true
+                }
+                R.id.navigation_add_product -> {
+                    navController.navigate(R.id.navigation_add_product, null, options)
+                    true
+                }
+                R.id.navigation_orders -> {
+                    navController.navigate(R.id.navigation_orders, null, options)
+                    true
+                }
+                R.id.navigation_profile -> {
+                    // त्रुटि फिक्स: 5वां टैब सीधे प्रोफाइल फ्रैगमेंट पर जाएगा
+                    navController.navigate(R.id.navigation_profile, null, options)
+                    true
+                }
+                else -> false
             }
         }
 
-        // Jab screen badle to BottomNavigation ka sahi tab highlight karein
+        // स्क्रीन बदलने पर बॉटम नेव विजिबिलिटी नियंत्रित करना
         navController.addOnDestinationChangedListener { _, destination, _ ->
             when (destination.id) {
-                R.id.splashFragment, R.id.loginFragment, R.id.roleSelectionFragment -> {
-                    binding.bottomNavigation.visibility = View.GONE
+                R.id.navigation_home,
+                R.id.navigation_demand,
+                R.id.navigation_add_product,
+                R.id.navigation_orders,
+                R.id.navigation_profile -> {
+                    binding.bottomNavigation.visibility = View.VISIBLE
                 }
                 else -> {
-                    binding.bottomNavigation.visibility = View.VISIBLE
-                    adaptNavigationForRole()
-
-                    val menuId = when (destination.id) {
-                        R.id.homeFragment -> R.id.nav_home
-                        R.id.marketplaceFragment -> R.id.nav_marketplace
-                        R.id.buyerRequestsFragment -> R.id.nav_buyer_requests
-                        R.id.ordersFragment -> R.id.nav_orders
-                        R.id.profileFragment -> R.id.nav_profile
-                        else -> null
-                    }
-                    if (menuId != null && binding.bottomNavigation.selectedItemId != menuId) {
-                        binding.bottomNavigation.menu.findItem(menuId)?.isChecked = true
-                    }
+                    // डिटेल या लॉगिन स्क्रीन पर बार छुपाएं
+                    binding.bottomNavigation.visibility = View.GONE
                 }
             }
         }
     }
 
-    private fun adaptNavigationForRole() {
-        val role = try {
-            SessionManager.getUserRole(this)
-        } catch (_: Throwable) {
-            "BOTH"
-        }
-        val menu = binding.bottomNavigation.menu
-
-        val marketplaceItem = menu.findItem(R.id.nav_marketplace)
-        val requestsItem = menu.findItem(R.id.nav_buyer_requests)
-
-        when (role) {
-            "FARMER" -> {
-                marketplaceItem?.title = "मेरी फसलें"
-                requestsItem?.title = "मांग बोर्ड"
-            }
-            "BUYER" -> {
-                marketplaceItem?.title = "फसलें खोजें"
-                requestsItem?.title = "मुझे चाहिए"
-            }
-            else -> {
-                marketplaceItem?.title = "बाज़ार"
-                requestsItem?.title = "मांग / जरूरत"
-            }
-        }
-    }
-
-    private fun syncRemoteConfiguration() {
-        lifecycleScope.launch {
-            try {
-                FeatureManager.syncRemoteConfig(this@MainActivity)
-                checkMaintenanceState()
-            } catch (_: Throwable) {
-            }
-        }
-    }
-
-    private fun checkMaintenanceState() {
-        try {
-            if (FeatureManager.isMaintenanceMode(this)) {
-                binding.tvMaintenanceBanner.apply {
-                    visibility = View.VISIBLE
-                    text = FeatureManager.getMaintenanceMessage(this@MainActivity)
-                }
-            } else {
-                binding.tvMaintenanceBanner.visibility = View.GONE
-            }
-        } catch (_: Throwable) {
-            binding.tvMaintenanceBanner.visibility = View.GONE
-        }
+    override fun onSupportNavigateUp(): Boolean {
+        return navController.navigateUp() || super.onSupportNavigateUp()
     }
 }
