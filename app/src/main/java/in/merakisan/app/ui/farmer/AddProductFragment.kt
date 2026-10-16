@@ -5,16 +5,17 @@ import android.content.Context
 import android.os.Bundle
 import android.text.InputType
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
-import android.widget.Button
 import android.widget.EditText
 import android.widget.ProgressBar
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
+import com.google.android.gms.auth.api.signin.GoogleSignIn
 import `in`.merakisan.app.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -45,6 +46,7 @@ class AddProductFragment : Fragment() {
     private var btnPublish: View? = null
     private var progressBar: ProgressBar? = null
 
+    // मास्टर स्पेसिफिकेशन के अनुसार स्वीकृत श्रेणियां
     private val categories = arrayOf(
         "अनाज (Grains)",
         "दाल / तिलहन (Pulses & Oilseeds)",
@@ -88,7 +90,7 @@ class AddProductFragment : Fragment() {
     }
 
     private fun resolveAllViews(v: View) {
-        // सेफ रिज़ॉल्वर: चाहे लेआउट में camelCase हो या snake_case, यह तुरंत ढूंढ लेगा
+        // सेफ आईडी रिज़ॉल्वर: चाहे लेआउट में camelCase हो या snake_case, यह तुरंत ढूंढ लेगा
         etProductName = findViewSafe(v, "et_product_name", "etProductName", "etName")
         actCategory = findViewSafe(v, "act_category", "actCategory", "spinnerCategory", "autoCompleteCategory")
         etVariety = findViewSafe(v, "et_variety", "etVariety")
@@ -105,40 +107,76 @@ class AddProductFragment : Fragment() {
         progressBar = findViewSafe(v, "progressBarPublish", "progressBar", "progress_bar")
 
         val prefs = requireContext().getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
-        val defaultDistrict = prefs.getString("user_district", "मंदसौर")
+        val defaultDistrict = prefs.getString("user_district", "मंदसौर") ?: "मंदसौर"
         etDistrict?.setText(defaultDistrict)
     }
 
     private fun setupDropdowns() {
-        // 1. श्रेणी ड्रॉपडाउन (टैप करते ही मेन्यू पॉपअप खोलना)
+        val ctx = context ?: return
+
+        // 1. श्रेणी (Category) ड्रॉपडाउन
         actCategory?.let { act ->
             act.inputType = InputType.TYPE_NULL
-            val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_dropdown_item_1line, categories)
+            act.isFocusable = false
+            val adapter = ArrayAdapter(ctx, android.R.layout.simple_dropdown_item_1line, categories)
             act.setAdapter(adapter)
-            act.setOnClickListener { act.showDropDown() }
-            act.setOnFocusChangeListener { _, hasFocus -> if (hasFocus) act.showDropDown() }
+
+            val openCategory = View.OnClickListener {
+                act.requestFocus()
+                act.showDropDown()
+            }
+            act.setOnClickListener(openCategory)
+            act.setOnTouchListener { _, event ->
+                if (event.action == MotionEvent.ACTION_UP) {
+                    act.showDropDown()
+                }
+                false
+            }
         }
 
-        // 2. इकाई ड्रॉपडाउन
+        // 2. इकाई (Unit) ड्रॉपडाउन
         actUnit?.let { act ->
             act.inputType = InputType.TYPE_NULL
-            val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_dropdown_item_1line, units)
+            act.isFocusable = false
+            val adapter = ArrayAdapter(ctx, android.R.layout.simple_dropdown_item_1line, units)
             act.setAdapter(adapter)
-            act.setOnClickListener { act.showDropDown() }
-            act.setOnFocusChangeListener { _, hasFocus -> if (hasFocus) act.showDropDown() }
+
+            val openUnit = View.OnClickListener {
+                act.requestFocus()
+                act.showDropDown()
+            }
+            act.setOnClickListener(openUnit)
+            act.setOnTouchListener { _, event ->
+                if (event.action == MotionEvent.ACTION_UP) {
+                    act.showDropDown()
+                }
+                false
+            }
         }
 
-        // 3. सत्यापन स्तर ड्रॉपडाउन
+        // 3. सत्यापन स्तर (Verification Status) ड्रॉपडाउन
         actVerificationStatus?.let { act ->
             act.inputType = InputType.TYPE_NULL
-            val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_dropdown_item_1line, verificationLevels)
+            act.isFocusable = false
+            val adapter = ArrayAdapter(ctx, android.R.layout.simple_dropdown_item_1line, verificationLevels)
             act.setAdapter(adapter)
-            act.setOnClickListener { act.showDropDown() }
-            act.setOnFocusChangeListener { _, hasFocus -> if (hasFocus) act.showDropDown() }
+
+            val openVerify = View.OnClickListener {
+                act.requestFocus()
+                act.showDropDown()
+            }
+            act.setOnClickListener(openVerify)
+            act.setOnTouchListener { _, event ->
+                if (event.action == MotionEvent.ACTION_UP) {
+                    act.showDropDown()
+                }
+                false
+            }
         }
     }
 
     private fun setupDatePicker() {
+        val ctx = context ?: return
         etHarvestDate?.let { et ->
             et.inputType = InputType.TYPE_NULL
             et.isFocusable = false
@@ -152,9 +190,9 @@ class AddProductFragment : Fragment() {
                 et.setText(sdf.format(calendar.time))
             }
 
-            val showPicker = {
+            val showPicker = View.OnClickListener {
                 DatePickerDialog(
-                    requireContext(),
+                    ctx,
                     dateSetListener,
                     calendar.get(Calendar.YEAR),
                     calendar.get(Calendar.MONTH),
@@ -162,7 +200,13 @@ class AddProductFragment : Fragment() {
                 ).show()
             }
 
-            et.setOnClickListener { showPicker() }
+            et.setOnClickListener(showPicker)
+            et.setOnTouchListener { _, event ->
+                if (event.action == MotionEvent.ACTION_UP) {
+                    showPicker.onClick(et)
+                }
+                false
+            }
         }
     }
 
@@ -181,6 +225,7 @@ class AddProductFragment : Fragment() {
             val district = etDistrict?.text?.toString()?.trim() ?: "मध्य प्रदेश"
             val desc = etDescription?.text?.toString()?.trim() ?: ""
 
+            // फील्ड सत्यापन
             if (name.isEmpty()) {
                 etProductName?.error = "फसल का नाम दर्ज करें"
                 etProductName?.requestFocus()
@@ -207,20 +252,30 @@ class AddProductFragment : Fragment() {
                 return@setOnClickListener
             }
 
+            // वित्तीय सुरक्षा: मूल्य को पैसे में बदलना
             val pricePaise = (priceStr.toDoubleOrNull()?.times(100))?.toLong() ?: 0L
             val totalQty = totalQtyStr.toDoubleOrNull() ?: 1.0
             val minQty = minOrderStr.toDoubleOrNull() ?: 1.0
 
             val unitCode = when {
-                unitRaw.contains("kg", ignoreCase = true) -> "kg"
-                unitRaw.contains("quintal", ignoreCase = true) -> "quintal"
-                unitRaw.contains("litre", ignoreCase = true) -> "litre"
+                unitRaw.contains("kg", ignoreCase = true) || unitRaw.contains("किलो") -> "kg"
+                unitRaw.contains("quintal", ignoreCase = true) || unitRaw.contains("क्विंटल") -> "quintal"
+                unitRaw.contains("litre", ignoreCase = true) || unitRaw.contains("लीटर") -> "litre"
                 else -> "kg"
             }
 
             val prefs = requireContext().getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
-            val farmerUid = prefs.getString("user_uid", "anonymous_farmer") ?: "anonymous_farmer"
-            val farmerName = prefs.getString("user_name", "किसान साथी") ?: "किसान साथी"
+            var farmerUid = prefs.getString("user_uid", "") ?: ""
+            var farmerName = prefs.getString("user_name", "") ?: ""
+
+            try {
+                val googleAccount = GoogleSignIn.getLastSignedInAccount(requireContext())
+                if (farmerUid.isBlank()) farmerUid = googleAccount?.id ?: ""
+                if (farmerName.isBlank()) farmerName = googleAccount?.displayName ?: ""
+            } catch (_: Throwable) {}
+
+            if (farmerUid.isBlank()) farmerUid = "anonymous_farmer"
+            if (farmerName.isBlank()) farmerName = "किसान साथी"
 
             val payload = JSONObject().apply {
                 put("name", name)
@@ -282,10 +337,10 @@ class AddProductFragment : Fragment() {
     }
 
     private fun <T : View> findViewSafe(root: View, vararg idNames: String): T? {
-        val context = root.context
-        val packageName = context.packageName
+        val ctx = root.context
+        val packageName = ctx.packageName
         for (name in idNames) {
-            val id = context.resources.getIdentifier(name, "id", packageName)
+            val id = ctx.resources.getIdentifier(name, "id", packageName)
             if (id != 0) {
                 val found = root.findViewById<T>(id)
                 if (found != null) return found
