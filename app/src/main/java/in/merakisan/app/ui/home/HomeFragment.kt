@@ -1,189 +1,139 @@
-// app/src/main/java/in/merakisan/app/ui/home/HomeFragment.kt
-package `in`.merakisan.app.ui.home
+package in.merakisan.app.ui.home
 
+import android.content.Context
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Toast
+import android.widget.Button
+import android.widget.TextView
+import androidx.cardview.widget.CardView
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.viewModels
-import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
-import androidx.recyclerview.widget.LinearLayoutManager
-import `in`.merakisan.app.R
-import `in`.merakisan.app.databinding.FragmentHomeBinding
-import `in`.merakisan.app.ui.marketplace.ProductAdapter
-import kotlinx.coroutines.flow.collectLatest
+import in.merakisan.app.R
+import in.merakisan.app.core.config.FeatureManager
+import in.merakisan.app.core.security.SessionManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 
 class HomeFragment : Fragment() {
 
-    private var _binding: FragmentHomeBinding? = null
-    private val binding get() = _binding!!
-
-    private val viewModel: HomeViewModel by viewModels()
-    private lateinit var freshTodayAdapter: ProductAdapter
+    private lateinit var tvGreeting: TextView
+    private lateinit var tvUserLocation: TextView
+    private lateinit var btnAddCrop: Button
+    private lateinit var cardMandiBhav: CardView
+    private lateinit var cardDemandBoard: CardView
+    private lateinit var tvActiveCropsCount: TextView
+    private lateinit var tvPendingOrdersCount: TextView
 
     override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
+        inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
-    ): View {
-        _binding = FragmentHomeBinding.inflate(inflater, container, false)
-        return binding.root
-    }
+    ): View? {
+        val view = inflater.inflate(R.layout.fragment_home, container, false)
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
+        tvGreeting = view.findViewById(R.id.tv_greeting)
+        tvUserLocation = view.findViewById(R.id.tv_user_location)
+        btnAddCrop = view.findViewById(R.id.btn_add_crop)
+        cardMandiBhav = view.findViewById(R.id.card_mandi_bhav)
+        cardDemandBoard = view.findViewById(R.id.card_demand_board)
+        tvActiveCropsCount = view.findViewById(R.id.tv_active_crops_count)
+        tvPendingOrdersCount = view.findViewById(R.id.tv_pending_orders_count)
 
-        setupRecyclerView()
-        setupClickListeners()
-        observeViewModel()
-    }
+        // 1. SessionManager या SharedPreferences से असली नाम लोड करना
+        val userName = try {
+            SessionManager.getUserName(requireContext())
+        } catch (_: Throwable) {
+            val prefs = requireContext().getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
+            prefs.getString("user_name", "किसान साथी")
+        } ?: "किसान साथी"
 
-    private fun safeNavigate(destinationId: Int, args: Bundle? = null) {
-        try {
-            val navController = findNavController()
-            if (navController.currentDestination?.id != destinationId) {
-                navController.navigate(destinationId, args)
+        val district = try {
+            SessionManager.getUserDistrict(requireContext())
+        } catch (_: Throwable) {
+            val prefs = requireContext().getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
+            prefs.getString("user_district", "मध्य प्रदेश")
+        } ?: "मध्य प्रदेश"
+
+        tvGreeting.text = "नमस्ते, $userName"
+        tvUserLocation.text = district
+
+        // 2. नई फसल जोड़ें बटन का क्लिक इवेंट
+        btnAddCrop.setOnClickListener {
+            try {
+                findNavController().navigate(R.id.addProductFragment)
+            } catch (_: Throwable) {
+                try {
+                    findNavController().navigate(R.id.addCropFragment)
+                } catch (_: Throwable) {}
             }
-        } catch (e: Throwable) {
-            Toast.makeText(requireContext(), "स्क्रीन खुल रही है...", Toast.LENGTH_SHORT).show()
         }
+
+        // 3. मंडी भाव कार्ड का क्लिक इवेंट
+        cardMandiBhav.setOnClickListener {
+            try {
+                findNavController().navigate(R.id.mandiPricesFragment)
+            } catch (_: Throwable) {}
+        }
+
+        // 4. मांग बोर्ड कार्ड का क्लिक इवेंट
+        cardDemandBoard.setOnClickListener {
+            try {
+                findNavController().navigate(R.id.buyerRequestsFragment)
+            } catch (_: Throwable) {}
+        }
+
+        // 5. FeatureManager और सर्वर से स्थिति लोड करना
+        loadFeatureStatesAndCounters()
+
+        return view
     }
 
-    private fun setupRecyclerView() {
-        freshTodayAdapter = ProductAdapter { product ->
-            val bundle = Bundle().apply {
-                putString("productId", product.productId)
-            }
-            safeNavigate(R.id.productDetailFragment, bundle)
+    private fun loadFeatureStatesAndCounters() {
+        // FeatureManager की जांच
+        val isMandiOn = try {
+            FeatureManager.isFeatureEnabled("mandi_price") || FeatureManager.isFeatureEnabled("mandi_prices")
+        } catch (_: Throwable) {
+            true
+        }
+        val isDemandOn = try {
+            FeatureManager.isFeatureEnabled("buyer_request") || FeatureManager.isFeatureEnabled("demand_board")
+        } catch (_: Throwable) {
+            true
         }
 
-        binding.rvFreshToday.apply {
-            layoutManager = LinearLayoutManager(requireContext())
-            adapter = freshTodayAdapter
-            setHasFixedSize(false)
-        }
+        cardMandiBhav.visibility = if (isMandiOn) View.VISIBLE else View.GONE
+        cardDemandBoard.visibility = if (isDemandOn) View.VISIBLE else View.GONE
 
-        binding.swipeRefreshHome.setOnRefreshListener {
-            viewModel.loadHomeData()
-        }
-    }
+        // बैकएंड से लाइव काउंटर्स लोड करना
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val uid = try {
+                    SessionManager.getUserUid(requireContext())
+                } catch (_: Throwable) {
+                    val prefs = requireContext().getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
+                    prefs.getString("user_uid", "") ?: ""
+                }
 
-    private fun setupClickListeners() {
-        // 1. सर्च ट्रिगर ➔ बाज़ार फ़ीड नेविगेशन (marketplaceFragment)
-        binding.cardSearchTrigger.setOnClickListener {
-            safeNavigate(R.id.marketplaceFragment)
-        }
-
-        // 2. छोटी मात्रा (1-25 kg) फ़िल्टर ट्रिगर ➔ बाज़ार
-        binding.cardSmallQtyHero.setOnClickListener {
-            val bundle = Bundle().apply {
-                putBoolean("filterSmallQty", true)
-            }
-            safeNavigate(R.id.marketplaceFragment, bundle)
-        }
-
-        // 3. "मुझे चाहिए" मांग बोर्ड शॉर्टकट ➔ buyerRequestsFragment
-        binding.cardDemandBoardCallout.setOnClickListener {
-            safeNavigate(R.id.buyerRequestsFragment)
-        }
-
-        // 4. ताज़ा फसलें 'सभी देखें' ➔ बाज़ार
-        binding.tvViewAllMarketplace.setOnClickListener {
-            safeNavigate(R.id.marketplaceFragment)
-        }
-
-        // 5. किसान त्वरित फसल जोड़ें बटन ➔ addProductFragment
-        binding.btnQuickAddProduce.setOnClickListener {
-            safeNavigate(R.id.addProductFragment)
-        }
-
-        // 6. किसान ऑर्डर्स शॉर्टकट ➔ ordersFragment
-        binding.cardFarmerOrders.setOnClickListener {
-            safeNavigate(R.id.ordersFragment)
-        }
-
-        // 7. किसान फसलें शॉर्टकट ➔ marketplaceFragment
-        binding.cardFarmerListings.setOnClickListener {
-            safeNavigate(R.id.marketplaceFragment)
-        }
-
-        // 8. रोल चिप पर क्लिक करने पर प्रोफ़ाइल (रोल स्विचर) खोलना ➔ profileFragment
-        binding.chipActiveRole.setOnClickListener {
-            safeNavigate(R.id.profileFragment)
-        }
-    }
-
-    private fun observeViewModel() {
-        viewLifecycleOwner.lifecycleScope.launch {
-            viewModel.uiState.collectLatest { state ->
-                val b = _binding ?: return@collectLatest
-                b.swipeRefreshHome.isRefreshing = (state is HomeUiState.Loading)
-
-                when (state) {
-                    is HomeUiState.Loading -> {
-                        b.pbHomeLoading.visibility = View.VISIBLE
-                        b.tvEmptyHomeProducts.visibility = View.GONE
-                    }
-                    is HomeUiState.Success -> {
-                        b.pbHomeLoading.visibility = View.GONE
-
-                        b.tvHomeGreeting.text = "नमस्ते, ${state.userName}"
-                        b.tvHomeLocation.text = state.locationText
-
-                        when (state.activeRole) {
-                            "FARMER" -> {
-                                b.chipActiveRole.text = "🌾 किसान मोड"
-                                b.llFarmerSection.visibility = View.VISIBLE
-                                b.llBuyerSection.visibility = View.GONE
-                            }
-                            "BUYER" -> {
-                                b.chipActiveRole.text = "🛒 खरीदार मोड"
-                                b.llFarmerSection.visibility = View.GONE
-                                b.llBuyerSection.visibility = View.VISIBLE
-                            }
-                            else -> {
-                                b.chipActiveRole.text = "🤝 संयुक्त मोड (Both)"
-                                b.llFarmerSection.visibility = View.VISIBLE
-                                b.llBuyerSection.visibility = View.VISIBLE
-                            }
-                        }
-
-                        b.tvActiveProduceCount.text = state.activeProduceCount.toString()
-                        b.tvPendingOrdersCount.text = state.pendingOrdersCount.toString()
-
-                        if (!state.announcementBanner.isNullOrBlank()) {
-                            b.cardRemoteBanner.visibility = View.VISIBLE
-                            b.tvRemoteBannerText.text = state.announcementBanner
-                        } else {
-                            b.cardRemoteBanner.visibility = View.GONE
-                        }
-
-                        if (state.freshProducts.isNotEmpty()) {
-                            b.tvEmptyHomeProducts.visibility = View.GONE
-                            b.rvFreshToday.visibility = View.VISIBLE
-                            freshTodayAdapter.submitList(state.freshProducts)
-                        } else {
-                            b.rvFreshToday.visibility = View.GONE
-                            b.tvEmptyHomeProducts.visibility = View.VISIBLE
-                        }
-                    }
-                    is HomeUiState.Error -> {
-                        b.pbHomeLoading.visibility = View.GONE
-                        if (state.message.isNotBlank()) {
-                            Toast.makeText(requireContext(), state.message, Toast.LENGTH_SHORT).show()
+                if (uid.isNotEmpty()) {
+                    val url = URL("https://mera-kisan-backend.vercel.app/api/v1/products?farmer_uid=$uid")
+                    val conn = url.openConnection() as HttpURLConnection
+                    if (conn.responseCode == 200) {
+                        val text = conn.inputStream.bufferedReader().use { it.readText() }
+                        val json = JSONObject(text)
+                        val dataArr = json.optJSONArray("data")
+                        val count = dataArr?.length() ?: 0
+                        withContext(Dispatchers.Main) {
+                            tvActiveCropsCount.text = count.toString()
                         }
                     }
                 }
-            }
+            } catch (_: Exception) {}
         }
-    }
-
-    override fun onDestroyView() {
-        super.onDestroyView()
-        _binding = null
     }
 }
