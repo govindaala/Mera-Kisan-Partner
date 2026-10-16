@@ -3,13 +3,15 @@ package `in`.merakisan.app.ui.main
 import android.os.Bundle
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.NavOptions
 import androidx.navigation.fragment.NavHostFragment
 import `in`.merakisan.app.R
 import `in`.merakisan.app.core.config.FeatureManager
-import `in`.merakisan.app.core.security.SessionManager
+import `in`.merakisan.app.core.state.RoleStateManager
 import `in`.merakisan.app.databinding.ActivityMainBinding
 import kotlinx.coroutines.launch
 
@@ -23,7 +25,11 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // 1. RoleStateManager ko initialize karna
+        RoleStateManager.init(this)
+
         setupNavigation()
+        observeRoleStateChanges()
         syncRemoteConfiguration()
     }
 
@@ -32,7 +38,7 @@ class MainActivity : AppCompatActivity() {
             .findFragmentById(R.id.navHostFragment) as NavHostFragment
         navController = navHostFragment.navController
 
-        // NavOptions: टैब बदलने पर सब-स्क्रीन (जैसे AddCrop) को स्टैक में न फंसाए
+        // NavOptions: Tab change par purani sub-screens (jaise AddCrop) ko stack se saaf karna
         val navOptions = NavOptions.Builder()
             .setLaunchSingleTop(true)
             .setRestoreState(false)
@@ -50,7 +56,6 @@ class MainActivity : AppCompatActivity() {
             }
 
             if (targetDestId != null) {
-                // यदि यूज़र होम दबाए तो सब-स्क्रीन्स हटाकर सीधे मुख्य होम पर लाएं
                 if (targetDestId == R.id.homeFragment) {
                     try {
                         navController.popBackStack(R.id.homeFragment, false)
@@ -72,7 +77,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // उसी टैब को दोबारा दबाने पर उस टैब की मुख्य स्क्रीन पर वापस आना
         binding.bottomNavigation.setOnItemReselectedListener { item ->
             val targetDestId = when (item.itemId) {
                 R.id.nav_home, R.id.homeFragment -> R.id.homeFragment
@@ -96,7 +100,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 else -> {
                     binding.bottomNavigation.visibility = View.VISIBLE
-                    adaptNavigationForRole()
+                    adaptNavigationForRole(RoleStateManager.getCurrentRole())
 
                     val menuId = when (destination.id) {
                         R.id.homeFragment -> R.id.nav_home
@@ -114,29 +118,42 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun adaptNavigationForRole() {
-        val role = try {
-            SessionManager.getUserRole(this)
-        } catch (_: Throwable) {
-            "BOTH"
+    /**
+     * Master Spec Sec 5: Profile me role switch karte hi bina app restart kiye
+     * Bottom Navigation tabs instant update honge
+     */
+    private fun observeRoleStateChanges() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                RoleStateManager.roleFlow.collect { activeRole ->
+                    adaptNavigationForRole(activeRole)
+                }
+            }
         }
-        val menu = binding.bottomNavigation.menu
+    }
 
+    private fun adaptNavigationForRole(role: String) {
+        val menu = binding.bottomNavigation.menu
         val marketplaceItem = menu.findItem(R.id.nav_marketplace)
         val requestsItem = menu.findItem(R.id.nav_buyer_requests)
+        val ordersItem = menu.findItem(R.id.nav_orders)
 
-        when (role.uppercase()) {
-            "FARMER" -> {
+        when (role.trim().uppercase()) {
+            RoleStateManager.ROLE_FARMER -> {
                 marketplaceItem?.title = "मेरी फसलें"
                 requestsItem?.title = "मांग बोर्ड"
+                ordersItem?.title = "बिक्री ऑर्डर्स"
             }
-            "BUYER" -> {
+            RoleStateManager.ROLE_BUYER -> {
                 marketplaceItem?.title = "फसलें खोजें"
                 requestsItem?.title = "मुझे चाहिए"
+                ordersItem?.title = "खरीद ऑर्डर्स"
             }
             else -> {
-                marketplaceItem?.title = "बाज़ार"
-                requestsItem?.title = "मांग / जरूरत"
+                // BOTH Mode — Options Double
+                marketplaceItem?.title = "बाज़ार / फसलें"
+                requestsItem?.title = "मांग / ज़रूरत"
+                ordersItem?.title = "ऑर्डर्स लेन-देन"
             }
         }
     }
