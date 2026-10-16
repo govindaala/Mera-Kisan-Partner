@@ -46,7 +46,6 @@ class AddProductFragment : Fragment() {
     private var btnPublish: View? = null
     private var progressBar: ProgressBar? = null
 
-    // मास्टर स्पेसिफिकेशन के अनुसार स्वीकृत श्रेणियां
     private val categories = arrayOf(
         "अनाज (Grains)",
         "दाल / तिलहन (Pulses & Oilseeds)",
@@ -79,18 +78,17 @@ class AddProductFragment : Fragment() {
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View? {
-        val view = inflater.inflate(R.layout.fragment_add_product, container, false)
+        val root = inflater.inflate(R.layout.fragment_add_product, container, false)
 
-        resolveAllViews(view)
+        initViews(root)
         setupDropdowns()
         setupDatePicker()
         setupPublishAction()
 
-        return view
+        return root
     }
 
-    private fun resolveAllViews(v: View) {
-        // सेफ आईडी रिज़ॉल्वर: चाहे लेआउट में camelCase हो या snake_case, यह तुरंत ढूंढ लेगा
+    private fun initViews(v: View) {
         etProductName = findViewSafe(v, "et_product_name", "etProductName", "etName")
         actCategory = findViewSafe(v, "act_category", "actCategory", "spinnerCategory", "autoCompleteCategory")
         etVariety = findViewSafe(v, "et_variety", "etVariety")
@@ -111,21 +109,21 @@ class AddProductFragment : Fragment() {
         etDistrict?.setText(defaultDistrict)
     }
 
+    /**
+     * Touch par turant dropdown popup khulne ka 100% working pattern
+     */
     private fun setupDropdowns() {
         val ctx = context ?: return
 
-        // 1. श्रेणी (Category) ड्रॉपडाउन
+        // 1. श्रेणी (Category)
         actCategory?.let { act ->
             act.inputType = InputType.TYPE_NULL
+            act.keyListener = null
             act.isFocusable = false
             val adapter = ArrayAdapter(ctx, android.R.layout.simple_dropdown_item_1line, categories)
             act.setAdapter(adapter)
 
-            val openCategory = View.OnClickListener {
-                act.requestFocus()
-                act.showDropDown()
-            }
-            act.setOnClickListener(openCategory)
+            act.setOnClickListener { act.showDropDown() }
             act.setOnTouchListener { _, event ->
                 if (event.action == MotionEvent.ACTION_UP) {
                     act.showDropDown()
@@ -134,18 +132,15 @@ class AddProductFragment : Fragment() {
             }
         }
 
-        // 2. इकाई (Unit) ड्रॉपडाउन
+        // 2. इकाई (Unit)
         actUnit?.let { act ->
             act.inputType = InputType.TYPE_NULL
+            act.keyListener = null
             act.isFocusable = false
             val adapter = ArrayAdapter(ctx, android.R.layout.simple_dropdown_item_1line, units)
             act.setAdapter(adapter)
 
-            val openUnit = View.OnClickListener {
-                act.requestFocus()
-                act.showDropDown()
-            }
-            act.setOnClickListener(openUnit)
+            act.setOnClickListener { act.showDropDown() }
             act.setOnTouchListener { _, event ->
                 if (event.action == MotionEvent.ACTION_UP) {
                     act.showDropDown()
@@ -154,18 +149,15 @@ class AddProductFragment : Fragment() {
             }
         }
 
-        // 3. सत्यापन स्तर (Verification Status) ड्रॉपडाउन
+        // 3. सत्यापन स्तर (Verification Status)
         actVerificationStatus?.let { act ->
             act.inputType = InputType.TYPE_NULL
+            act.keyListener = null
             act.isFocusable = false
             val adapter = ArrayAdapter(ctx, android.R.layout.simple_dropdown_item_1line, verificationLevels)
             act.setAdapter(adapter)
 
-            val openVerify = View.OnClickListener {
-                act.requestFocus()
-                act.showDropDown()
-            }
-            act.setOnClickListener(openVerify)
+            act.setOnClickListener { act.showDropDown() }
             act.setOnTouchListener { _, event ->
                 if (event.action == MotionEvent.ACTION_UP) {
                     act.showDropDown()
@@ -179,6 +171,7 @@ class AddProductFragment : Fragment() {
         val ctx = context ?: return
         etHarvestDate?.let { et ->
             et.inputType = InputType.TYPE_NULL
+            et.keyListener = null
             et.isFocusable = false
 
             val calendar = Calendar.getInstance()
@@ -225,7 +218,6 @@ class AddProductFragment : Fragment() {
             val district = etDistrict?.text?.toString()?.trim() ?: "मध्य प्रदेश"
             val desc = etDescription?.text?.toString()?.trim() ?: ""
 
-            // फील्ड सत्यापन
             if (name.isEmpty()) {
                 etProductName?.error = "फसल का नाम दर्ज करें"
                 etProductName?.requestFocus()
@@ -252,7 +244,7 @@ class AddProductFragment : Fragment() {
                 return@setOnClickListener
             }
 
-            // वित्तीय सुरक्षा: मूल्य को पैसे में बदलना
+            // Master Spec: Paisa Integer unit
             val pricePaise = (priceStr.toDoubleOrNull()?.times(100))?.toLong() ?: 0L
             val totalQty = totalQtyStr.toDoubleOrNull() ?: 1.0
             val minQty = minOrderStr.toDoubleOrNull() ?: 1.0
@@ -338,9 +330,9 @@ class AddProductFragment : Fragment() {
 
     private fun <T : View> findViewSafe(root: View, vararg idNames: String): T? {
         val ctx = root.context
-        val packageName = ctx.packageName
+        val pkg = ctx.packageName
         for (name in idNames) {
-            val id = ctx.resources.getIdentifier(name, "id", packageName)
+            val id = ctx.resources.getIdentifier(name, "id", pkg)
             if (id != 0) {
                 val found = root.findViewById<T>(id)
                 if (found != null) return found
