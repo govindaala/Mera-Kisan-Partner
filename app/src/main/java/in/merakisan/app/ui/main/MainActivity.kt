@@ -1,4 +1,4 @@
-package in.merakisan.app.ui.main
+package `in`.merakisan.app.ui.main
 
 import android.os.Bundle
 import android.view.View
@@ -7,10 +7,10 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.NavOptions
 import androidx.navigation.fragment.NavHostFragment
-import in.merakisan.app.R
-import in.merakisan.app.core.config.FeatureManager
-import in.merakisan.app.core.security.SessionManager
-import in.merakisan.app.databinding.ActivityMainBinding
+import `in`.merakisan.app.R
+import `in`.merakisan.app.core.config.FeatureManager
+import `in`.merakisan.app.core.security.SessionManager
+import `in`.merakisan.app.databinding.ActivityMainBinding
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
@@ -32,7 +32,7 @@ class MainActivity : AppCompatActivity() {
             .findFragmentById(R.id.navHostFragment) as NavHostFragment
         navController = navHostFragment.navController
 
-        // NavOptions: टैब बदलने पर सब-स्क्रीन्स (जैसे AddCrop) को स्टैक में न फँसाए
+        // NavOptions: टैब बदलने पर सब-स्क्रीन्स स्टैक में अटकी न रहें
         val navOptions = NavOptions.Builder()
             .setLaunchSingleTop(true)
             .setRestoreState(false)
@@ -50,7 +50,6 @@ class MainActivity : AppCompatActivity() {
             }
 
             if (targetDestId != null) {
-                // यदि यूज़र होम पर क्लिक करे, तो सब-स्क्रीन्स को पॉप करके सीधे होम पर लाएँ
                 if (targetDestId == R.id.homeFragment) {
                     try {
                         navController.popBackStack(R.id.homeFragment, false)
@@ -72,7 +71,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // उसी टैब को दोबारा दबाने पर उस टैब की मुख्य स्क्रीन पर वापस आना
         binding.bottomNavigation.setOnItemReselectedListener { item ->
             val targetDestId = when (item.itemId) {
                 R.id.nav_home, R.id.homeFragment -> R.id.homeFragment
