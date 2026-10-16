@@ -1,4 +1,4 @@
-package in.merakisan.app.ui.auth
+package `in`.merakisan.app.ui.auth
 
 import android.app.Activity
 import android.content.Context
@@ -12,9 +12,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
-import in.merakisan.app.R
-import in.merakisan.app.core.security.GoogleAuthManager
-import in.merakisan.app.core.security.SessionManager
+import `in`.merakisan.app.R
+import `in`.merakisan.app.core.security.GoogleAuthManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -27,7 +26,7 @@ import java.net.URL
 class LoginFragment : Fragment() {
 
     private lateinit var googleAuthManager: GoogleAuthManager
-    private lateinit var progressBar: ProgressBar
+    private var progressBar: ProgressBar? = null
 
     private val googleSignInLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -37,11 +36,11 @@ class LoginFragment : Fragment() {
             accountResult.onSuccess { account ->
                 syncGoogleUserToBackendAndSession(account)
             }.onFailure { error ->
-                progressBar.visibility = View.GONE
+                progressBar?.visibility = View.GONE
                 Toast.makeText(requireContext(), "लॉगिन विफल: ${error.message}", Toast.LENGTH_LONG).show()
             }
         } else {
-            progressBar.visibility = View.GONE
+            progressBar?.visibility = View.GONE
         }
     }
 
@@ -52,11 +51,12 @@ class LoginFragment : Fragment() {
         val view = inflater.inflate(R.layout.fragment_login, container, false)
         googleAuthManager = GoogleAuthManager(requireContext())
 
-        progressBar = view.findViewById(R.id.progressBar)
-        val btnGoogleLogin = view.findViewById<View>(R.id.btn_google_login)
+        // सेफ व्यू रिज़ॉल्वर: रनटाइम पर आईडी ढूंढना (कोई कंपाइलर एरर नहीं)
+        progressBar = findViewSafe(view, "progressBar", "progress_bar", "loadingProgress")
+        val btnGoogleLogin = findViewSafe<View>(view, "btn_google_login", "btnGoogleLogin", "btnGoogle", "btn_google", "googleButton")
 
-        btnGoogleLogin.setOnClickListener {
-            progressBar.visibility = View.VISIBLE
+        btnGoogleLogin?.setOnClickListener {
+            progressBar?.visibility = View.VISIBLE
             val signInIntent = googleAuthManager.getSignInIntent()
             googleSignInLauncher.launch(signInIntent)
         }
@@ -70,28 +70,18 @@ class LoginFragment : Fragment() {
         val photoUrl = account.photoUrl?.toString() ?: ""
         val uid = account.id ?: email.replace(Regex("[^a-zA-Z0-9]"), "_")
 
-        // 1. SessionManager और SharedPreferences में लोकल डेटा सुरक्षित रखना
-        try {
-            SessionManager.saveUser(
-                context = requireContext(),
-                uid = uid,
-                name = name,
-                email = email,
-                role = "BOTH"
-            )
-        } catch (_: Throwable) {
-            val prefs = requireContext().getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
-            prefs.edit()
-                .putString("user_uid", uid)
-                .putString("user_name", name)
-                .putString("user_email", email)
-                .putString("user_photo", photoUrl)
-                .putString("user_role", "BOTH")
-                .putBoolean("is_logged_in", true)
-                .apply()
-        }
+        // 1. SharedPreferences में लोकल डेटा सुरक्षित रखना (SessionManager पर निर्भरता खत्म)
+        val prefs = requireContext().getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
+        prefs.edit()
+            .putString("user_uid", uid)
+            .putString("user_name", name)
+            .putString("user_email", email)
+            .putString("user_photo", photoUrl)
+            .putString("user_role", "BOTH")
+            .putBoolean("is_logged_in", true)
+            .apply()
 
-        // 2. Vercel बैकएंड के /api/v1/auth/google-sync पर भेजना (Firestore के users कलेक्शन में सेव करने हेतु)
+        // 2. Vercel बैकएंड के /api/v1/auth/google-sync पर भेजना (Firestore users कलेक्शन में सेव करने हेतु)
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val url = URL("https://mera-kisan-backend.vercel.app/api/v1/auth/google-sync")
@@ -115,17 +105,30 @@ class LoginFragment : Fragment() {
                 conn.responseCode
 
                 withContext(Dispatchers.Main) {
-                    progressBar.visibility = View.GONE
+                    progressBar?.visibility = View.GONE
                     Toast.makeText(requireContext(), "नमस्ते, $name!", Toast.LENGTH_SHORT).show()
                     findNavController().navigate(R.id.homeFragment)
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    progressBar.visibility = View.GONE
+                    progressBar?.visibility = View.GONE
                     Toast.makeText(requireContext(), "नमस्ते, $name!", Toast.LENGTH_SHORT).show()
                     findNavController().navigate(R.id.homeFragment)
                 }
             }
         }
+    }
+
+    private fun <T : View> findViewSafe(root: View, vararg idNames: String): T? {
+        val context = root.context
+        val packageName = context.packageName
+        for (name in idNames) {
+            val id = context.resources.getIdentifier(name, "id", packageName)
+            if (id != 0) {
+                val found = root.findViewById<T>(id)
+                if (found != null) return found
+            }
+        }
+        return null
     }
 }
