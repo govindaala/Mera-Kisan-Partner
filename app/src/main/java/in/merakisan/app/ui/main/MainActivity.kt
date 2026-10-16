@@ -32,7 +32,7 @@ class MainActivity : AppCompatActivity() {
             .findFragmentById(R.id.navHostFragment) as NavHostFragment
         navController = navHostFragment.navController
 
-        // NavOptions: टैब बदलने पर सब-स्क्रीन्स स्टैक में अटकी न रहें
+        // NavOptions: टैब बदलने पर सब-स्क्रीन (जैसे AddCrop) को स्टैक में न फंसाए
         val navOptions = NavOptions.Builder()
             .setLaunchSingleTop(true)
             .setRestoreState(false)
@@ -50,6 +50,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             if (targetDestId != null) {
+                // यदि यूज़र होम दबाए तो सब-स्क्रीन्स हटाकर सीधे मुख्य होम पर लाएं
                 if (targetDestId == R.id.homeFragment) {
                     try {
                         navController.popBackStack(R.id.homeFragment, false)
@@ -71,6 +72,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // उसी टैब को दोबारा दबाने पर उस टैब की मुख्य स्क्रीन पर वापस आना
         binding.bottomNavigation.setOnItemReselectedListener { item ->
             val targetDestId = when (item.itemId) {
                 R.id.nav_home, R.id.homeFragment -> R.id.homeFragment
