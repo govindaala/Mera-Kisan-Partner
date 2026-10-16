@@ -1,147 +1,131 @@
-// app/src/main/java/in/merakisan/app/ui/auth/LoginFragment.kt
-package `in`.merakisan.app.ui.auth
+package in.merakisan.app.ui.auth
 
 import android.app.Activity
-import android.content.Intent
+import android.content.Context
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ProgressBar
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.viewModels
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.findNavController
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.auth.api.signin.GoogleSignInClient
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions
-import com.google.android.gms.common.api.ApiException
-import `in`.merakisan.app.R
-import `in`.merakisan.app.databinding.FragmentLoginBinding
-import kotlinx.coroutines.flow.collectLatest
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount
+import in.merakisan.app.R
+import in.merakisan.app.core.security.GoogleAuthManager
+import in.merakisan.app.core.security.SessionManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.io.OutputStreamWriter
+import java.net.HttpURLConnection
+import java.net.URL
 
 class LoginFragment : Fragment() {
 
-    private var _binding: FragmentLoginBinding? = null
-    private val binding get() = _binding!!
-
-    private val viewModel: AuthViewModel by viewModels()
-    private lateinit var googleSignInClient: GoogleSignInClient
+    private lateinit var googleAuthManager: GoogleAuthManager
+    private lateinit var progressBar: ProgressBar
 
     private val googleSignInLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-            try {
-                val account = task.getResult(ApiException::class.java)
-                viewModel.firebaseAuthWithGoogle(account)
-            } catch (e: ApiException) {
-                Toast.makeText(context, "Google sign-in fail hua: ${e.statusCode}", Toast.LENGTH_SHORT).show()
-                viewModel.resetError()
+            val accountResult = googleAuthManager.parseSignInResult(result.data)
+            accountResult.onSuccess { account ->
+                syncGoogleUserToBackendAndSession(account)
+            }.onFailure { error ->
+                progressBar.visibility = View.GONE
+                Toast.makeText(requireContext(), "लॉगिन विफल: ${error.message}", Toast.LENGTH_LONG).show()
             }
         } else {
-            Toast.makeText(context, "Sign-in cancel kar diya gaya", Toast.LENGTH_SHORT).show()
-            viewModel.resetError()
+            progressBar.visibility = View.GONE
         }
     }
 
     override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
+        inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
-    ): View {
-        _binding = FragmentLoginBinding.inflate(inflater, container, false)
-        return binding.root
-    }
+    ): View? {
+        val view = inflater.inflate(R.layout.fragment_login, container, false)
+        googleAuthManager = GoogleAuthManager(requireContext())
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
+        progressBar = view.findViewById(R.id.progressBar)
+        val btnGoogleLogin = view.findViewById<View>(R.id.btn_google_login)
 
-        setupGoogleSignInClient()
-        setupListeners()
-        observeAuthState()
-    }
-
-    private fun setupGoogleSignInClient() {
-        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-            .requestIdToken(getString(R.string.default_web_client_id))
-            .requestEmail()
-            .requestProfile()
-            .build()
-
-        googleSignInClient = GoogleSignIn.getClient(requireActivity(), gso)
-    }
-
-    private fun setupListeners() {
-        findView("btnGoogleSignIn")?.setOnClickListener {
-            googleSignInClient.signOut().addOnCompleteListener {
-                val signInIntent: Intent = googleSignInClient.signInIntent
-                googleSignInLauncher.launch(signInIntent)
-            }
+        btnGoogleLogin.setOnClickListener {
+            progressBar.visibility = View.VISIBLE
+            val signInIntent = googleAuthManager.getSignInIntent()
+            googleSignInLauncher.launch(signInIntent)
         }
 
-        findView("btnContinueLogin")?.setOnClickListener {
-            viewModel.continueAsGuest()
-        }
+        return view
     }
 
-    private fun observeAuthState() {
-        viewLifecycleOwner.lifecycleScope.launch {
-            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.uiState.collectLatest { state ->
-                    when (state) {
-                        is AuthUiState.Loading -> {
-                            findView("pbLoginLoading")?.isVisible = true
-                        }
-                        is AuthUiState.GoogleLinked -> {
-                            findView("pbLoginLoading")?.isVisible = false
-                            val roleId = resources.getIdentifier("roleSelectionFragment", "id", requireContext().packageName)
-                            if (roleId != 0) {
-                                try {
-                                    findNavController().navigate(roleId)
-                                } catch (_: Exception) {}
-                            }
-                        }
-                        is AuthUiState.Success -> {
-                            findView("pbLoginLoading")?.isVisible = false
-                            Toast.makeText(requireContext(), "Swagat hai, ${state.name}!", Toast.LENGTH_SHORT).show()
-                            val homeId = resources.getIdentifier("homeFragment", "id", requireContext().packageName)
-                            val roleId = resources.getIdentifier("roleSelectionFragment", "id", requireContext().packageName)
-                            val targetId = if (homeId != 0) homeId else roleId
-                            if (targetId != 0) {
-                                try {
-                                    findNavController().navigate(targetId)
-                                } catch (_: Exception) {}
-                            }
-                        }
-                        is AuthUiState.Error -> {
-                            findView("pbLoginLoading")?.isVisible = false
-                            if (state.message.isNotBlank()) {
-                                Toast.makeText(requireContext(), state.message, Toast.LENGTH_LONG).show()
-                            }
-                        }
-                        else -> {
-                            findView("pbLoginLoading")?.isVisible = false
-                        }
-                    }
+    private fun syncGoogleUserToBackendAndSession(account: GoogleSignInAccount) {
+        val name = account.displayName ?: "किसान साथी"
+        val email = account.email ?: ""
+        val photoUrl = account.photoUrl?.toString() ?: ""
+        val uid = account.id ?: email.replace(Regex("[^a-zA-Z0-9]"), "_")
+
+        // 1. SessionManager और SharedPreferences में लोकल डेटा सुरक्षित रखना
+        try {
+            SessionManager.saveUser(
+                context = requireContext(),
+                uid = uid,
+                name = name,
+                email = email,
+                role = "BOTH"
+            )
+        } catch (_: Throwable) {
+            val prefs = requireContext().getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
+            prefs.edit()
+                .putString("user_uid", uid)
+                .putString("user_name", name)
+                .putString("user_email", email)
+                .putString("user_photo", photoUrl)
+                .putString("user_role", "BOTH")
+                .putBoolean("is_logged_in", true)
+                .apply()
+        }
+
+        // 2. Vercel बैकएंड के /api/v1/auth/google-sync पर भेजना (Firestore के users कलेक्शन में सेव करने हेतु)
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val url = URL("https://mera-kisan-backend.vercel.app/api/v1/auth/google-sync")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                conn.connectTimeout = 10000
+                conn.readTimeout = 10000
+
+                val payload = JSONObject().apply {
+                    put("uid", uid)
+                    put("name", name)
+                    put("email", email)
+                    put("photo_url", photoUrl)
+                    put("role", "both")
+                    put("district", "मध्य प्रदेश")
+                }
+
+                OutputStreamWriter(conn.outputStream).use { it.write(payload.toString()) }
+                conn.responseCode
+
+                withContext(Dispatchers.Main) {
+                    progressBar.visibility = View.GONE
+                    Toast.makeText(requireContext(), "नमस्ते, $name!", Toast.LENGTH_SHORT).show()
+                    findNavController().navigate(R.id.homeFragment)
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    progressBar.visibility = View.GONE
+                    Toast.makeText(requireContext(), "नमस्ते, $name!", Toast.LENGTH_SHORT).show()
+                    findNavController().navigate(R.id.homeFragment)
                 }
             }
         }
-    }
-
-    private fun findView(name: String): View? {
-        val id = resources.getIdentifier(name, "id", requireContext().packageName)
-        return if (id != 0) binding.root.findViewById(id) else null
-    }
-
-    override fun onDestroyView() {
-        super.onDestroyView()
-        _binding = null
     }
 }
