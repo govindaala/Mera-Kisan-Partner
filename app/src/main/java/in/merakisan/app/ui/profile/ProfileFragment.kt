@@ -1,4 +1,4 @@
-package in.merakisan.app.ui.profile
+package `in`.merakisan.app.ui.profile
 
 import android.content.Context
 import android.os.Bundle
@@ -11,23 +11,22 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
-import in.merakisan.app.R
-import in.merakisan.app.core.security.GoogleAuthManager
-import in.merakisan.app.core.security.SessionManager
+import `in`.merakisan.app.R
+import `in`.merakisan.app.core.security.GoogleAuthManager
 
 class ProfileFragment : Fragment() {
 
-    private lateinit var tvUserName: TextView
-    private lateinit var tvUserContact: TextView
-    private lateinit var tvUserLocation: TextView
-    private lateinit var rgRoleMode: RadioGroup
-    private lateinit var rbFarmer: RadioButton
-    private lateinit var rbBuyer: RadioButton
-    private lateinit var rbBoth: RadioButton
-    private lateinit var btnOrderHistory: View
-    private lateinit var btnManageCrops: View
-    private lateinit var btnBuyerRequests: View
-    private lateinit var btnLogout: View
+    private var tvUserName: TextView? = null
+    private var tvUserContact: TextView? = null
+    private var tvUserLocation: TextView? = null
+    private var rgRoleMode: RadioGroup? = null
+    private var rbFarmer: RadioButton? = null
+    private var rbBuyer: RadioButton? = null
+    private var rbBoth: RadioButton? = null
+    private var btnOrderHistory: View? = null
+    private var btnManageCrops: View? = null
+    private var btnBuyerRequests: View? = null
+    private var btnLogout: View? = null
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -43,112 +42,97 @@ class ProfileFragment : Fragment() {
     }
 
     private fun initViews(v: View) {
-        tvUserName = v.findViewById(R.id.tv_profile_name)
-        tvUserContact = v.findViewById(R.id.tv_profile_contact)
-        tvUserLocation = v.findViewById(R.id.tv_profile_location)
-        rgRoleMode = v.findViewById(R.id.rg_role_mode)
-        rbFarmer = v.findViewById(R.id.rb_role_farmer)
-        rbBuyer = v.findViewById(R.id.rb_role_buyer)
-        rbBoth = v.findViewById(R.id.rb_role_both)
-        btnOrderHistory = v.findViewById(R.id.btn_order_history)
-        btnManageCrops = v.findViewById(R.id.btn_manage_crops)
-        btnBuyerRequests = v.findViewById(R.id.btn_buyer_requests)
-        btnLogout = v.findViewById(R.id.btn_logout)
+        tvUserName = findViewSafe(v, "tv_profile_name", "tvProfileName", "tvName")
+        tvUserContact = findViewSafe(v, "tv_profile_contact", "tvProfileContact", "tvContact", "tvEmail")
+        tvUserLocation = findViewSafe(v, "tv_profile_location", "tvProfileLocation", "tvLocation")
+        rgRoleMode = findViewSafe(v, "rg_role_mode", "rgRoleMode", "radioGroupRole")
+        rbFarmer = findViewSafe(v, "rb_role_farmer", "rbRoleFarmer", "rbFarmer")
+        rbBuyer = findViewSafe(v, "rb_role_buyer", "rbRoleBuyer", "rbBuyer")
+        rbBoth = findViewSafe(v, "rb_role_both", "rbRoleBoth", "rbBoth")
+        btnOrderHistory = findViewSafe(v, "btn_order_history", "btnOrderHistory")
+        btnManageCrops = findViewSafe(v, "btn_manage_crops", "btnManageCrops")
+        btnBuyerRequests = findViewSafe(v, "btn_buyer_requests", "btnBuyerRequests")
+        btnLogout = findViewSafe(v, "btn_logout", "btnLogout")
     }
 
     private fun loadUserData() {
-        val name = try {
-            SessionManager.getUserName(requireContext())
-        } catch (_: Throwable) {
-            val prefs = requireContext().getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
-            prefs.getString("user_name", "किसान साथी")
-        } ?: "किसान साथी"
+        val prefs = requireContext().getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
+        val name = prefs.getString("user_name", "किसान साथी") ?: "किसान साथी"
+        val email = prefs.getString("user_email", "") ?: ""
+        val phone = prefs.getString("user_phone", "") ?: ""
+        val district = prefs.getString("user_district", "मंदसौर (मध्य प्रदेश)") ?: "मंदसौर (मध्य प्रदेश)"
+        val role = prefs.getString("user_role", "BOTH") ?: "BOTH"
 
-        val email = try {
-            SessionManager.getUserEmail(requireContext())
-        } catch (_: Throwable) {
-            val prefs = requireContext().getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
-            prefs.getString("user_email", "")
-        } ?: ""
-
-        val phone = try {
-            SessionManager.getUserPhone(requireContext())
-        } catch (_: Throwable) {
-            val prefs = requireContext().getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
-            prefs.getString("user_phone", "")
-        } ?: ""
-
-        val district = try {
-            SessionManager.getUserDistrict(requireContext())
-        } catch (_: Throwable) {
-            val prefs = requireContext().getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
-            prefs.getString("user_district", "मंदसौर (मध्य प्रदेश)")
-        } ?: "मंदसौर (मध्य प्रदेश)"
-
-        val role = try {
-            SessionManager.getUserRole(requireContext())
-        } catch (_: Throwable) {
-            val prefs = requireContext().getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
-            prefs.getString("user_role", "BOTH")
-        } ?: "BOTH"
-
-        tvUserName.text = name
-        tvUserContact.text = if (phone.isNotEmpty()) phone else email
-        tvUserLocation.text = district
+        tvUserName?.text = name
+        tvUserContact?.text = if (phone.isNotEmpty()) phone else email
+        tvUserLocation?.text = district
 
         when (role.uppercase()) {
-            "FARMER" -> rbFarmer.isChecked = true
-            "BUYER" -> rbBuyer.isChecked = true
-            else -> rbBoth.isChecked = true
+            "FARMER" -> rbFarmer?.isChecked = true
+            "BUYER" -> rbBuyer?.isChecked = true
+            else -> rbBoth?.isChecked = true
         }
     }
 
     private fun setupListeners() {
-        rgRoleMode.setOnCheckedChangeListener { _, checkedId ->
+        val prefs = requireContext().getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
+
+        rgRoleMode?.setOnCheckedChangeListener { _, checkedId ->
             val selectedRole = when (checkedId) {
-                R.id.rb_role_farmer -> "FARMER"
-                R.id.rb_role_buyer -> "BUYER"
+                rbFarmer?.id -> "FARMER"
+                rbBuyer?.id -> "BUYER"
                 else -> "BOTH"
             }
-            try {
-                SessionManager.setUserRole(requireContext(), selectedRole)
-            } catch (_: Throwable) {
-                val prefs = requireContext().getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
-                prefs.edit().putString("user_role", selectedRole).apply()
-            }
+            prefs.edit().putString("user_role", selectedRole).apply()
             Toast.makeText(requireContext(), "सक्रिय भूमिका बदली गई", Toast.LENGTH_SHORT).show()
         }
 
-        btnOrderHistory.setOnClickListener {
-            try {
-                findNavController().navigate(R.id.ordersFragment)
-            } catch (_: Throwable) {}
+        btnOrderHistory?.setOnClickListener {
+            navigateSafe("ordersFragment")
         }
 
-        btnManageCrops.setOnClickListener {
-            try {
-                findNavController().navigate(R.id.marketplaceFragment)
-            } catch (_: Throwable) {}
+        btnManageCrops?.setOnClickListener {
+            navigateSafe("marketplaceFragment", "myCropsFragment")
         }
 
-        btnBuyerRequests.setOnClickListener {
-            try {
-                findNavController().navigate(R.id.buyerRequestsFragment)
-            } catch (_: Throwable) {}
+        btnBuyerRequests?.setOnClickListener {
+            navigateSafe("buyerRequestsFragment")
         }
 
-        btnLogout.setOnClickListener {
+        btnLogout?.setOnClickListener {
             val authManager = GoogleAuthManager(requireContext())
             authManager.signOut {
-                try {
-                    SessionManager.clearSession(requireContext())
-                } catch (_: Throwable) {
-                    val prefs = requireContext().getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
-                    prefs.edit().clear().apply()
-                }
+                prefs.edit().clear().apply()
                 Toast.makeText(requireContext(), "लॉगआउट सफल", Toast.LENGTH_SHORT).show()
-                findNavController().navigate(R.id.loginFragment)
+                navigateSafe("loginFragment")
             }
         }
+    }
+
+    private fun navigateSafe(vararg destinationNames: String) {
+        val context = requireContext()
+        val packageName = context.packageName
+        for (name in destinationNames) {
+            val destId = context.resources.getIdentifier(name, "id", packageName)
+            if (destId != 0) {
+                try {
+                    findNavController().navigate(destId)
+                    return
+                } catch (_: Throwable) {}
+            }
+        }
+    }
+
+    private fun <T : View> findViewSafe(root: View, vararg idNames: String): T? {
+        val context = root.context
+        val packageName = context.packageName
+        for (name in idNames) {
+            val id = context.resources.getIdentifier(name, "id", packageName)
+            if (id != 0) {
+                val found = root.findViewById<T>(id)
+                if (found != null) return found
+            }
+        }
+        return null
     }
 }
