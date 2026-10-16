@@ -61,7 +61,7 @@ class ProfileFragment : Fragment() {
         val context = context ?: return
         val prefs = context.getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
 
-        // 1. सही नाम प्राप्त करने का मजबूत क्रम (Google Sign-In -> SharedPreferences -> Fallback)
+        // 1. वास्तविक Google नाम प्राप्त करने का व्यवस्थित क्रम
         var resolvedName: String? = null
 
         try {
@@ -76,7 +76,7 @@ class ProfileFragment : Fragment() {
                 ?: prefs.getString("displayName", "")?.trim()
                 ?: prefs.getString("name", "")?.trim()
 
-            // यदि नाम सिर्फ अंकों वाली ID या टोकन जैसा अजीब लगे तो उसे किसान साथी पर रीसेट करें
+            // यदि नाम केवल अंकों वाली आईडी या टोकन हो तो उसे किसान साथी पर रीसेट करना
             if (!savedName.isNullOrBlank() && !savedName.matches(Regex("^[0-9_a-fA-F]{12,}$"))) {
                 resolvedName = savedName
             }
@@ -101,7 +101,7 @@ class ProfileFragment : Fragment() {
             contact = "Google खाता सत्यापित"
         }
 
-        // 3. स्थान (गाँव और जिला साफ़ स्वरूप में, बिना किसी फालतू कॉमा के)
+        // 3. स्थान विवरण (बिना किसी फालतू कॉमा के स्वच्छ रेंडरिंग)
         val village = prefs.getString("user_village", "")?.trim() ?: ""
         val district = prefs.getString("user_district", "")?.trim() ?: ""
 
@@ -112,14 +112,13 @@ class ProfileFragment : Fragment() {
             else -> "मध्य प्रदेश"
         }
 
-        // 4. सक्रिय भूमिका (Role)
+        // 4. सक्रिय भूमिका (SessionManager.getUserRole सुरक्षित रूप से उपयोग किया गया)
         val role = try {
             SessionManager.getUserRole(context)
         } catch (_: Throwable) {
             prefs.getString("user_role", "BOTH") ?: "BOTH"
         }
 
-        // UI में डेटा असाइन करना
         tvUserName?.text = resolvedName
         tvUserContact?.text = contact
         tvUserLocation?.text = locationText
@@ -133,22 +132,29 @@ class ProfileFragment : Fragment() {
 
     private fun setupListeners() {
         val context = context ?: return
-        val prefs = context.getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
 
+        // सक्रिय भूमिका बदलने पर सभी आवश्यक SharedPreferences में सुरक्षित रूप से लिखना
         rgRoleMode?.setOnCheckedChangeListener { _, checkedId ->
             val selectedRole = when (checkedId) {
                 rbFarmer?.id -> "FARMER"
                 rbBuyer?.id -> "BUYER"
                 else -> "BOTH"
             }
-            try {
-                SessionManager.setUserRole(context, selectedRole)
-            } catch (_: Throwable) {
-                prefs.edit().putString("user_role", selectedRole).apply()
-            }
+
+            // SessionManager को बिना छुए सभी स्थानीय कॉन्फ़िगरेशन में रोल अपडेट करना
+            val userPrefs = context.getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
+            userPrefs.edit().putString("user_role", selectedRole).putString("role", selectedRole).apply()
+
+            val sessionPrefs = context.getSharedPreferences("mera_kisan_session", Context.MODE_PRIVATE)
+            sessionPrefs.edit().putString("user_role", selectedRole).apply()
+
+            val defaultPrefs = context.getSharedPreferences("${context.packageName}_preferences", Context.MODE_PRIVATE)
+            defaultPrefs.edit().putString("user_role", selectedRole).apply()
+
             Toast.makeText(context, "सक्रिय भूमिका बदली गई", Toast.LENGTH_SHORT).show()
         }
 
+        // त्वरित नेविगेशन (Quick Links)
         btnOrderHistory?.setOnClickListener {
             navigateSafe("ordersFragment")
         }
@@ -161,14 +167,20 @@ class ProfileFragment : Fragment() {
             navigateSafe("buyerRequestsFragment")
         }
 
+        // पूर्ण लॉगआउट
         btnLogout?.setOnClickListener {
             val authManager = GoogleAuthManager(context)
             authManager.signOut {
-                try {
-                    SessionManager.clearSession(context)
-                } catch (_: Throwable) {
-                    prefs.edit().clear().apply()
-                }
+                // सभी स्थानीय सत्र साफ़ करना
+                val userPrefs = context.getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
+                userPrefs.edit().clear().apply()
+
+                val sessionPrefs = context.getSharedPreferences("mera_kisan_session", Context.MODE_PRIVATE)
+                sessionPrefs.edit().clear().apply()
+
+                val defaultPrefs = context.getSharedPreferences("${context.packageName}_preferences", Context.MODE_PRIVATE)
+                defaultPrefs.edit().clear().apply()
+
                 Toast.makeText(context, "लॉगआउट सफल", Toast.LENGTH_SHORT).show()
                 navigateSafe("loginFragment")
             }
