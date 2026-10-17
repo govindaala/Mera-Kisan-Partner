@@ -1,461 +1,571 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- app/src/main/res/layout/fragment_home.xml -->
-<androidx.coordinatorlayout.widget.CoordinatorLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F8FAF8">
+    android:background="#F4F6F8"
+    android:fillViewport="true">
 
-    <com.google.android.material.appbar.AppBarLayout
-        android:id="@+id/appBarLayout"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="#FFFFFF"
-        app:elevation="2dp">
+        android:orientation="vertical"
+        android:padding="12dp">
 
-        <LinearLayout
+        <!-- 1. TOP GREETING & ACTIVE ROLE CHIP -->
+        <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingHorizontal="16dp"
-            android:paddingVertical="12dp">
+            android:layout_marginBottom="10dp">
 
             <LinearLayout
-                android:layout_width="0dp"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
                 android:orientation="vertical">
 
                 <TextView
-                    android:id="@+id/tvHomeGreeting"
+                    android:id="@+id/tv_greeting"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:text="नमस्ते, किसान साथी"
                     android:textColor="#1B5E20"
                     android:textSize="18sp"
-                    android:textStyle="bold"
-                    tools:text="नमस्ते, किसान साथी" />
+                    android:textStyle="bold" />
 
                 <TextView
-                    android:id="@+id/tvHomeLocation"
+                    android:id="@+id/tv_user_location"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
+                    android:text="📍 मंदसौर, मध्य प्रदेश"
                     android:textColor="#616161"
-                    android:textSize="12sp"
-                    tools:text="📍 ग्राम: बर्ड़िया अमरा • मंदसौर" />
+                    android:textSize="12sp" />
             </LinearLayout>
 
-            <!-- Role Badge / Switch Shortcut -->
-            <com.google.android.material.chip.Chip
-                android:id="@+id/chipActiveRole"
-                style="@style/Widget.MaterialComponents.Chip.Action"
+            <TextView
+                android:id="@+id/tv_active_role_badge"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_alignParentEnd="true"
+                android:layout_centerVertical="true"
+                android:background="#E8F5E9"
+                android:paddingStart="10dp"
+                android:paddingTop="5dp"
+                android:paddingEnd="10dp"
+                android:paddingBottom="5dp"
+                android:text="🔄 दोनों मोड (किसान + खरीदार)"
                 android:textColor="#1B5E20"
                 android:textSize="11sp"
-                app:chipBackgroundColor="#E8F5E9"
-                app:chipStrokeColor="#C8E6C9"
-                app:chipStrokeWidth="1dp"
-                tools:text="🌾 किसान मोड" />
-        </LinearLayout>
+                android:textStyle="bold" />
+        </RelativeLayout>
 
-    </com.google.android.material.appbar.AppBarLayout>
-
-    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-        android:id="@+id/swipeRefreshHome"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        app:layout_behavior="@string/appbar_scrolling_view_behavior">
-
-        <androidx.core.widget.NestedScrollView
+        <!-- 2. FARMER CENTER DASHBOARD (Visible in FARMER & BOTH Modes) -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/layout_farmer_center"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:clipToPadding="false"
-            android:paddingBottom="96dp">
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            app:cardBackgroundColor="#FFFFFF"
+            app:cardCornerRadius="10dp"
+            app:cardElevation="2dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="16dp">
+                android:padding="14dp">
 
-                <!-- 1. Remote Announcement Banner (Remote Config Controlled) -->
-                <com.google.android.material.card.MaterialCardView
-                    android:id="@+id/cardRemoteBanner"
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🌾 किसान डैशबोर्ड (Farmer Center)"
+                    android:textColor="#1B5E20"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:visibility="gone"
-                    app:cardBackgroundColor="#E8F5E9"
-                    app:cardCornerRadius="12dp"
-                    app:cardElevation="0dp"
-                    app:strokeColor="#C8E6C9"
-                    app:strokeWidth="1dp"
-                    tools:visibility="visible">
+                    android:layout_marginTop="10dp"
+                    android:orientation="horizontal"
+                    android:weightSum="2">
 
                     <LinearLayout
-                        android:layout_width="match_parent"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:padding="12dp">
+                        android:layout_marginEnd="6dp"
+                        android:layout_weight="1"
+                        android:background="#F1F8E9"
+                        android:padding="10dp"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/tv_active_crops_count"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0"
+                            android:textColor="#2E7D32"
+                            android:textSize="20sp"
+                            android:textStyle="bold" />
 
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="📢"
-                            android:textSize="18sp" />
+                            android:text="सक्रिय फसलें"
+                            android:textColor="#555555"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
+                        android:layout_weight="1"
+                        android:background="#FFF8E1"
+                        android:padding="10dp"
+                        android:orientation="vertical">
 
                         <TextView
-                            android:id="@+id/tvRemoteBannerText"
-                            android:layout_width="0dp"
+                            android:id="@+id/tv_pending_orders_count"
+                            android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_marginStart="8dp"
-                            android:layout_weight="1"
-                            android:textColor="#1B5E20"
-                            android:textSize="12sp"
-                            android:textStyle="bold"
-                            tools:text="ताज़ा सोयाबीन व लहसुन की मांग अधिक है — आज ही अपनी फ़सल जोड़ें!" />
-                    </LinearLayout>
-                </com.google.android.material.card.MaterialCardView>
+                            android:text="0"
+                            android:textColor="#F57F17"
+                            android:textSize="20sp"
+                            android:textStyle="bold" />
 
-                <!-- 2. FARMER OVERVIEW CONTAINER (Shown for FARMER or BOTH role) -->
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="लंबित बिक्री ऑर्डर्स"
+                            android:textColor="#555555"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/btn_add_crop"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="12dp"
+                    android:backgroundTint="#1B5E20"
+                    android:text="+ नई फसल / उत्पाद जोड़ें (ADD CROP)"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <!-- Farmer Exclusive Tools Row -->
                 <LinearLayout
-                    android:id="@+id/llFarmerSection"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:orientation="vertical"
-                    android:visibility="gone"
-                    tools:visibility="visible">
+                    android:layout_marginTop="8dp"
+                    android:orientation="horizontal"
+                    android:weightSum="3">
+
+                    <Button
+                        android:id="@+id/btn_ai_poster_tool"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="🎨 AI पोस्टर"
+                        android:textColor="#1B5E20"
+                        android:textSize="11sp" />
+
+                    <Button
+                        android:id="@+id/btn_crop_boost_tool"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="4dp"
+                        android:layout_marginEnd="4dp"
+                        android:layout_weight="1"
+                        android:text="🚀 फसल बूस्ट"
+                        android:textColor="#E65100"
+                        android:textSize="11sp" />
+
+                    <Button
+                        android:id="@+id/btn_fair_price_tool"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="🧮 उचित दाम"
+                        android:textColor="#0D47A1"
+                        android:textSize="11sp" />
+                </LinearLayout>
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- 3. BUYER MARKETPLACE CENTER (Visible in BUYER & BOTH Modes) -->
+        <LinearLayout
+            android:id="@+id/layout_buyer_center"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <androidx.cardview.widget.CardView
+                android:id="@+id/card_search_bar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="10dp"
+                app:cardBackgroundColor="#FFFFFF"
+                app:cardCornerRadius="24dp"
+                app:cardElevation="1dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:gravity="center_vertical"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:text="🔍 फसल, देशी किस्म या किसान खोजें (उदा. शरबती गेहूं)..."
+                    android:textColor="#757575"
+                    android:textSize="13sp" />
+            </androidx.cardview.widget.CardView>
+
+            <!-- Small Quantity Banner -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/card_small_quantity"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="10dp"
+                app:cardBackgroundColor="#E8F5E9"
+                app:cardCornerRadius="8dp"
+                app:cardElevation="0dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:padding="12dp">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="🌾 1–25 kg छोटी मात्रा भी उपलब्ध"
+                            android:textColor="#1B5E20"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="मंडी थोक बाध्यता नहीं — सीधे किसान से घर के लिए खरीदें"
+                            android:textColor="#2E7D32"
+                            android:textSize="11sp" />
+                    </LinearLayout>
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="🌾 किसान डैशबोर्ड (Farmer Center)"
-                        android:textColor="#212121"
-                        android:textSize="15sp"
+                        android:text="खोजें →"
+                        android:textColor="#1B5E20"
                         android:textStyle="bold" />
-
-                    <!-- Metrics Grid -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:orientation="horizontal">
-
-                        <com.google.android.material.card.MaterialCardView
-                            android:id="@+id/cardFarmerListings"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_marginEnd="6dp"
-                            android:layout_weight="1"
-                            app:cardBackgroundColor="#FFFFFF"
-                            app:cardCornerRadius="10dp"
-                            app:cardElevation="1dp"
-                            app:strokeColor="#E0E0E0"
-                            app:strokeWidth="1dp">
-
-                            <LinearLayout
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:orientation="vertical"
-                                android:padding="12dp">
-
-                                <TextView
-                                    android:id="@+id/tvActiveProduceCount"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:textColor="#1B5E20"
-                                    android:textSize="22sp"
-                                    android:textStyle="bold"
-                                    tools:text="3" />
-
-                                <TextView
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:layout_marginTop="2dp"
-                                    android:text="सक्रिय फसलें"
-                                    android:textColor="#757575"
-                                    android:textSize="11sp" />
-                            </LinearLayout>
-                        </com.google.android.material.card.MaterialCardView>
-
-                        <com.google.android.material.card.MaterialCardView
-                            android:id="@+id/cardFarmerOrders"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="6dp"
-                            android:layout_weight="1"
-                            app:cardBackgroundColor="#FFFFFF"
-                            app:cardCornerRadius="10dp"
-                            app:cardElevation="1dp"
-                            app:strokeColor="#E0E0E0"
-                            app:strokeWidth="1dp">
-
-                            <LinearLayout
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:orientation="vertical"
-                                android:padding="12dp">
-
-                                <TextView
-                                    android:id="@+id/tvPendingOrdersCount"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:textColor="#E65100"
-                                    android:textSize="22sp"
-                                    android:textStyle="bold"
-                                    tools:text="1" />
-
-                                <TextView
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:layout_marginTop="2dp"
-                                    android:text="लंबित ऑर्डर्स"
-                                    android:textColor="#757575"
-                                    android:textSize="11sp" />
-                            </LinearLayout>
-                        </com.google.android.material.card.MaterialCardView>
-                    </LinearLayout>
-
-                    <!-- Primary Action Button: Add Produce -->
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnQuickAddProduce"
-                        android:layout_width="match_parent"
-                        android:layout_height="50dp"
-                        android:layout_marginTop="10dp"
-                        android:backgroundTint="#1B5E20"
-                        android:text="➕ नई फसल जोड़ें (Add Crop)"
-                        android:textColor="#FFFFFF"
-                        android:textSize="13sp"
-                        android:textStyle="bold"
-                        app:cornerRadius="10dp" />
                 </LinearLayout>
+            </androidx.cardview.widget.CardView>
+        </LinearLayout>
 
-                <!-- 3. BUYER DISCOVERY CONTAINER (Shown for BUYER or BOTH role) -->
+        <!-- 4. SHARED A-TO-Z FEATURE CARDS (Controlled by Feature Flags) -->
+
+        <!-- Card A: Daily APMC Mandi Bhav -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/card_mandi_bhav"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="10dp"
+            app:cardBackgroundColor="#E3F2FD"
+            app:cardCornerRadius="8dp"
+            app:cardElevation="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="12dp">
+
                 <LinearLayout
-                    android:id="@+id/llBuyerSection"
-                    android:layout_width="match_parent"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
+                    android:layout_weight="1"
                     android:orientation="vertical">
 
-                    <!-- Search Trigger Card -->
-                    <com.google.android.material.card.MaterialCardView
-                        android:id="@+id/cardSearchTrigger"
-                        android:layout_width="match_parent"
-                        android:layout_height="48dp"
-                        android:clickable="true"
-                        android:focusable="true"
-                        app:cardBackgroundColor="#FFFFFF"
-                        app:cardCornerRadius="24dp"
-                        app:cardElevation="2dp"
-                        app:strokeColor="#C8E6C9"
-                        app:strokeWidth="1dp">
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:gravity="center_vertical"
-                            android:orientation="horizontal"
-                            android:paddingHorizontal="16dp">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="🔍"
-                                android:textSize="16sp" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginStart="10dp"
-                                android:text="@string/search_hint"
-                                android:textColor="#9E9E9E"
-                                android:textSize="13sp" />
-                        </LinearLayout>
-                    </com.google.android.material.card.MaterialCardView>
-
-                    <!-- Small Quantity Hero USP Banner -->
-                    <com.google.android.material.card.MaterialCardView
-                        android:id="@+id/cardSmallQtyHero"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="14dp"
-                        android:clickable="true"
-                        android:focusable="true"
-                        app:cardBackgroundColor="#F1F8E9"
-                        app:cardCornerRadius="12dp"
-                        app:cardElevation="0dp"
-                        app:strokeColor="#C8E6C9"
-                        app:strokeWidth="1dp">
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:gravity="center_vertical"
-                            android:orientation="horizontal"
-                            android:padding="14dp">
-
-                            <LinearLayout
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:orientation="vertical">
-
-                                <TextView
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:text="🌾 1–25 kg छोटी मात्रा भी उपलब्ध"
-                                    android:textColor="#1B5E20"
-                                    android:textSize="14sp"
-                                    android:textStyle="bold" />
-
-                                <TextView
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:layout_marginTop="2dp"
-                                    android:text="मंडी थोक बाध्यता नहीं — सीधे किसान से घर के उपयोग हेतु खरीदें।"
-                                    android:textColor="#558B2F"
-                                    android:textSize="11sp" />
-                            </LinearLayout>
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="खोजें →"
-                                android:textColor="#1B5E20"
-                                android:textSize="12sp"
-                                android:textStyle="bold" />
-                        </LinearLayout>
-                    </com.google.android.material.card.MaterialCardView>
-
-                    <!-- Demand Board Quick Callout -->
-                    <com.google.android.material.card.MaterialCardView
-                        android:id="@+id/cardDemandBoardCallout"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:clickable="true"
-                        android:focusable="true"
-                        app:cardBackgroundColor="#FFFFFF"
-                        app:cardCornerRadius="12dp"
-                        app:cardElevation="1dp"
-                        app:strokeColor="#FFE0B2"
-                        app:strokeWidth="1dp">
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:gravity="center_vertical"
-                            android:orientation="horizontal"
-                            android:padding="12dp">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="📢"
-                                android:textSize="24sp" />
-
-                            <LinearLayout
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_marginStart="10dp"
-                                android:layout_weight="1"
-                                android:orientation="vertical">
-
-                                <TextView
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:text="अपनी मांग दर्ज करें ('मुझे चाहिए')"
-                                    android:textColor="#E65100"
-                                    android:textSize="13sp"
-                                    android:textStyle="bold" />
-
-                                <TextView
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:text="जो फसल बाज़ार में नहीं दिख रही, उसे सीधे किसानों से मांगें।"
-                                    android:textColor="#757575"
-                                    android:textSize="11sp" />
-                            </LinearLayout>
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="दर्ज करें →"
-                                android:textColor="#E65100"
-                                android:textSize="12sp"
-                                android:textStyle="bold" />
-                        </LinearLayout>
-                    </com.google.android.material.card.MaterialCardView>
-
-                    <!-- 4. What's Fresh Today (Section Header) -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="18dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="🥬 आज खेत से (Fresh Today)"
-                            android:textColor="#212121"
-                            android:textSize="15sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:id="@+id/tvViewAllMarketplace"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:padding="4dp"
-                            android:text="सभी देखें →"
-                            android:textColor="#1B5E20"
-                            android:textSize="12sp"
-                            android:textStyle="bold" />
-                    </LinearLayout>
-
-                    <!-- Produce Preview RecyclerView -->
-                    <androidx.recyclerview.widget.RecyclerView
-                        android:id="@+id/rvFreshToday"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:nestedScrollingEnabled="false"
-                        tools:itemCount="2"
-                        tools:listitem="@layout/item_product_card" />
-
-                    <!-- Loading / Empty State -->
-                    <ProgressBar
-                        android:id="@+id/pbHomeLoading"
-                        style="?android:attr/progressBarStyle"
+                    <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_gravity="center"
-                        android:layout_marginTop="20dp"
-                        android:indeterminateTint="#1B5E20"
-                        android:visibility="gone" />
+                        android:text="📈 आज का मंडी भाव (APMC Live)"
+                        android:textColor="#0D47A1"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
 
                     <TextView
-                        android:id="@+id/tvEmptyHomeProducts"
-                        android:layout_width="match_parent"
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="20dp"
-                        android:gravity="center"
-                        android:text="वर्तमान में कोई ताज़ा फ़सल उपलब्ध नहीं है।"
-                        android:textColor="#757575"
-                        android:textSize="13sp"
-                        android:visibility="gone" />
-
+                        android:text="मंदसौर, गरोठ, नीमच, इंदौर मंडी के ताज़ा थोक भाव देखें"
+                        android:textColor="#1565C0"
+                        android:textSize="11sp" />
                 </LinearLayout>
 
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="भाव देखें →"
+                    android:textColor="#0D47A1"
+                    android:textStyle="bold" />
             </LinearLayout>
-        </androidx.core.widget.NestedScrollView>
-    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+        </androidx.cardview.widget.CardView>
 
-</androidx.coordinatorlayout.widget.CoordinatorLayout>
+        <!-- Card B: Buyer Demand Board ("मुझे यह चाहिए") -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/card_demand_board"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="10dp"
+            app:cardBackgroundColor="#FFF3E0"
+            app:cardCornerRadius="8dp"
+            app:cardElevation="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="12dp">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="📢 ग्राहक मांग बोर्ड ('मुझे यह चाहिए')"
+                        android:textColor="#E65100"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="अपनी ज़रूरत पोस्ट करें या ग्राहकों की मांग पर सीधा ऑफर भेजें"
+                        android:textColor="#EF6C00"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="बोर्ड खोलें →"
+                    android:textColor="#E65100"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- Card C: All Advanced Modules Grid (Oil Mill, Farm Box, QR Traceability, Wallet/Auction) -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="8dp"
+            android:text="✨ विशेष मार्केटप्लेस सेवाएं (All Modules Active)"
+            android:textColor="#212121"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:weightSum="2">
+
+            <androidx.cardview.widget.CardView
+                android:id="@+id/card_oil_mill"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                app:cardBackgroundColor="#FFFFFF"
+                app:cardCornerRadius="8dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="12dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🫙 कच्ची घानी तेल मिल"
+                        android:textColor="#1B5E20"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="किसान के बीज से सीधा शुद्ध तेल व बैच QR"
+                        android:textColor="#616161"
+                        android:textSize="11sp" />
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <androidx.cardview.widget.CardView
+                android:id="@+id/card_farm_box"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                app:cardBackgroundColor="#FFFFFF"
+                app:cardCornerRadius="8dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="12dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🧺 ग्राम ताज़ा फार्म बॉक्स"
+                        android:textColor="#1B5E20"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="₹399 में कई किसानों की ताज़ा सब्जियां व अनाज"
+                        android:textColor="#616161"
+                        android:textSize="11sp" />
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="12dp"
+            android:orientation="horizontal"
+            android:weightSum="2">
+
+            <androidx.cardview.widget.CardView
+                android:id="@+id/card_qr_traceability"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                app:cardBackgroundColor="#FFFFFF"
+                app:cardCornerRadius="8dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="12dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🔍 बैच QR ट्रेसबिलिटी"
+                        android:textColor="#0D47A1"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="खेत → कटाई → जांच → पैकिंग की पूरी कुंडली"
+                        android:textColor="#616161"
+                        android:textSize="11sp" />
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <androidx.cardview.widget.CardView
+                android:id="@+id/card_live_auction"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                app:cardBackgroundColor="#FFFFFF"
+                app:cardCornerRadius="8dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="12dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🔨 लाइव फसल बोली (Auction)"
+                        android:textColor="#B71C1C"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="थोक व विशेष देशी लॉट पर सीधी बोली लगाएं"
+                        android:textColor="#616161"
+                        android:textSize="11sp" />
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+        </LinearLayout>
+
+        <!-- 5. FRESH TODAY SECTION (Zero Infinite Spinner) -->
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🥬 आज खेत से (Fresh Today)"
+                android:textColor="#1B5E20"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tv_view_all_fresh"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentEnd="true"
+                android:text="सभी देखें →"
+                android:textColor="#2E7D32"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+        </RelativeLayout>
+
+        <ProgressBar
+            android:id="@+id/progressBarFreshToday"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_gravity="center"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/container_fresh_today"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>
