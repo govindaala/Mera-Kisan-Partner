@@ -1,8 +1,12 @@
+// app/src/main/java/in/merakisan/app/ui/main/MainActivity.kt
 package `in`.merakisan.app.ui.main
 
 import android.os.Bundle
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -25,7 +29,7 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // 1. RoleStateManager ko initialize karna
+        applySystemBarInsets()
         RoleStateManager.init(this)
 
         setupNavigation()
@@ -33,12 +37,19 @@ class MainActivity : AppCompatActivity() {
         syncRemoteConfiguration()
     }
 
+    private fun applySystemBarInsets() {
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
+            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.updatePadding(top = insets.top, bottom = insets.bottom)
+            WindowInsetsCompat.CONSUMED
+        }
+    }
+
     private fun setupNavigation() {
         val navHostFragment = supportFragmentManager
             .findFragmentById(R.id.navHostFragment) as NavHostFragment
         navController = navHostFragment.navController
 
-        // NavOptions: Tab change par purani sub-screens (jaise AddCrop) ko stack se saaf karna
         val navOptions = NavOptions.Builder()
             .setLaunchSingleTop(true)
             .setRestoreState(false)
@@ -118,10 +129,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Master Spec Sec 5: Profile me role switch karte hi bina app restart kiye
-     * Bottom Navigation tabs instant update honge
-     */
     private fun observeRoleStateChanges() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -134,14 +141,19 @@ class MainActivity : AppCompatActivity() {
 
     private fun adaptNavigationForRole(role: String) {
         val menu = binding.bottomNavigation.menu
+        val homeItem = menu.findItem(R.id.nav_home)
         val marketplaceItem = menu.findItem(R.id.nav_marketplace)
         val requestsItem = menu.findItem(R.id.nav_buyer_requests)
         val ordersItem = menu.findItem(R.id.nav_orders)
+        val profileItem = menu.findItem(R.id.nav_profile)
+
+        homeItem?.title = "होम"
+        profileItem?.title = "प्रोफ़ाइल"
 
         when (role.trim().uppercase()) {
             RoleStateManager.ROLE_FARMER -> {
                 marketplaceItem?.title = "मेरी फसलें"
-                requestsItem?.title = "मांग बोर्ड"
+                requestsItem?.title = "ग्राहक मांग"
                 ordersItem?.title = "बिक्री ऑर्डर्स"
             }
             RoleStateManager.ROLE_BUYER -> {
@@ -150,10 +162,9 @@ class MainActivity : AppCompatActivity() {
                 ordersItem?.title = "खरीद ऑर्डर्स"
             }
             else -> {
-                // BOTH Mode — Options Double
-                marketplaceItem?.title = "बाज़ार / फसलें"
-                requestsItem?.title = "मांग / ज़रूरत"
-                ordersItem?.title = "ऑर्डर्स लेन-देन"
+                marketplaceItem?.title = "बाज़ार व फसलें"
+                requestsItem?.title = "मांग / बेचें"
+                ordersItem?.title = "सभी ऑर्डर्स"
             }
         }
     }
