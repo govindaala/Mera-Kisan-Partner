@@ -1,8 +1,8 @@
+// app/src/main/java/in/merakisan/app/ui/auth/LoginFragment.kt
 package `in`.merakisan.app.ui.auth
 
 import android.app.Activity
 import android.content.Context
-import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -18,10 +18,10 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import `in`.merakisan.app.R
 import `in`.merakisan.app.core.security.GoogleAuthManager
+import `in`.merakisan.app.core.state.RoleStateManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
@@ -31,7 +31,6 @@ class LoginFragment : Fragment() {
 
     private lateinit var googleAuthManager: GoogleAuthManager
     private var progressBar: ProgressBar? = null
-    private var btnGoogleLogin: View? = null
 
     private val googleSignInLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -39,10 +38,10 @@ class LoginFragment : Fragment() {
         if (result.resultCode == Activity.RESULT_OK) {
             val accountResult = googleAuthManager.parseSignInResult(result.data)
             accountResult.onSuccess { account ->
-                handleLoginSuccess(account)
-            }.onFailure { error ->
+                onAuthenticatedSuccess(account)
+            }.onFailure { err ->
                 progressBar?.visibility = View.GONE
-                Toast.makeText(requireContext(), "Google साइन इन विफल: ${error.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(requireContext(), "लॉगिन त्रुटि: ${err.message}", Toast.LENGTH_LONG).show()
             }
         } else {
             progressBar?.visibility = View.GONE
@@ -56,115 +55,42 @@ class LoginFragment : Fragment() {
         val view = inflater.inflate(R.layout.fragment_login, container, false)
         googleAuthManager = GoogleAuthManager(requireContext())
 
-        // 1. प्रोग्रेस बार रिज़ॉल्व करना
         progressBar = findProgressBar(view)
+        val btnGoogle = findGoogleSignInButton(view)
 
-        // 2. Google लॉगिन बटन रिज़ॉल्व करना (डीप स्कैनर द्वारा 100% बाइंडिंग)
-        btnGoogleLogin = findGoogleSignInButton(view)
-
-        btnGoogleLogin?.setOnClickListener {
+        btnGoogle?.setOnClickListener {
             progressBar?.visibility = View.VISIBLE
-            try {
-                val signInIntent = googleAuthManager.getSignInIntent()
-                googleSignInLauncher.launch(signInIntent)
-            } catch (e: Exception) {
-                progressBar?.visibility = View.GONE
-                Toast.makeText(requireContext(), "लॉगिन शुरू नहीं हो सका: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
-            }
+            googleSignInLauncher.launch(googleAuthManager.getSignInIntent())
         }
-
-        // 3. यदि डिवाइस में पहले से Google खाता मौजूद है, तो डेटा स्वतः सिंक करना
-        checkAndSyncExistingAccount()
 
         return view
     }
 
-    override fun onResume() {
-        super.onResume()
-        checkAndSyncExistingAccount()
-    }
+    private fun onAuthenticatedSuccess(account: GoogleSignInAccount) {
+        val ctx = context ?: return
+        val name = account.displayName ?: "गोविंद पाटीदार"
+        val email = account.email ?: ""
+        val uid = account.id ?: email.replace(Regex("[^a-zA-Z0-9]"), "_")
 
-    private fun checkAndSyncExistingAccount() {
-        try {
-            val account = GoogleSignIn.getLastSignedInAccount(requireContext())
-            if (account != null && !account.email.isNullOrEmpty()) {
-                saveUserDataLocally(account)
-                syncWithBackendAsync(account)
-            }
-        } catch (_: Throwable) {}
-    }
+        // Master Spec Sec 5 & Gem Rule 7: Never store plaintext PIN; store verified identity session
+        ctx.getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE).edit()
+            .putString("user_uid", uid)
+            .putString("user_name", name)
+            .putString("user_email", email)
+            .putString("user_village", "गरोठ")
+            .putString("user_district", "मंदसौर")
+            .putBoolean("is_logged_in", true)
+            .apply()
 
-    private fun handleLoginSuccess(account: GoogleSignInAccount) {
-        val name = account.displayName ?: "किसान साथी"
-        
-        // 1. स्थानीय स्टोरेज में तुरंत सेव करना
-        saveUserDataLocally(account)
-
-        // 2. बैकएंड को बैकग्राउंड में अपडेट करना (UI को रोके बिना)
-        syncWithBackendAsync(account)
+        RoleStateManager.init(ctx)
+        syncUserToServerAsync(uid, name, email)
 
         progressBar?.visibility = View.GONE
-        Toast.makeText(requireContext(), "नमस्ते, $name!", Toast.LENGTH_SHORT).show()
-
-        // 3. अगली स्क्रीन पर नेविगेट करना
-        navigateToNextScreen()
+        Toast.makeText(ctx, "नमस्ते, $name!", Toast.LENGTH_SHORT).show()
+        navigateSafe("roleSelectionFragment", "homeFragment")
     }
 
-    private fun saveUserDataLocally(account: GoogleSignInAccount) {
-        val context = context ?: return
-        val name = account.displayName ?: "किसान साथी"
-        val email = account.email ?: ""
-        val photoUrl = account.photoUrl?.toString() ?: ""
-        val uid = account.id ?: email.replace(Regex("[^a-zA-Z0-9]"), "_")
-
-        // 'mera_kisan_user' फ़ाइल में लिखना
-        val userPrefs = context.getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
-        userPrefs.edit().apply {
-            putString("user_uid", uid)
-            putString("uid", uid)
-            putString("user_name", name)
-            putString("name", name)
-            putString("displayName", name)
-            putString("user_email", email)
-            putString("email", email)
-            putString("user_photo", photoUrl)
-            putString("photo_url", photoUrl)
-            putString("user_role", "BOTH")
-            putString("role", "BOTH")
-            putString("user_district", "मध्य प्रदेश")
-            putBoolean("is_logged_in", true)
-            apply()
-        }
-
-        // 'mera_kisan_session' फ़ाइल में लिखना
-        val sessionPrefs = context.getSharedPreferences("mera_kisan_session", Context.MODE_PRIVATE)
-        sessionPrefs.edit().apply {
-            putString("user_uid", uid)
-            putString("user_name", name)
-            putString("user_email", email)
-            putString("user_role", "BOTH")
-            putBoolean("is_logged_in", true)
-            apply()
-        }
-
-        // डिफ़ॉल्ट पैकेज प्रेफरेंसेस में लिखना
-        val defaultPrefs = context.getSharedPreferences("${context.packageName}_preferences", Context.MODE_PRIVATE)
-        defaultPrefs.edit().apply {
-            putString("user_uid", uid)
-            putString("user_name", name)
-            putString("user_email", email)
-            putString("user_role", "BOTH")
-            putBoolean("is_logged_in", true)
-            apply()
-        }
-    }
-
-    private fun syncWithBackendAsync(account: GoogleSignInAccount) {
-        val name = account.displayName ?: "किसान साथी"
-        val email = account.email ?: ""
-        val photoUrl = account.photoUrl?.toString() ?: ""
-        val uid = account.id ?: email.replace(Regex("[^a-zA-Z0-9]"), "_")
-
+    private fun syncUserToServerAsync(uid: String, name: String, email: String) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val url = URL("https://mera-kisan-backend.vercel.app/api/v1/auth/google-sync")
@@ -172,117 +98,69 @@ class LoginFragment : Fragment() {
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.doOutput = true
-                conn.connectTimeout = 8000
-                conn.readTimeout = 8000
+                conn.connectTimeout = 6000
+                conn.readTimeout = 6000
 
                 val payload = JSONObject().apply {
                     put("uid", uid)
                     put("name", name)
                     put("email", email)
-                    put("photo_url", photoUrl)
-                    put("role", "both")
-                    put("district", "मध्य प्रदेश")
+                    put("role", RoleStateManager.getCurrentRole().lowercase())
+                    put("district", "मंदसौर")
                 }
-
                 OutputStreamWriter(conn.outputStream).use { it.write(payload.toString()) }
                 conn.responseCode
-            } catch (_: Exception) {}
-        }
-    }
-
-    private fun navigateToNextScreen() {
-        val context = context ?: return
-        val pkg = context.packageName
-
-        // 1. पहले होम स्क्रीन पर जाने का प्रयास
-        val homeId = context.resources.getIdentifier("homeFragment", "id", pkg)
-        if (homeId != 0) {
-            try {
-                findNavController().navigate(homeId)
-                return
             } catch (_: Throwable) {}
         }
-
-        // 2. फॉलबैक: रोल सेलेक्शन स्क्रीन
-        val roleId = context.resources.getIdentifier("roleSelectionFragment", "id", pkg)
-        if (roleId != 0) {
-            try {
-                findNavController().navigate(roleId)
-                return
-            } catch (_: Throwable) {}
-        }
-
-        try {
-            findNavController().popBackStack()
-        } catch (_: Throwable) {}
     }
 
     private fun findGoogleSignInButton(root: View): View? {
-        val context = root.context
-        val pkg = context.packageName
-
-        // 1. मानक डायरेक्ट IDs
-        val directIds = arrayOf(
-            "btn_google_login", "btnGoogleLogin", "btnGoogleSignIn", "btn_google_sign_in",
-            "googleSignInButton", "btnGoogle", "signInButton", "btn_google", "googleButton",
-            "btnLogin", "btnLoginGoogle", "cardGoogle", "cardGoogleLogin", "layoutGoogle",
-            "btn_sign_in", "btnSignIn", "loginButton"
-        )
-        for (name in directIds) {
-            val resId = context.resources.getIdentifier(name, "id", pkg)
-            if (resId != 0) {
-                val v = root.findViewById<View>(resId)
-                if (v != null) return v
+        val ctx = root.context
+        val pkg = ctx.packageName
+        val ids = arrayOf("btn_google_login", "btnGoogleLogin", "btnGoogle", "googleSignInButton", "btnLogin")
+        for (name in ids) {
+            val id = ctx.resources.getIdentifier(name, "id", pkg)
+            if (id != 0) {
+                val found = root.findViewById<View>(id)
+                if (found != null) return found
             }
         }
-
-        // 2. लेआउट ट्री का डीप-स्कैन (Google टेक्स्ट, क्लास या टैग के आधार पर)
-        return scanViewHierarchyForGoogle(root)
+        return scanHierarchy(root)
     }
 
-    private fun scanViewHierarchyForGoogle(view: View): View? {
-        val className = view.javaClass.name.lowercase()
-        if (className.contains("signinbutton")) {
-            return view
-        }
-
-        val idName = try {
-            if (view.id != View.NO_ID) view.resources.getResourceEntryName(view.id).lowercase() else ""
-        } catch (_: Throwable) { "" }
-
-        if (idName.contains("google") && (view.isClickable || view is ViewGroup || view is Button)) {
-            return view
-        }
-
-        if (view is TextView) {
-            val text = view.text?.toString()?.lowercase() ?: ""
-            if (text.contains("google") || text.contains("साइन इन") || text.contains("लॉगिन")) {
-                val parent = view.parent
-                if (parent is View && parent.isClickable) return parent
-                return view
-            }
-        }
-
-        if (view is ViewGroup) {
-            for (i in 0 until view.childCount) {
-                val found = scanViewHierarchyForGoogle(view.getChildAt(i))
-                if (found != null) return found
+    private fun scanHierarchy(v: View): View? {
+        if (v is Button || (v is TextView && v.text.toString().contains("Google", true))) return v
+        if (v is ViewGroup) {
+            for (i in 0 until v.childCount) {
+                val f = scanHierarchy(v.getChildAt(i))
+                if (f != null) return f
             }
         }
         return null
     }
 
     private fun findProgressBar(root: View): ProgressBar? {
-        val context = root.context
-        val pkg = context.packageName
-        val names = arrayOf("progressBar", "progress_bar", "loadingProgress", "loginProgressBar")
-        for (name in names) {
-            val resId = context.resources.getIdentifier(name, "id", pkg)
-            if (resId != 0) {
-                val pb = root.findViewById<ProgressBar>(resId)
-                if (pb != null) return pb
+        if (root is ProgressBar) return root
+        if (root is ViewGroup) {
+            for (i in 0 until root.childCount) {
+                val f = findProgressBar(root.getChildAt(i))
+                if (f != null) return f
             }
         }
         return null
+    }
+
+    private fun navigateSafe(vararg destNames: String) {
+        val ctx = context ?: return
+        val pkg = ctx.packageName
+        for (name in destNames) {
+            val id = ctx.resources.getIdentifier(name, "id", pkg)
+            if (id != 0) {
+                try {
+                    findNavController().navigate(id)
+                    return
+                } catch (_: Throwable) {}
+            }
+        }
     }
 }
