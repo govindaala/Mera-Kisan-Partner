@@ -2,108 +2,65 @@
 package `in`.merakisan.app.core.config
 
 import android.content.Context
-import android.content.SharedPreferences
-import `in`.merakisan.app.core.network.ApiClient
-import `in`.merakisan.app.core.network.model.AppConfigDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.Locale
 
 class RemoteConfigRepository(private val context: Context) {
 
-    private val prefs: SharedPreferences =
-        context.applicationContext.getSharedPreferences("mera_kisan_remote_config", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences("mera_kisan_config", Context.MODE_PRIVATE)
 
-    companion object {
-        private const val KEY_MAINTENANCE_MODE = "cfg_maintenance_mode"
-        private const val KEY_MIN_VERSION = "cfg_min_version"
-        private const val KEY_BANNER_TEXT = "cfg_banner_text"
-        private const val KEY_LAST_SYNC_TIME = "cfg_last_sync_timestamp"
-        private const val PREFIX_FEATURE = "feat_"
-    }
+    suspend fun fetchAndCacheConfig(): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                FeatureManager.syncRemoteConfig(context)
+                val url = URL("https://mera-kisan-backend.vercel.app/api/v1/config")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.connectTimeout = 5000
+                conn.readTimeout = 5000
 
-    suspend fun fetchAndCacheConfig(): Result<AppConfigDto> = withContext(Dispatchers.IO) {
-        try {
-            val apiService = ApiClient.getApiService(context)
-            val response = apiService.getRemoteConfig()
+                if (conn.responseCode in 200..299) {
+                    val body = conn.inputStream.bufferedReader().use { it.readText() }
+                    val json = JSONObject(body)
+                    val data = json.optJSONObject("data") ?: json
+                    val features = data.optJSONObject("features")
 
-            if (response.isSuccessful && response.body()?.success == true) {
-                val config = response.body()?.data ?: return@withContext Result.failure(
-                    Exception("Remote config data empty")
-                )
-
-                val editor = prefs.edit()
-                editor.putBoolean(KEY_MAINTENANCE_MODE, config.maintenanceMode)
-                editor.putString(KEY_MIN_VERSION, (config.minAppVersion as String?) ?: "1.0.0")
-                editor.putString(KEY_BANNER_TEXT, config.bannerText ?: "")
-                editor.putLong(KEY_LAST_SYNC_TIME, System.currentTimeMillis())
-
-                val safeFeatures: Map<String, Any>? = config.features
-                safeFeatures?.forEach { (rawKey, value) ->
-                    val key = rawKey.trim().lowercase()
-                    val isCore = FeatureManager.isCoreFeatureDefaultOn(key)
-
-                    val isEnabled = when (value) {
-                        is Boolean -> value
-                        is String -> value.equals("ON", ignoreCase = true) ||
-                                value.equals("ENABLED", ignoreCase = true) ||
-                                value.equals("BETA", ignoreCase = true) ||
-                                value.equals("true", ignoreCase = true)
-                        is Number -> value.toInt() > 0
-                        is Map<*, *> -> {
-                            val killSwitch = value["kill_switch"]?.toString()?.equals("true", ignoreCase = true) == true
-                            if (killSwitch) {
-                                false
-                            } else {
-                                val status = value["status"]?.toString() ?: ""
-                                val enabledFlag = value["enabled"]?.toString() ?: ""
-                                status.equals("ON", ignoreCase = true) ||
-                                        status.equals("ENABLED", ignoreCase = true) ||
-                                        status.equals("BETA", ignoreCase = true) ||
-                                        enabledFlag.equals("true", ignoreCase = true) ||
-                                        isCore
+                    if (features != null) {
+                        val editor = prefs.edit()
+                        val keys = features.keys()
+                        while (keys.hasNext()) {
+                            val key = keys.next()
+                            val cleanKey = key.trim().lowercase(Locale.ROOT)
+                            val defaultOn = FeatureManager.isCoreFeatureDefaultOn(cleanKey)
+                            val rawVal = features.opt(key)
+                            val enabled = when (rawVal) {
+                                is Boolean -> rawVal
+                                is String -> rawVal.equals("ON", true) || rawVal.equals("BETA", true) || rawVal.equals("true", true)
+                                is JSONObject -> !rawVal.optBoolean("kill_switch", false) &&
+                                    (rawVal.optBoolean("enabled", defaultOn) || rawVal.optString("status").equals("ON", true))
+                                else -> defaultOn
                             }
+                            editor.putBoolean(cleanKey, enabled)
                         }
-                        else -> isCore
+                        editor.apply()
                     }
-                    editor.putBoolean("$PREFIX_FEATURE$key", isEnabled)
+                    true
+                } else {
+                    false
                 }
-
-                editor.apply()
-                Result.success(config)
-            } else {
-                val errorMsg = response.body()?.error?.message ?: response.message()
-                Result.failure(Exception(errorMsg))
+            } catch (_: Throwable) {
+                false
             }
-        } catch (e: Throwable) {
-            Result.failure(Exception(e.localizedMessage ?: "Config sync error"))
         }
     }
 
-    fun isFeatureActive(featureKey: String, defaultState: Boolean = false): Boolean {
-        if (prefs.getBoolean(KEY_MAINTENANCE_MODE, false)) {
-            return false
-        }
-        val key = featureKey.trim().lowercase()
-        val isCore = FeatureManager.isCoreFeatureDefaultOn(key)
-        val effectiveDefault = defaultState || isCore
-
-        if (!prefs.contains("$PREFIX_FEATURE$key")) {
-            return effectiveDefault
-        }
-        val storedValue = prefs.getBoolean("$PREFIX_FEATURE$key", effectiveDefault)
-        return if (isCore) true else storedValue
-    }
-
-    fun isMaintenanceMode(): Boolean {
-        return prefs.getBoolean(KEY_MAINTENANCE_MODE, false)
-    }
-
-    fun getBannerText(): String? {
-        val banner = prefs.getString(KEY_BANNER_TEXT, null)
-        return if (banner.isNullOrBlank()) null else banner
-    }
-
-    fun getMinimumRequiredVersion(): String {
-        return prefs.getString(KEY_MIN_VERSION, "1.0.0") ?: "1.0.0"
+    fun isFeatureEnabled(featureKey: String): Boolean {
+        val cleanKey = featureKey.trim().lowercase(Locale.ROOT)
+        val defaultOn = FeatureManager.isCoreFeatureDefaultOn(cleanKey)
+        return prefs.getBoolean(cleanKey, defaultOn)
     }
 }
