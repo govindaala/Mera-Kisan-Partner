@@ -26,7 +26,7 @@ object FeatureManager {
     private var latestAppVersion = "1.1.0"
     private var forceUpdate = false
 
-    // P0/P1 Core Marketplace Features जो डिफ़ॉल्ट रूप से ON रहते हैं (Master Spec Sec 16 & 28)
+    // P0/P1 Core Marketplace Features (Master Spec Sec 16 & 28)
     private val coreDefaultOnFeatures = setOf(
         "online_order",
         "make_offer",
@@ -87,20 +87,31 @@ object FeatureManager {
         "farm_box_price" to "399"
     )
 
-    /**
-     * RemoteConfigRepository.kt (Line 43 & 87) के लिए आवश्यक मेथड:
-     * बताता है कि कौन-सा कोर फीचर डिफ़ॉल्ट रूप से चालू (ON) रहेगा।
-     */
+    // ============================================================
+    // 1. RemoteConfigRepository.kt (Line 43 & 87) Compatibility
+    // ============================================================
+
     fun isCoreFeatureDefaultOn(key: String): Boolean {
         val clean = key.trim().lowercase(Locale.ROOT)
         if (clean == "admob") return false
         return coreDefaultOnFeatures.contains(clean) || (defaultStates[clean] ?: true)
     }
 
-    /**
-     * ApiClient.kt (Line 40 & 46) के लिए क्रैश डायग्नोस्टिक मेथड्स
-     */
-    fun consumeLastCrashSummary(context: Context? = null): String? {
+    fun isCoreFeatureDefaultOn(context: Context?, key: String): Boolean {
+        return isCoreFeatureDefaultOn(key)
+    }
+
+    // ============================================================
+    // 2. ApiClient.kt (Line 40 & 46) All Overloads Compatibility
+    // ============================================================
+
+    fun consumeLastCrashSummary(): String? {
+        val summary = lastCrashSummaryMemory
+        lastCrashSummaryMemory = null
+        return summary
+    }
+
+    fun consumeLastCrashSummary(context: Context?): String? {
         val summary = lastCrashSummaryMemory
         lastCrashSummaryMemory = null
         if (context != null) {
@@ -121,19 +132,55 @@ object FeatureManager {
         lastCrashSummaryMemory = summary.take(500)
     }
 
+    fun recordCrashSummary(error: Throwable?) {
+        if (error == null) return
+        val msg = "${error.javaClass.simpleName}:${error.message ?: "unknown"}"
+        lastCrashSummaryMemory = msg.take(500)
+    }
+
+    fun recordCrashSummary(tagOrEndpoint: String?, error: Throwable?) {
+        val msg = "${tagOrEndpoint ?: "API"} -> ${error?.javaClass?.simpleName ?: "Error"}: ${error?.message ?: ""}"
+        lastCrashSummaryMemory = msg.take(500)
+    }
+
+    fun recordCrashSummary(tagOrEndpoint: String?, summary: String?) {
+        val msg = "${tagOrEndpoint ?: "API"}: ${summary ?: ""}"
+        lastCrashSummaryMemory = msg.take(500)
+    }
+
     fun recordCrashSummary(context: Context?, summary: String?) {
         if (summary.isNullOrBlank()) return
         val trimmed = summary.take(500)
         lastCrashSummaryMemory = trimmed
-        if (context != null) {
-            try {
-                context.getSharedPreferences(PREF_CRASH, Context.MODE_PRIVATE)
-                    .edit()
-                    .putString("last_crash_summary", trimmed)
-                    .apply()
-            } catch (_: Throwable) {}
-        }
+        saveCrashToPrefs(context, trimmed)
     }
+
+    fun recordCrashSummary(context: Context?, error: Throwable?) {
+        if (error == null) return
+        val trimmed = "${error.javaClass.simpleName}:${error.message ?: ""}".take(500)
+        lastCrashSummaryMemory = trimmed
+        saveCrashToPrefs(context, trimmed)
+    }
+
+    fun recordCrashSummary(context: Context?, tagOrEndpoint: String?, error: Throwable?) {
+        val trimmed = "${tagOrEndpoint ?: "API"} -> ${error?.javaClass?.simpleName}: ${error?.message ?: ""}".take(500)
+        lastCrashSummaryMemory = trimmed
+        saveCrashToPrefs(context, trimmed)
+    }
+
+    private fun saveCrashToPrefs(context: Context?, trimmed: String) {
+        if (context == null) return
+        try {
+            context.getSharedPreferences(PREF_CRASH, Context.MODE_PRIVATE)
+                .edit()
+                .putString("last_crash_summary", trimmed)
+                .apply()
+        } catch (_: Throwable) {}
+    }
+
+    // ============================================================
+    // 3. Remote Config Sync & Cache Management
+    // ============================================================
 
     private fun ensureCacheLoaded(context: Context?) {
         if (isCacheLoaded || context == null) return
@@ -238,7 +285,9 @@ object FeatureManager {
                         paramEditor.apply()
                     }
                 }
-            } catch (_: Throwable) {}
+            } catch (t: Throwable) {
+                recordCrashSummary("syncRemoteConfig", t)
+            }
         }
     }
 
