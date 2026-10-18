@@ -1,94 +1,103 @@
 // app/src/main/java/in/merakisan/app/ui/auth/RoleSelectionFragment.kt
-package in.merakisan.app.ui.auth
+package `in`.merakisan.app.ui.auth
 
 import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Bundle
+import android.util.TypedValue
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
-import in.merakisan.app.R
-import in.merakisan.app.core.security.SessionManager
-import in.merakisan.app.databinding.FragmentRoleSelectionBinding
+import `in`.merakisan.app.core.state.RoleStateManager
 
 class RoleSelectionFragment : Fragment() {
 
-    private var _binding: FragmentRoleSelectionBinding? = null
-    private val binding get() = _binding!!
-
-    // चयनित भूमिका: "FARMER", "BUYER", अथवा "BOTH"
-    private var selectedRole: String? = null
-
     override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
+        inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-        _binding = FragmentRoleSelectionBinding.inflate(inflater, container, false)
-        return binding.root
-    }
+        val ctx = requireContext()
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
-        setupCardClicks()
-        setupContinueButton()
-    }
-
-    private fun setupCardClicks() {
-        binding.cardFarmer.setOnClickListener {
-            selectRole("FARMER")
-        }
-
-        binding.cardBuyer.setOnClickListener {
-            selectRole("BUYER")
-        }
-
-        binding.cardBoth.setOnClickListener {
-            selectRole("BOTH")
-        }
-    }
-
-    private fun selectRole(role: String) {
-        selectedRole = role
-        binding.btnContinue.isEnabled = true
-
-        val activeColor = Color.parseColor("#1B5E20")
-        val defaultColor = Color.parseColor("#C8E6C9")
-
-        // कार्ड स्ट्रोक और बैकग्राउंड हाइलाइट्स को अपडेट करना
-        binding.cardFarmer.strokeColor = if (role == "FARMER") activeColor else defaultColor
-        binding.cardFarmer.strokeWidth = if (role == "FARMER") 4 else 2
-
-        binding.cardBuyer.strokeColor = if (role == "BUYER") activeColor else defaultColor
-        binding.cardBuyer.strokeWidth = if (role == "BUYER") 4 else 2
-
-        binding.cardBoth.strokeColor = if (role == "BOTH") activeColor else defaultColor
-        binding.cardBoth.strokeWidth = if (role == "BOTH") 4 else 2
-    }
-
-    private fun setupContinueButton() {
-        binding.btnContinue.setOnClickListener {
-            val role = selectedRole ?: return@setOnClickListener
-
-            // चयनित भूमिका को एन्क्रिप्टेड स्टोरेज में सुरक्षित सहेजना
-            val currentToken = SessionManager.getAuthToken(requireContext()) ?: "guest_session"
-            val currentUid = SessionManager.getUserUid(requireContext()) ?: "temp_uid"
-
-            SessionManager.saveSession(
-                context = requireContext(),
-                token = currentToken,
-                uid = currentUid,
-                role = role
+        val root = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#F4F6F8"))
+            setPadding(dp(24), dp(24), dp(24), dp(24))
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
             )
+        }
 
-            // मुख्य बाज़ार/होम स्क्रीन पर जाना
-            findNavController().navigate(R.id.action_roleSelection_to_home)
+        root.addView(TextView(ctx).apply {
+            text = "🌾 MERA KISAN"
+            setTextColor(Color.parseColor("#1B5E20"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 26f)
+            setTypeface(typeface, Typeface.BOLD)
+            gravity = Gravity.CENTER
+        })
+
+        root.addView(TextView(ctx).apply {
+            text = "किसान से सीधे आपकी जरूरत तक\nअपनी भूमिका चुनें (बाद में प्रोफ़ाइल से बदल सकते हैं)"
+            setTextColor(Color.parseColor("#616161"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            gravity = Gravity.CENTER
+            setPadding(0, dp(8), 0, dp(28))
+        })
+
+        root.addView(createRoleButton(ctx, "👨‍🌾 किसान - विक्रेता (फसलें व उत्पाद बेचें)", "#1B5E20") {
+            selectRoleAndProceed(RoleStateManager.ROLE_FARMER)
+        })
+
+        root.addView(createRoleButton(ctx, "🛒 खरीदार (सीधे किसान से ताज़ा खरीदें)", "#0D47A1") {
+            selectRoleAndProceed(RoleStateManager.ROLE_BUYER)
+        })
+
+        root.addView(createRoleButton(ctx, "⚡ दोनों (खरीदें और बेचें — डबल विकल्प)", "#E65100") {
+            selectRoleAndProceed(RoleStateManager.ROLE_BOTH)
+        })
+
+        return root
+    }
+
+    private fun createRoleButton(ctx: android.content.Context, title: String, colorHex: String, onClick: () -> Unit): Button {
+        return Button(ctx).apply {
+            text = title
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.parseColor(colorHex))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(54)
+            ).apply { bottomMargin = dp(14) }
+            setOnClickListener { onClick() }
         }
     }
 
-    override fun onDestroyView() {
-        super.onDestroyView()
-        _binding = null
+    private fun selectRoleAndProceed(role: String) {
+        val ctx = context ?: return
+        RoleStateManager.setRole(ctx, role)
+        Toast.makeText(ctx, "भूमिका सक्रिय: $role", Toast.LENGTH_SHORT).show()
+        val homeId = ctx.resources.getIdentifier("homeFragment", "id", ctx.packageName)
+        if (homeId != 0) {
+            try {
+                findNavController().navigate(homeId)
+            } catch (_: Throwable) {}
+        }
+    }
+
+    private fun dp(value: Int): Int {
+        return TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP,
+            value.toFloat(),
+            resources.displayMetrics
+        ).toInt()
     }
 }
