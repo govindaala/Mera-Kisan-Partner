@@ -1,148 +1,99 @@
+// app/src/main/java/in/merakisan/app/core/config/FeatureManager.kt
 package `in`.merakisan.app.core.config
 
 import android.content.Context
-import `in`.merakisan.app.core.network.model.AppConfigDto
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 
 object FeatureManager {
 
-    private const val PREF_CRASH_STORE = "mera_kisan_crash_guard"
-    private const val KEY_LAST_CRASH = "last_crash_summary"
+    private const val PREF_CONFIG = "mera_kisan_config"
+    private val memoryFlags = mutableMapOf<String, Boolean>()
+    private var maintenanceActive = false
+    private var maintenanceMessage = ""
 
-    // Core features जो लॉन्च पर डिफ़ॉल्ट रूप से चालू (ON) रहेंगे
-    private val coreDefaultOnFeatures = setOf(
-        "authentication",
-        "farmer_mode",
-        "buyer_mode",
-        "product_listing",
-        "product_search",
-        "product_filter",
-        "nearby_products",
-        "buyer_request",
-        "make_offer",
-        "counter_offer",
-        "negotiation",
-        "favorites",
-        "follow_farmer",
-        "ratings",
-        "reviews",
-        "orders",
-        "cod",
-        "crop_boost",
-        "notifications",
-        "whatsapp",
-        "call",
-        "share",
-        "facebook_share",
-        "instagram_share",
-        "telegram_share",
-        "sms_share",
-        "qr_share",
-        "ai_poster",
-        "mandi_price"
+    // Master Spec Sec 17: AdMob is strictly OFF by default
+    private val defaultStates = mapOf(
+        "admob" to false,
+        "mandi_price" to true,
+        "mandi_prices" to true,
+        "buyer_request" to true,
+        "demand_board" to true,
+        "make_offer" to true,
+        "small_quantity" to true,
+        "crop_boost" to true,
+        "ai_poster" to true,
+        "oil_marketplace" to true,
+        "farm_box" to true,
+        "batch_traceability" to true
     )
 
-    private val memoryFlags = mutableMapOf<String, Boolean>()
-
-    @Volatile
-    private var cachedMaintenanceMode: Boolean = false
-
-    @Volatile
-    private var cachedMaintenanceMessage: String =
-        "Mera Kisan पर रखरखाव (Maintenance) चल रहा है। कृपया कुछ समय बाद प्रयास करें।"
-
-    fun isCoreFeatureDefaultOn(featureKey: String): Boolean {
-        val cleanKey = featureKey.trim().lowercase()
-        return coreDefaultOnFeatures.contains(cleanKey)
-    }
-
-    fun isEnabled(
-        context: Context?,
-        featureKey: String,
-        defaultState: Boolean = isCoreFeatureDefaultOn(featureKey)
-    ): Boolean {
-        val cleanKey = featureKey.trim().lowercase()
-        if (context != null) {
-            return try {
-                RemoteConfigRepository(context).isFeatureActive(cleanKey, defaultState)
-            } catch (_: Throwable) {
-                memoryFlags[cleanKey] ?: defaultState
-            }
-        }
-        return memoryFlags[cleanKey] ?: defaultState
-    }
-
-    fun isEnabled(
-        featureKey: String,
-        defaultState: Boolean = isCoreFeatureDefaultOn(featureKey)
-    ): Boolean {
-        val cleanKey = featureKey.trim().lowercase()
-        return memoryFlags[cleanKey] ?: defaultState
-    }
-
-    fun updateFlags(newFlags: Map<String, Boolean>) {
-        newFlags.forEach { (k, v) ->
-            memoryFlags[k.trim().lowercase()] = v
-        }
-    }
-
-    suspend fun syncRemoteConfig(context: Context): Result<AppConfigDto> {
-        val repository = RemoteConfigRepository(context)
-        val result = repository.fetchAndCacheConfig()
-        result.onSuccess { dto ->
-            cachedMaintenanceMode = dto.maintenanceMode
-            if (!dto.bannerText.isNullOrBlank()) {
-                cachedMaintenanceMessage = dto.bannerText
-            }
-        }
-        return result
-    }
-
-    fun isMaintenanceMode(context: Context? = null): Boolean {
-        if (context != null) {
-            return try {
-                RemoteConfigRepository(context).isMaintenanceMode()
-            } catch (_: Throwable) {
-                cachedMaintenanceMode
-            }
-        }
-        return cachedMaintenanceMode
-    }
-
-    fun getMaintenanceMessage(context: Context? = null): String {
-        if (context != null) {
+    suspend fun syncRemoteConfig(context: Context) {
+        withContext(Dispatchers.IO) {
             try {
-                val banner = RemoteConfigRepository(context).getBannerText()
-                if (!banner.isNullOrBlank()) {
-                    return banner
+                val url = URL("https://mera-kisan-backend.vercel.app/api/v1/config")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.connectTimeout = 5000
+                conn.readTimeout = 5000
+
+                if (conn.responseCode in 200..299) {
+                    val raw = conn.inputStream.bufferedReader().use { it.readText() }
+                    val root = JSONObject(raw)
+                    val data = root.optJSONObject("data") ?: root
+
+                    maintenanceActive = data.optBoolean("maintenance_mode", false)
+                    maintenanceMessage = data.optString("banner_text", "")
+
+                    val prefs = context.getSharedPreferences(PREF_CONFIG, Context.MODE_PRIVATE)
+                    val editor = prefs.edit()
+                    editor.putBoolean("maintenance_mode", maintenanceActive)
+                    editor.putString("maintenance_message", maintenanceMessage)
+
+                    val featuresObj = data.optJSONObject("features")
+                    if (featuresObj != null) {
+                        val keys = featuresObj.keys()
+                        while (keys.hasNext()) {
+                            val k = keys.next()
+                            val v = featuresObj.opt(k)
+                            val enabled = (v == true || v == "ON" || v == "BETA")
+                            memoryFlags[k] = enabled
+                            editor.putBoolean(k, enabled)
+                        }
+                    }
+                    editor.apply()
                 }
-            } catch (_: Throwable) {
-            }
-        }
-        return cachedMaintenanceMessage
-    }
-
-    fun consumeLastCrashSummary(context: Context? = null): String? {
-        if (context == null) return null
-        return try {
-            val prefs = context.applicationContext
-                .getSharedPreferences(PREF_CRASH_STORE, Context.MODE_PRIVATE)
-            val summary = prefs.getString(KEY_LAST_CRASH, null)
-            if (!summary.isNullOrBlank()) {
-                prefs.edit().remove(KEY_LAST_CRASH).apply()
-            }
-            summary
-        } catch (_: Throwable) {
-            null
+            } catch (_: Throwable) {}
         }
     }
 
-    fun recordCrashSummary(context: Context?, summary: String) {
-        if (context == null || summary.isBlank()) return
-        try {
-            val prefs = context.applicationContext
-                .getSharedPreferences(PREF_CRASH_STORE, Context.MODE_PRIVATE)
-            prefs.edit().putString(KEY_LAST_CRASH, summary).apply()
-        } catch (_: Throwable) {
+    fun isFeatureEnabled(key: String): Boolean {
+        if (key.equals("admob", ignoreCase = true)) {
+            return memoryFlags["admob"] ?: false
         }
+        return memoryFlags[key] ?: defaultStates[key] ?: true
+    }
+
+    fun isEnabled(key: String): Boolean = isFeatureEnabled(key)
+
+    fun isEnabled(context: Context, key: String): Boolean {
+        val prefs = context.getSharedPreferences(PREF_CONFIG, Context.MODE_PRIVATE)
+        if (prefs.contains(key)) {
+            return prefs.getBoolean(key, true)
+        }
+        return isFeatureEnabled(key)
+    }
+
+    fun isMaintenanceMode(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(PREF_CONFIG, Context.MODE_PRIVATE)
+        return prefs.getBoolean("maintenance_mode", maintenanceActive)
+    }
+
+    fun getMaintenanceMessage(context: Context): String {
+        val prefs = context.getSharedPreferences(PREF_CONFIG, Context.MODE_PRIVATE)
+        return prefs.getString("maintenance_message", maintenanceMessage) ?: ""
     }
 }
