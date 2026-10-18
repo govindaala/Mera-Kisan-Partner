@@ -4,22 +4,22 @@
 
     <item
         android:id="@+id/nav_home"
-        android:icon="@android:drawable/ic_menu_compass"
+        android:icon="@android:drawable/ic_menu_view"
         android:title="होम" />
 
     <item
         android:id="@+id/nav_marketplace"
         android:icon="@android:drawable/ic_menu_search"
-        android:title="फसलें" />
+        android:title="बाज़ार व फसलें" />
 
     <item
         android:id="@+id/nav_buyer_requests"
-        android:icon="@android:drawable/ic_menu_agenda"
+        android:icon="@android:drawable/ic_menu_add"
         android:title="मुझे चाहिए" />
 
     <item
         android:id="@+id/nav_orders"
-        android:icon="@android:drawable/ic_menu_view"
+        android:icon="@android:drawable/ic_menu_agenda"
         android:title="ऑर्डर्स" />
 
     <item
