@@ -55,4 +55,15 @@
         android:name="in.merakisan.app.ui.mandi.MandiPricesFragment"
         android:label="Mandi Prices" />
 
+    <!-- Restored Destinations for FavoritesFragment & Product Detail Compatibility -->
+    <fragment
+        android:id="@+id/favoritesFragment"
+        android:name="in.merakisan.app.ui.favorites.FavoritesFragment"
+        android:label="Favorites" />
+
+    <fragment
+        android:id="@+id/productDetailFragment"
+        android:name="in.merakisan.app.ui.marketplace.MarketplaceFragment"
+        android:label="Product Detail" />
+
 </navigation>
