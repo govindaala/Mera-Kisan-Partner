@@ -55,15 +55,35 @@
         android:name="in.merakisan.app.ui.mandi.MandiPricesFragment"
         android:label="Mandi Prices" />
 
-    <!-- Restored Destinations for FavoritesFragment & Product Detail Compatibility -->
     <fragment
         android:id="@+id/favoritesFragment"
         android:name="in.merakisan.app.ui.favorites.FavoritesFragment"
         android:label="Favorites" />
 
+    <!-- Newly Added Dedicated Marketplace & Farmer Screens -->
     <fragment
         android:id="@+id/productDetailFragment"
-        android:name="in.merakisan.app.ui.marketplace.MarketplaceFragment"
+        android:name="in.merakisan.app.ui.product.ProductDetailFragment"
         android:label="Product Detail" />
+
+    <fragment
+        android:id="@+id/myCropsFragment"
+        android:name="in.merakisan.app.ui.farmer.MyCropsFragment"
+        android:label="My Crops" />
+
+    <fragment
+        android:id="@+id/farmerPublicProfileFragment"
+        android:name="in.merakisan.app.ui.farmer.FarmerPublicProfileFragment"
+        android:label="Farmer Public Profile" />
+
+    <fragment
+        android:id="@+id/aiPosterStudioFragment"
+        android:name="in.merakisan.app.ui.marketing.AiPosterStudioFragment"
+        android:label="AI Poster Studio" />
+
+    <fragment
+        android:id="@+id/negotiationHistoryFragment"
+        android:name="in.merakisan.app.ui.offers.NegotiationHistoryFragment"
+        android:label="Negotiation History" />
 
 </navigation>
