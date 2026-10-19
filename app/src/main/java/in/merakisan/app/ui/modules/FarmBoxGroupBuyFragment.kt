@@ -34,7 +34,8 @@ class FarmBoxGroupBuyFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         val ctx = requireContext()
-        val boxPrice = FeatureManager.getFarmBoxPrice(ctx)
+        // Fixed Line 37: Uses getParamInt directly so it never fails compilation
+        val boxPrice = FeatureManager.getParamInt(ctx, "farm_box_price", 399)
 
         val root = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
