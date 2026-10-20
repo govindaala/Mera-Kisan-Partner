@@ -3,39 +3,19 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- 1. आवश्यक अनुमतियाँ (Free-First & Privacy Standards) -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    <uses-permission
-        android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-
-    <!-- 2. थर्ड-पार्टी डायरेक्ट इंटेंट क्वेरीज़ (WhatsApp व कॉलिंग) -->
-    <queries>
-        <package android:name="com.whatsapp" />
-        <package android:name="com.whatsapp.w4b" />
-        <intent>
-            <action android:name="android.intent.action.DIAL" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="https" />
-        </intent>
-    </queries>
 
     <application
         android:allowBackup="true"
-        android:icon="@android:drawable/sym_def_app_icon"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.MeraKisan"
+        android:usesCleartextTraffic="false"
         tools:targetApi="34">
 
-        <!-- 3. मुख्य एकल Activity (Single-Activity Navigation) -->
         <activity
             android:name=".ui.main.MainActivity"
             android:exported="true"
@@ -44,9 +24,28 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Master Spec Sec 15 & merged.txt Sec 88: Deep Link Support for Shared Products -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="merakisan.in"
+                    android:pathPrefix="/product" />
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="merakisan"
+                    android:host="product" />
+            </intent-filter>
         </activity>
 
-        <!-- 4. FCM बैकग्राउंड पुश नोटिफिकेशन सर्विस -->
         <service
             android:name=".core.notifications.MeraKisanFirebaseMessagingService"
             android:exported="false">
@@ -55,7 +54,6 @@
             </intent-filter>
         </service>
 
-        <!-- 5. पोस्टर व फ़ोटो सुरक्षित शेयरिंग हेतु FileProvider -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
