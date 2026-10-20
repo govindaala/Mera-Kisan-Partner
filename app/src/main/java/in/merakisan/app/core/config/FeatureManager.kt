@@ -26,7 +26,22 @@ object FeatureManager {
     private var latestAppVersion = "1.1.0"
     private var forceUpdate = false
 
-    // P0/P1 Core Marketplace Features (Master Spec Sec 16 & 28)
+    // Gem Rule 9 & Master Spec Sec 16, 17, 27:
+    // HOLD & Monetization-Later Features are OFF by default unless enabled by Admin
+    private val holdFeaturesDefaultOff = setOf(
+        "admob",
+        "auction",
+        "wallet",
+        "subscription",
+        "coupons",
+        "referral",
+        "sponsored_crop",
+        "banner_ads",
+        "chat",
+        "map_view"
+    )
+
+    // P0/P1 Core & Approved Extensible Features
     private val coreDefaultOnFeatures = setOf(
         "online_order",
         "make_offer",
@@ -56,26 +71,13 @@ object FeatureManager {
         "ai_recommendation",
         "oil_marketplace",
         "farm_box",
-        "batch_traceability"
-    )
-
-    // Master Spec Sec 17: AdMob is strictly OFF by default
-    private val defaultStates = mapOf(
-        "admob" to false,
-        "mandi_price" to true,
-        "mandi_prices" to true,
-        "buyer_request" to true,
-        "demand_board" to true,
-        "make_offer" to true,
-        "small_quantity" to true,
-        "crop_boost" to true,
-        "ai_poster" to true,
-        "oil_marketplace" to true,
-        "farm_box" to true,
-        "batch_traceability" to true
+        "batch_traceability",
+        "saved_search",
+        "price_alert"
     )
 
     private val defaultParameters = mapOf(
+        "demo_fallback_mode" to "ON",
         "boost_price" to "99",
         "boost_days" to "3",
         "boost_slots" to "4",
@@ -88,13 +90,13 @@ object FeatureManager {
     )
 
     // ============================================================
-    // 1. RemoteConfigRepository.kt (Line 43 & 87) Compatibility
+    // 1. RemoteConfigRepository.kt Compatibility
     // ============================================================
 
     fun isCoreFeatureDefaultOn(key: String): Boolean {
-        val clean = key.trim().lowercase(Locale.ROOT)
-        if (clean == "admob") return false
-        return coreDefaultOnFeatures.contains(clean) || (defaultStates[clean] ?: true)
+        val clean = normalizeKey(key)
+        if (holdFeaturesDefaultOff.contains(clean)) return false
+        return coreDefaultOnFeatures.contains(clean)
     }
 
     fun isCoreFeatureDefaultOn(context: Context?, key: String): Boolean {
@@ -102,7 +104,7 @@ object FeatureManager {
     }
 
     // ============================================================
-    // 2. ApiClient.kt (Line 40 & 46) All Overloads Compatibility
+    // 2. ApiClient.kt Crash Diagnostic Overloads
     // ============================================================
 
     fun consumeLastCrashSummary(): String? {
@@ -134,18 +136,15 @@ object FeatureManager {
 
     fun recordCrashSummary(error: Throwable?) {
         if (error == null) return
-        val msg = "${error.javaClass.simpleName}:${error.message ?: "unknown"}"
-        lastCrashSummaryMemory = msg.take(500)
+        lastCrashSummaryMemory = "${error.javaClass.simpleName}: ${error.message ?: "unknown"}".take(500)
     }
 
     fun recordCrashSummary(tagOrEndpoint: String?, error: Throwable?) {
-        val msg = "${tagOrEndpoint ?: "API"} -> ${error?.javaClass?.simpleName ?: "Error"}: ${error?.message ?: ""}"
-        lastCrashSummaryMemory = msg.take(500)
+        lastCrashSummaryMemory = "${tagOrEndpoint ?: "API"} -> ${error?.javaClass?.simpleName ?: "Error"}: ${error?.message ?: ""}".take(500)
     }
 
     fun recordCrashSummary(tagOrEndpoint: String?, summary: String?) {
-        val msg = "${tagOrEndpoint ?: "API"}: ${summary ?: ""}"
-        lastCrashSummaryMemory = msg.take(500)
+        lastCrashSummaryMemory = "${tagOrEndpoint ?: "API"}: ${summary ?: ""}".take(500)
     }
 
     fun recordCrashSummary(context: Context?, summary: String?) {
@@ -157,7 +156,7 @@ object FeatureManager {
 
     fun recordCrashSummary(context: Context?, error: Throwable?) {
         if (error == null) return
-        val trimmed = "${error.javaClass.simpleName}:${error.message ?: ""}".take(500)
+        val trimmed = "${error.javaClass.simpleName}: ${error.message ?: ""}".take(500)
         lastCrashSummaryMemory = trimmed
         saveCrashToPrefs(context, trimmed)
     }
@@ -260,7 +259,7 @@ object FeatureManager {
                         val keys = featuresObj.keys()
                         while (keys.hasNext()) {
                             val rawKey = keys.next()
-                            val cleanKey = rawKey.trim().lowercase(Locale.ROOT)
+                            val cleanKey = normalizeKey(rawKey)
                             val node = featuresObj.opt(rawKey)
                             val isEnabled = parseFeatureNode(node, isCoreFeatureDefaultOn(cleanKey))
                             memoryFlags[cleanKey] = isEnabled
@@ -335,12 +334,33 @@ object FeatureManager {
 
     fun isEnabled(context: Context, key: String): Boolean = isFeatureEnabled(context, key)
 
-    fun getParamInt(context: Context?, key: String, fallback: Int): Int {
+    fun getParamString(context: Context?, key: String, fallback: String): String {
         ensureCacheLoaded(context)
         val normKey = key.trim().lowercase(Locale.ROOT)
-        val raw = memoryParams[normKey] ?: defaultParameters[normKey]
-        return raw?.toDoubleOrNull()?.toInt() ?: fallback
+        return memoryParams[normKey] ?: defaultParameters[normKey] ?: fallback
     }
+
+    fun getParamInt(context: Context?, key: String, fallback: Int): Int {
+        val raw = getParamString(context, key, fallback.toString())
+        return raw.toDoubleOrNull()?.toInt() ?: fallback
+    }
+
+    /**
+     * Central Switch for Dummy/Sample Fallback Data:
+     * When Admin sets `demo_fallback_mode = OFF`, all screens automatically stop showing sample data.
+     */
+    fun isDemoFallbackEnabled(context: Context? = null): Boolean {
+        val raw = getParamString(context, "demo_fallback_mode", "ON").trim().uppercase(Locale.ROOT)
+        return raw == "ON" || raw == "TRUE" || raw == "1"
+    }
+
+    fun getFarmBoxPrice(context: Context? = null): Int = getParamInt(context, "farm_box_price", 399)
+
+    fun getBoostPrice(context: Context? = null): Int = getParamInt(context, "boost_price", 99)
+
+    fun getBoostDays(context: Context? = null): Int = getParamInt(context, "boost_days", 3)
+
+    fun getYoutubeDailyLimit(context: Context? = null): Int = getParamInt(context, "youtube_daily_limit", 6)
 
     fun isMaintenanceMode(context: Context): Boolean {
         ensureCacheLoaded(context)
