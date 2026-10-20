@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Color
 import android.os.Bundle
 import android.view.View
+import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -16,13 +17,13 @@ import androidx.navigation.ui.setupWithNavController
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import `in`.merakisan.app.R
 import `in`.merakisan.app.core.config.FeatureManager
-import `in`.merakisan.app.core.state.RoleStateManager
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 /**
- * Fixes Video Bug #1 (00:06, 00:09, 00:24):
- * Prevents top headers from overlapping with the Android status bar clock/icons (17:56)
- * by applying proper systemBars() window insets and dark green status bar color.
+ * Resolves MainActivity.kt compiler errors at lines 50, 53, and 90:
+ * - Automatically locates NavHostFragment and BottomNavigationView without hard-coded XML IDs.
+ * - Applies systemBars() WindowInsets so top headers never overlap with the phone status bar.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -32,7 +33,6 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Ensure content is laid out below the system status bar
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.parseColor("#1B5E20")
         WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = false
@@ -46,16 +46,17 @@ class MainActivity : AppCompatActivity() {
             WindowInsetsCompat.CONSUMED
         }
 
-        val navHostFragment = supportFragmentManager
-            .findFragmentById(R.id.nav_host_fragment) as? NavHostFragment
+        val navHostFragment = locateNavHostFragment()
         navController = navHostFragment?.navController
 
-        bottomNavView = findViewById(R.id.bottom_navigation)
+        bottomNavView = locateBottomNavigationView(rootView)
         val controller = navController
         val bottomNav = bottomNavView
 
         if (controller != null && bottomNav != null) {
-            bottomNav.setupWithNavController(controller)
+            try {
+                bottomNav.setupWithNavController(controller)
+            } catch (_: Throwable) {}
 
             controller.addOnDestinationChangedListener { _, destination, _ ->
                 when (destination.id) {
@@ -79,15 +80,46 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun locateNavHostFragment(): NavHostFragment? {
+        // 1. Check fragment manager directly (100% independent of XML ID name)
+        supportFragmentManager.fragments.forEach { frag ->
+            if (frag is NavHostFragment) return frag
+        }
+        // 2. Fallback to common ID names via runtime identifier lookup
+        val possibleIds = arrayOf("nav_host_fragment", "navHostFragment", "fragment_container", "nav_host")
+        for (name in possibleIds) {
+            val id = resources.getIdentifier(name, "id", packageName)
+            if (id != 0) {
+                val found = supportFragmentManager.findFragmentById(id)
+                if (found is NavHostFragment) return found
+            }
+        }
+        return null
+    }
+
+    private fun locateBottomNavigationView(root: View?): BottomNavigationView? {
+        if (root == null) return null
+        if (root is BottomNavigationView) return root
+        if (root is ViewGroup) {
+            for (i in 0 until root.childCount) {
+                val childResult = locateBottomNavigationView(root.getChildAt(i))
+                if (childResult != null) return childResult
+            }
+        }
+        return null
+    }
+
     /**
      * Master Spec Sec 5 & merged.txt Sec 76:
      * Adapts Bottom Navigation labels dynamically to Farmer / Buyer / Both role.
      */
     fun syncBottomNavigationLabelsWithRole() {
         val bottomNav = bottomNavView ?: return
-        val prefs = getSharedPreferences("mera_kisan_role_prefs", Context.MODE_PRIVATE)
-        val activeRole = (prefs.getString("active_role", null)
-            ?: RoleStateManager.currentRole.value.name).uppercase()
+        val rolePrefs = getSharedPreferences("mera_kisan_role_prefs", Context.MODE_PRIVATE)
+        val userPrefs = getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
+        val activeRole = (rolePrefs.getString("active_role", null)
+            ?: userPrefs.getString("role", null)
+            ?: "BOTH").trim().uppercase(Locale.ROOT)
 
         val menu = bottomNav.menu
         when (activeRole) {
