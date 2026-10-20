@@ -5,9 +5,10 @@
     android:id="@+id/nav_graph"
     app:startDestination="@id/homeFragment">
 
+    <!-- Fixed Package Path matching app/src/main/java/in/merakisan/app/ui/auth/SplashFragment.kt -->
     <fragment
         android:id="@+id/splashFragment"
-        android:name="in.merakisan.app.ui.splash.SplashFragment"
+        android:name="in.merakisan.app.ui.auth.SplashFragment"
         android:label="Splash" />
 
     <fragment
@@ -41,6 +42,11 @@
         android:label="Orders" />
 
     <fragment
+        android:id="@+id/orderDetailFragment"
+        android:name="in.merakisan.app.ui.orders.OrderDetailFragment"
+        android:label="Order Detail" />
+
+    <fragment
         android:id="@+id/profileFragment"
         android:name="in.merakisan.app.ui.profile.ProfileFragment"
         android:label="Profile" />
@@ -60,11 +66,14 @@
         android:name="in.merakisan.app.ui.favorites.FavoritesFragment"
         android:label="Favorites" />
 
-    <!-- Dedicated Core & Extensible Feature Fragments -->
+    <!-- Dedicated Marketplace, Farmer & Extensible Module Screens -->
     <fragment
         android:id="@+id/productDetailFragment"
         android:name="in.merakisan.app.ui.product.ProductDetailFragment"
-        android:label="Product Detail" />
+        android:label="Product Detail">
+        <deepLink app:uri="https://merakisan.in/product/{productId}" />
+        <deepLink app:uri="merakisan://product/{productId}" />
+    </fragment>
 
     <fragment
         android:id="@+id/myCropsFragment"
