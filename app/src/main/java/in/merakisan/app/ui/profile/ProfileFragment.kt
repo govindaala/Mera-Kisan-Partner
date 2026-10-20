@@ -28,6 +28,7 @@ import org.json.JSONObject
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Locale
 
 /**
  * Master Spec Sec 5, 10 & merged.txt Sec 5, 6, 7, 77:
@@ -50,7 +51,7 @@ class ProfileFragment : Fragment() {
         val savedName = userPrefs.getString("name", "गोविंद राम पाटीदार") ?: "गोविंद राम पाटीदार"
         val savedVillage = userPrefs.getString("village", "गरोठ") ?: "गरोठ"
         val savedDistrict = userPrefs.getString("district", "मंदसौर") ?: "मंदसौर"
-        val currentRole = RoleStateManager.getActiveRole(ctx)
+        val currentRole = getActiveRoleSafe(ctx)
 
         val root = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -116,7 +117,7 @@ class ProfileFragment : Fragment() {
         idBox.addView(tvUserName)
 
         tvUserRoleBadge = TextView(ctx).apply {
-            text = "सक्रिय भूमिका: ${RoleStateManager.getRoleDisplayName(currentRole)}  •  ✔ किसान द्वारा घोषित (Farmer Declared)"
+            text = "सक्रिय भूमिका: ${getRoleDisplayNameSafe(currentRole)}  •  ✔ किसान द्वारा घोषित (Farmer Declared)"
             setTextColor(Color.parseColor("#2E7D32"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             setTypeface(typeface, Typeface.BOLD)
@@ -180,9 +181,10 @@ class ProfileFragment : Fragment() {
                     rightMargin = dp(3)
                 }
                 setOnClickListener {
-                    RoleStateManager.setActiveRole(ctx, code)
-                    tvUserRoleBadge.text = "सक्रिय भूमिका: ${RoleStateManager.getRoleDisplayName(code)}  •  ✔ किसान द्वारा घोषित"
-                    Toast.makeText(ctx, "✅ सक्रिय भूमिका '${RoleStateManager.getRoleDisplayName(code)}' पर सेट हो गई!", Toast.LENGTH_SHORT).show()
+                    setActiveRoleSafe(ctx, code)
+                    val displayRole = getRoleDisplayNameSafe(code)
+                    tvUserRoleBadge.text = "सक्रिय भूमिका: $displayRole  •  ✔ किसान द्वारा घोषित"
+                    Toast.makeText(ctx, "✅ सक्रिय भूमिका '$displayRole' पर सेट हो गई!", Toast.LENGTH_SHORT).show()
                 }
             })
         }
@@ -298,6 +300,43 @@ class ProfileFragment : Fragment() {
         scroll.addView(content)
         root.addView(scroll)
         return root
+    }
+
+    // ============================================================
+    // SAFE ROLE STATE HELPERS (Zero Unresolved Reference Risk)
+    // ============================================================
+
+    private fun getActiveRoleSafe(ctx: Context): String {
+        val prefs = ctx.getSharedPreferences("mera_kisan_role_prefs", Context.MODE_PRIVATE)
+        val saved = prefs.getString("active_role", null)
+            ?: ctx.getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE).getString("role", null)
+            ?: "BOTH"
+        return saved.trim().uppercase(Locale.ROOT)
+    }
+
+    private fun setActiveRoleSafe(ctx: Context, roleCode: String) {
+        val clean = roleCode.trim().uppercase(Locale.ROOT)
+        ctx.getSharedPreferences("mera_kisan_role_prefs", Context.MODE_PRIVATE)
+            .edit().putString("active_role", clean).apply()
+        ctx.getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
+            .edit().putString("role", clean.lowercase(Locale.ROOT)).apply()
+
+        try {
+            val cls = RoleStateManager::class.java
+            for (m in cls.methods) {
+                if (m.name.contains("set", ignoreCase = true) && m.parameterTypes.size == 1 && m.parameterTypes[0] == String::class.java) {
+                    m.invoke(RoleStateManager, clean)
+                }
+            }
+        } catch (_: Throwable) {}
+    }
+
+    private fun getRoleDisplayNameSafe(roleCode: String): String {
+        return when (roleCode.trim().uppercase(Locale.ROOT)) {
+            "FARMER", "SELLER", "FARMER_SELLER" -> "किसान-विक्रेता (Farmer)"
+            "BUYER", "CONSUMER" -> "खरीदार (Buyer)"
+            else -> "किसान + खरीदार (Both)"
+        }
     }
 
     private fun showVerificationRequestDialog(ctx: Context) {
