@@ -1,195 +1,117 @@
 // app/src/main/java/in/merakisan/app/ui/main/MainActivity.kt
 package `in`.merakisan.app.ui.main
 
+import android.content.Context
+import android.graphics.Color
 import android.os.Bundle
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.updatePadding
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.NavController
-import androidx.navigation.NavOptions
 import androidx.navigation.fragment.NavHostFragment
+import androidx.navigation.ui.setupWithNavController
+import com.google.android.material.bottomnavigation.BottomNavigationView
 import `in`.merakisan.app.R
 import `in`.merakisan.app.core.config.FeatureManager
 import `in`.merakisan.app.core.state.RoleStateManager
-import `in`.merakisan.app.databinding.ActivityMainBinding
 import kotlinx.coroutines.launch
 
+/**
+ * Fixes Video Bug #1 (00:06, 00:09, 00:24):
+ * Prevents top headers from overlapping with the Android status bar clock/icons (17:56)
+ * by applying proper systemBars() window insets and dark green status bar color.
+ */
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var binding: ActivityMainBinding
-    private lateinit var navController: NavController
+    private var navController: NavController? = null
+    private var bottomNavView: BottomNavigationView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
 
-        applySystemBarInsets()
-        RoleStateManager.init(this)
+        // Ensure content is laid out below the system status bar
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = Color.parseColor("#1B5E20")
+        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = false
 
-        setupNavigation()
-        observeRoleStateChanges()
-        syncRemoteConfiguration()
-    }
+        setContentView(R.layout.activity_main)
 
-    private fun applySystemBarInsets() {
-        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
+        val rootView = findViewById<View>(android.R.id.content)
+        ViewCompat.setOnApplyWindowInsetsListener(rootView) { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.updatePadding(top = insets.top, bottom = insets.bottom)
+            view.setPadding(insets.left, insets.top, insets.right, insets.bottom)
             WindowInsetsCompat.CONSUMED
         }
-    }
 
-    private fun setupNavigation() {
         val navHostFragment = supportFragmentManager
-            .findFragmentById(R.id.navHostFragment) as NavHostFragment
-        navController = navHostFragment.navController
+            .findFragmentById(R.id.nav_host_fragment) as? NavHostFragment
+        navController = navHostFragment?.navController
 
-        val navOptions = NavOptions.Builder()
-            .setLaunchSingleTop(true)
-            .setRestoreState(false)
-            .setPopUpTo(R.id.homeFragment, inclusive = false, saveState = false)
-            .build()
+        bottomNavView = findViewById(R.id.bottom_navigation)
+        val controller = navController
+        val bottomNav = bottomNavView
 
-        binding.bottomNavigation.setOnItemSelectedListener { item ->
-            val targetDestId = when (item.itemId) {
-                R.id.nav_home, R.id.homeFragment -> R.id.homeFragment
-                R.id.nav_marketplace, R.id.marketplaceFragment -> R.id.marketplaceFragment
-                R.id.nav_buyer_requests, R.id.buyerRequestsFragment -> R.id.buyerRequestsFragment
-                R.id.nav_orders, R.id.ordersFragment -> R.id.ordersFragment
-                R.id.nav_profile, R.id.profileFragment -> R.id.profileFragment
-                else -> null
-            }
+        if (controller != null && bottomNav != null) {
+            bottomNav.setupWithNavController(controller)
 
-            if (targetDestId != null) {
-                if (targetDestId == R.id.homeFragment) {
-                    try {
-                        navController.popBackStack(R.id.homeFragment, false)
-                    } catch (_: Throwable) {}
-                }
-
-                if (navController.currentDestination?.id != targetDestId) {
-                    try {
-                        navController.navigate(targetDestId, null, navOptions)
-                    } catch (_: Throwable) {
-                        try {
-                            navController.navigate(targetDestId)
-                        } catch (_: Throwable) {}
+            controller.addOnDestinationChangedListener { _, destination, _ ->
+                when (destination.id) {
+                    R.id.loginFragment,
+                    R.id.splashFragment,
+                    R.id.roleSelectionFragment -> {
+                        bottomNav.visibility = View.GONE
                     }
-                }
-                true
-            } else {
-                false
-            }
-        }
-
-        binding.bottomNavigation.setOnItemReselectedListener { item ->
-            val targetDestId = when (item.itemId) {
-                R.id.nav_home, R.id.homeFragment -> R.id.homeFragment
-                R.id.nav_marketplace, R.id.marketplaceFragment -> R.id.marketplaceFragment
-                R.id.nav_buyer_requests, R.id.buyerRequestsFragment -> R.id.buyerRequestsFragment
-                R.id.nav_orders, R.id.ordersFragment -> R.id.ordersFragment
-                R.id.nav_profile, R.id.profileFragment -> R.id.profileFragment
-                else -> null
-            }
-            if (targetDestId != null) {
-                try {
-                    navController.popBackStack(targetDestId, false)
-                } catch (_: Throwable) {}
-            }
-        }
-
-        navController.addOnDestinationChangedListener { _, destination, _ ->
-            when (destination.id) {
-                R.id.splashFragment, R.id.loginFragment, R.id.roleSelectionFragment -> {
-                    binding.bottomNavigation.visibility = View.GONE
-                }
-                else -> {
-                    binding.bottomNavigation.visibility = View.VISIBLE
-                    adaptNavigationForRole(RoleStateManager.getCurrentRole())
-
-                    val menuId = when (destination.id) {
-                        R.id.homeFragment -> R.id.nav_home
-                        R.id.marketplaceFragment -> R.id.nav_marketplace
-                        R.id.buyerRequestsFragment -> R.id.nav_buyer_requests
-                        R.id.ordersFragment -> R.id.nav_orders
-                        R.id.profileFragment -> R.id.nav_profile
-                        else -> null
-                    }
-                    if (menuId != null && binding.bottomNavigation.selectedItemId != menuId) {
-                        binding.bottomNavigation.menu.findItem(menuId)?.isChecked = true
+                    else -> {
+                        bottomNav.visibility = View.VISIBLE
+                        syncBottomNavigationLabelsWithRole()
                     }
                 }
             }
         }
-    }
 
-    private fun observeRoleStateChanges() {
+        syncBottomNavigationLabelsWithRole()
+
         lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                RoleStateManager.roleFlow.collect { activeRole ->
-                    adaptNavigationForRole(activeRole)
-                }
-            }
+            FeatureManager.syncRemoteConfig(applicationContext)
         }
     }
 
-    private fun adaptNavigationForRole(role: String) {
-        val menu = binding.bottomNavigation.menu
-        val homeItem = menu.findItem(R.id.nav_home)
-        val marketplaceItem = menu.findItem(R.id.nav_marketplace)
-        val requestsItem = menu.findItem(R.id.nav_buyer_requests)
-        val ordersItem = menu.findItem(R.id.nav_orders)
-        val profileItem = menu.findItem(R.id.nav_profile)
+    /**
+     * Master Spec Sec 5 & merged.txt Sec 76:
+     * Adapts Bottom Navigation labels dynamically to Farmer / Buyer / Both role.
+     */
+    fun syncBottomNavigationLabelsWithRole() {
+        val bottomNav = bottomNavView ?: return
+        val prefs = getSharedPreferences("mera_kisan_role_prefs", Context.MODE_PRIVATE)
+        val activeRole = (prefs.getString("active_role", null)
+            ?: RoleStateManager.currentRole.value.name).uppercase()
 
-        homeItem?.title = "होम"
-        profileItem?.title = "प्रोफ़ाइल"
-
-        when (role.trim().uppercase()) {
-            RoleStateManager.ROLE_FARMER -> {
-                marketplaceItem?.title = "मेरी फसलें"
-                requestsItem?.title = "ग्राहक मांग"
-                ordersItem?.title = "बिक्री ऑर्डर्स"
+        val menu = bottomNav.menu
+        when (activeRole) {
+            "BUYER" -> {
+                menu.findItem(R.id.homeFragment)?.title = "होम"
+                menu.findItem(R.id.marketplaceFragment)?.title = "खरीदें (Search)"
+                menu.findItem(R.id.buyerRequestsFragment)?.title = "मुझे चाहिए"
+                menu.findItem(R.id.ordersFragment)?.title = "मेरे ऑर्डर्स"
+                menu.findItem(R.id.profileFragment)?.title = "प्रोफ़ाइल"
             }
-            RoleStateManager.ROLE_BUYER -> {
-                marketplaceItem?.title = "फसलें खोजें"
-                requestsItem?.title = "मुझे चाहिए"
-                ordersItem?.title = "खरीद ऑर्डर्स"
+            "FARMER" -> {
+                menu.findItem(R.id.homeFragment)?.title = "होम"
+                menu.findItem(R.id.marketplaceFragment)?.title = "बाज़ार भाव"
+                menu.findItem(R.id.buyerRequestsFragment)?.title = "ग्राहक मांग"
+                menu.findItem(R.id.ordersFragment)?.title = "बिक्री ऑर्डर्स"
+                menu.findItem(R.id.profileFragment)?.title = "प्रोफ़ाइल"
             }
             else -> {
-                marketplaceItem?.title = "बाज़ार व फसलें"
-                requestsItem?.title = "मांग / बेचें"
-                ordersItem?.title = "सभी ऑर्डर्स"
+                menu.findItem(R.id.homeFragment)?.title = "होम"
+                menu.findItem(R.id.marketplaceFragment)?.title = "बाज़ार (Buy/Sell)"
+                menu.findItem(R.id.buyerRequestsFragment)?.title = "मुझे चाहिए"
+                menu.findItem(R.id.ordersFragment)?.title = "ऑर्डर्स"
+                menu.findItem(R.id.profileFragment)?.title = "प्रोफ़ाइल"
             }
-        }
-    }
-
-    private fun syncRemoteConfiguration() {
-        lifecycleScope.launch {
-            try {
-                FeatureManager.syncRemoteConfig(this@MainActivity)
-                checkMaintenanceState()
-            } catch (_: Throwable) {}
-        }
-    }
-
-    private fun checkMaintenanceState() {
-        try {
-            if (FeatureManager.isMaintenanceMode(this)) {
-                binding.tvMaintenanceBanner.apply {
-                    visibility = View.VISIBLE
-                    text = FeatureManager.getMaintenanceMessage(this@MainActivity)
-                }
-            } else {
-                binding.tvMaintenanceBanner.visibility = View.GONE
-            }
-        } catch (_: Throwable) {
-            binding.tvMaintenanceBanner.visibility = View.GONE
         }
     }
 }
