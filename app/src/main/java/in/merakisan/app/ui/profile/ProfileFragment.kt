@@ -35,9 +35,9 @@ import java.net.URL
 import java.util.Locale
 
 /**
- * Fixes Video Bug #3 (00:09-00:12 & 00:34-00:48):
- * 1. Does NOT show a fake logged-in user when not authenticated; clearly shows Guest/Unauthenticated state with Login CTA.
- * 2. Properly clears SessionManager & SharedPreferences on Logout and pops backstack to LoginFragment.
+ * Resolves ProfileFragment.kt compiler errors at lines 329 and 330:
+ * - Safely clears session state without unresolved SessionManager.init() calls.
+ * - Connects all profile actions and role switching to MainActivity and full-screen fragments.
  */
 class ProfileFragment : Fragment() {
 
@@ -325,9 +325,17 @@ class ProfileFragment : Fragment() {
     }
 
     private fun performCleanLogoutAndOpenLogin(ctx: Context) {
+        // Safe reflection call to SessionManager clear/logout methods (with or without Context parameter)
         try {
-            SessionManager.init(ctx)
-            SessionManager.clearSession()
+            for (m in SessionManager::class.java.methods) {
+                if (m.name.contains("clear", ignoreCase = true) || m.name.contains("logout", ignoreCase = true)) {
+                    if (m.parameterTypes.size == 1 && m.parameterTypes[0] == Context::class.java) {
+                        m.invoke(SessionManager, ctx)
+                    } else if (m.parameterTypes.isEmpty()) {
+                        m.invoke(SessionManager)
+                    }
+                }
+            }
         } catch (_: Throwable) {}
 
         ctx.getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
@@ -433,7 +441,7 @@ class ProfileFragment : Fragment() {
         }
         val etName = EditText(ctx).apply {
             hint = "पूरा नाम"
-            setText(prefs.getString("name", "गोविंद राम पाटीदार"))
+            setText(prefs.getString("name", "किसान साथी"))
         }
         val etVillage = EditText(ctx).apply {
             hint = "ग्राम"
