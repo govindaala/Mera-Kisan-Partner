@@ -19,8 +19,12 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.cardview.widget.CardView
 import androidx.fragment.app.Fragment
+import androidx.navigation.NavOptions
 import androidx.navigation.fragment.findNavController
+import `in`.merakisan.app.R
+import `in`.merakisan.app.core.security.SessionManager
 import `in`.merakisan.app.core.state.RoleStateManager
+import `in`.merakisan.app.ui.main.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -31,9 +35,9 @@ import java.net.URL
 import java.util.Locale
 
 /**
- * Master Spec Sec 5, 10 & merged.txt Sec 5, 6, 7, 77:
- * Unified Profile & Role Switching Screen (Zero Plaintext PIN).
- * Connects directly to MyCrops, NegotiationHistory, DisputeAndRating, FarmerPublicProfile & Account Deletion.
+ * Fixes Video Bug #3 (00:09-00:12 & 00:34-00:48):
+ * 1. Does NOT show a fake logged-in user when not authenticated; clearly shows Guest/Unauthenticated state with Login CTA.
+ * 2. Properly clears SessionManager & SharedPreferences on Logout and pops backstack to LoginFragment.
  */
 class ProfileFragment : Fragment() {
 
@@ -48,7 +52,12 @@ class ProfileFragment : Fragment() {
     ): View {
         val ctx = requireContext()
         val userPrefs = ctx.getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
-        val savedName = userPrefs.getString("name", "गोविंद राम पाटीदार") ?: "गोविंद राम पाटीदार"
+        val isLoggedIn = userPrefs.getBoolean("is_logged_in", false)
+        val savedName = if (isLoggedIn) {
+            userPrefs.getString("name", "किसान साथी") ?: "किसान साथी"
+        } else {
+            userPrefs.getString("name", "अतिथि उपयोगकर्ता (लॉगिन करें)") ?: "अतिथि उपयोगकर्ता (लॉगिन करें)"
+        }
         val savedVillage = userPrefs.getString("village", "गरोठ") ?: "गरोठ"
         val savedDistrict = userPrefs.getString("district", "मंदसौर") ?: "मंदसौर"
         val currentRole = getActiveRoleSafe(ctx)
@@ -76,7 +85,18 @@ class ProfileFragment : Fragment() {
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
             setTypeface(typeface, Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
+
+        if (!isLoggedIn) {
+            header.addView(Button(ctx).apply {
+                text = "🔑 लॉगिन करें"
+                textSize = 11f
+                setTextColor(Color.parseColor("#1B5E20"))
+                setBackgroundColor(Color.WHITE)
+                setOnClickListener { performCleanLogoutAndOpenLogin(ctx) }
+            })
+        }
         root.addView(header)
 
         val scroll = ScrollView(ctx).apply {
@@ -116,8 +136,9 @@ class ProfileFragment : Fragment() {
         }
         idBox.addView(tvUserName)
 
+        val statusLabel = if (isLoggedIn) "✔ किसान द्वारा घोषित (Farmer Declared)" else "⚠️ अतिथि मोड (पूर्ण सुविधाओं के लिए लॉगिन करें)"
         tvUserRoleBadge = TextView(ctx).apply {
-            text = "सक्रिय भूमिका: ${getRoleDisplayNameSafe(currentRole)}  •  ✔ किसान द्वारा घोषित (Farmer Declared)"
+            text = "सक्रिय भूमिका: ${getRoleDisplayNameSafe(currentRole)}  •$statusLabel"
             setTextColor(Color.parseColor("#2E7D32"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             setTypeface(typeface, Typeface.BOLD)
@@ -135,7 +156,7 @@ class ProfileFragment : Fragment() {
         idCard.addView(idBox)
         content.addView(idCard)
 
-        // 3. UNIFIED ROLE SWITCHER CARD ([किसान-विक्रेता] | [खरीदार] | [दोनों])
+        // 3. UNIFIED ROLE SWITCHER CARD
         val roleCard = CardView(ctx).apply {
             radius = dp(12).toFloat()
             cardElevation = dp(2).toFloat()
@@ -183,7 +204,8 @@ class ProfileFragment : Fragment() {
                 setOnClickListener {
                     setActiveRoleSafe(ctx, code)
                     val displayRole = getRoleDisplayNameSafe(code)
-                    tvUserRoleBadge.text = "सक्रिय भूमिका: $displayRole  •  ✔ किसान द्वारा घोषित"
+                    tvUserRoleBadge.text = "सक्रिय भूमिका: $displayRole  •  $statusLabel"
+                    (activity as? MainActivity)?.syncBottomNavigationLabelsWithRole()
                     Toast.makeText(ctx, "✅ सक्रिय भूमिका '$displayRole' पर सेट हो गई!", Toast.LENGTH_SHORT).show()
                 }
             })
@@ -193,7 +215,7 @@ class ProfileFragment : Fragment() {
         roleCard.addView(roleBox)
         content.addView(roleCard)
 
-        // 4. DIRECT FULL-SCREEN MODULE NAVIGATION HUB (merged.txt Sec 77)
+        // 4. DIRECT FULL-SCREEN MODULE NAVIGATION HUB
         val navCard = CardView(ctx).apply {
             radius = dp(12).toFloat()
             cardElevation = dp(2).toFloat()
@@ -247,7 +269,7 @@ class ProfileFragment : Fragment() {
         navCard.addView(navBox)
         content.addView(navCard)
 
-        // 5. 6-LEVEL EVIDENCE-BASED VERIFICATION & ACCOUNT ACTIONS
+        // 5. VERIFICATION, EDIT PROFILE & REAL SESSION LOGOUT
         val actionCard = CardView(ctx).apply {
             radius = dp(12).toFloat()
             cardElevation = dp(2).toFloat()
@@ -282,7 +304,7 @@ class ProfileFragment : Fragment() {
         })
 
         actionBox.addView(Button(ctx).apply {
-            text = "🚪 लॉगआउट / खाता हटाने का अनुरोध"
+            text = if (isLoggedIn) "🚪 लॉगआउट / खाता हटाने का अनुरोध" else "🔑 खाते में लॉगिन / पंजीकरण करें"
             setTextColor(Color.parseColor("#C62828"))
             setBackgroundColor(Color.parseColor("#FFEBEE"))
             layoutParams = LinearLayout.LayoutParams(
@@ -290,7 +312,7 @@ class ProfileFragment : Fragment() {
                 dp(44)
             )
             setOnClickListener {
-                navigateSafe("loginFragment")
+                performCleanLogoutAndOpenLogin(ctx)
             }
         })
 
@@ -302,9 +324,31 @@ class ProfileFragment : Fragment() {
         return root
     }
 
-    // ============================================================
-    // SAFE ROLE STATE HELPERS (Zero Unresolved Reference Risk)
-    // ============================================================
+    private fun performCleanLogoutAndOpenLogin(ctx: Context) {
+        try {
+            SessionManager.init(ctx)
+            SessionManager.clearSession()
+        } catch (_: Throwable) {}
+
+        ctx.getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("is_logged_in", false)
+            .putBoolean("is_guest", false)
+            .putString("name", "अतिथि उपयोगकर्ता (लॉगिन करें)")
+            .remove("uid")
+            .apply()
+
+        Toast.makeText(ctx, "🔒 सत्र समाप्त किया गया। कृपया साइन इन करें।", Toast.LENGTH_SHORT).show()
+
+        val navOptions = NavOptions.Builder()
+            .setPopUpTo(R.id.nav_graph, true)
+            .build()
+        try {
+            findNavController().navigate(R.id.loginFragment, null, navOptions)
+        } catch (_: Throwable) {
+            navigateSafe("loginFragment")
+        }
+    }
 
     private fun getActiveRoleSafe(ctx: Context): String {
         val prefs = ctx.getSharedPreferences("mera_kisan_role_prefs", Context.MODE_PRIVATE)
@@ -369,7 +413,7 @@ class ProfileFragment : Fragment() {
                 val conn = url.openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("Content-Type", "application/json")
-                conn.setRequestProperty("x-user-uid", "usr_govind_01")
+                conn.setRequestProperty("x-user-uid", "usr_verified")
                 conn.doOutput = true
                 val body = JSONObject().apply {
                     put("requested_level", "verified_farmer")
@@ -411,6 +455,7 @@ class ProfileFragment : Fragment() {
                 val v = etVillage.text.toString().trim().ifEmpty { "गरोठ" }
                 val d = etDistrict.text.toString().trim().ifEmpty { "मंदसौर" }
                 prefs.edit()
+                    .putBoolean("is_logged_in", true)
                     .putString("name", n)
                     .putString("village", v)
                     .putString("district", d)
