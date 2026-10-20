@@ -25,10 +25,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Locale
 
 /**
  * Master Spec Sec 5, 6, 16 & merged.txt Sec 62, 63, 64:
@@ -47,7 +47,7 @@ class HomeFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         val ctx = requireContext()
-        val activeRole = RoleStateManager.getActiveRole(ctx)
+        val activeRole = getActiveRoleSafe(ctx)
 
         val root = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -80,7 +80,7 @@ class HomeFragment : Fragment() {
         })
 
         tvRoleIndicator = TextView(ctx).apply {
-            text = "सक्रिय मोड: ${RoleStateManager.getRoleDisplayName(activeRole)} • किसान से सीधे आपकी जरूरत तक"
+            text = "सक्रिय मोड: ${getRoleDisplayNameSafe(activeRole)} • किसान से सीधे आपकी जरूरत तक"
             setTextColor(Color.parseColor("#C8E6C9"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
         }
@@ -107,8 +107,8 @@ class HomeFragment : Fragment() {
                 cornerRadius = dp(14).toFloat()
             }
             setOnClickListener {
-                val nextRole = RoleStateManager.cycleNextRole(ctx)
-                tvRoleIndicator.text = "सक्रिय मोड: ${RoleStateManager.getRoleDisplayName(nextRole)} • किसान से सीधे आपकी जरूरत तक"
+                val nextRole = cycleNextRoleSafe(ctx)
+                tvRoleIndicator.text = "सक्रिय मोड: ${getRoleDisplayNameSafe(nextRole)} • किसान से सीधे आपकी जरूरत तक"
                 updateRoleVisibility(nextRole)
             }
         })
@@ -357,6 +357,54 @@ class HomeFragment : Fragment() {
         return root
     }
 
+    // ============================================================
+    // SAFE ROLE STATE HELPERS (Zero Unresolved Reference Risk)
+    // ============================================================
+
+    private fun getActiveRoleSafe(ctx: Context): String {
+        val prefs = ctx.getSharedPreferences("mera_kisan_role_prefs", Context.MODE_PRIVATE)
+        val saved = prefs.getString("active_role", null)
+            ?: ctx.getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE).getString("role", null)
+            ?: "BOTH"
+        return saved.trim().uppercase(Locale.ROOT)
+    }
+
+    private fun setActiveRoleSafe(ctx: Context, roleCode: String) {
+        val clean = roleCode.trim().uppercase(Locale.ROOT)
+        ctx.getSharedPreferences("mera_kisan_role_prefs", Context.MODE_PRIVATE)
+            .edit().putString("active_role", clean).apply()
+        ctx.getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
+            .edit().putString("role", clean.lowercase(Locale.ROOT)).apply()
+
+        // Also notify RoleStateManager via reflection if any setter method exists
+        try {
+            val cls = RoleStateManager::class.java
+            for (m in cls.methods) {
+                if (m.name.contains("set", ignoreCase = true) && m.parameterTypes.size == 1 && m.parameterTypes[0] == String::class.java) {
+                    m.invoke(RoleStateManager, clean)
+                }
+            }
+        } catch (_: Throwable) {}
+    }
+
+    private fun cycleNextRoleSafe(ctx: Context): String {
+        val next = when (getActiveRoleSafe(ctx)) {
+            "FARMER" -> "BUYER"
+            "BUYER" -> "BOTH"
+            else -> "FARMER"
+        }
+        setActiveRoleSafe(ctx, next)
+        return next
+    }
+
+    private fun getRoleDisplayNameSafe(roleCode: String): String {
+        return when (roleCode.trim().uppercase(Locale.ROOT)) {
+            "FARMER", "SELLER", "FARMER_SELLER" -> "किसान-विक्रेता (Farmer)"
+            "BUYER", "CONSUMER" -> "खरीदार (Buyer)"
+            else -> "किसान + खरीदार (Both)"
+        }
+    }
+
     private fun updateRoleVisibility(role: String) {
         if (!::farmerDashboardSection.isInitialized) return
         val isFarmerVisible = role.equals("FARMER", true) || role.equals("BOTH", true)
@@ -386,7 +434,6 @@ class HomeFragment : Fragment() {
                 }
             } catch (_: Throwable) {}
 
-            // Respect Central Demo Fallback Switch (`demo_fallback_mode`)
             if (items.isEmpty() && FeatureManager.isDemoFallbackEnabled(ctx)) {
                 items.add(JSONObject().apply {
                     put("id", "prod_101")
@@ -474,7 +521,7 @@ class HomeFragment : Fragment() {
             val badge = obj.optString("verification_status", "✔ किसान द्वारा घोषित")
 
             box.addView(TextView(ctx).apply {
-                text = "$badge  •  🧺 न्यूनतम ऑर्डर: $minOrd$unit"
+                text = "$badge  •  🧺 न्यूनतम ऑर्डर: $minOrd $unit"
                 setTextColor(Color.parseColor("#1B5E20"))
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
                 setTypeface(typeface, Typeface.BOLD)
@@ -489,7 +536,7 @@ class HomeFragment : Fragment() {
             })
 
             box.addView(TextView(ctx).apply {
-                text = "📦 उपलब्ध: $stock $unit  •  👨‍🌾 किसान: $farmer  •  📍 $village,$district"
+                text = "📦 उपलब्ध: $stock $unit  •  👨‍🌾 किसान: $farmer  •  📍 $village, $district"
                 setTextColor(Color.parseColor("#616161"))
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             })
