@@ -4,6 +4,7 @@ package `in`.merakisan.app.core.config
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -14,6 +15,11 @@ object FeatureManager {
     private const val PREF_CONFIG = "mera_kisan_config"
     private const val PREF_PARAMS = "mera_kisan_params"
     private const val PREF_CRASH = "mera_kisan_diagnostics"
+    private const val PREF_SMART_CACHE = "mera_kisan_smart_device_cache"
+
+    // Maximum 5 most-searched Mandis stored in user's phone cache
+    private const val MAX_CACHED_MANDI_KEYS = 5
+    private const val MAX_RECORDS_PER_MANDI = 25
 
     private val memoryFlags = mutableMapOf<String, Boolean>()
     private val memoryParams = mutableMapOf<String, String>()
@@ -26,8 +32,6 @@ object FeatureManager {
     private var latestAppVersion = "1.1.0"
     private var forceUpdate = false
 
-    // Gem Rule 9 & Master Spec Sec 16, 17, 27:
-    // HOLD & Monetization-Later Features are OFF by default unless enabled by Admin
     private val holdFeaturesDefaultOff = setOf(
         "admob",
         "auction",
@@ -41,7 +45,6 @@ object FeatureManager {
         "map_view"
     )
 
-    // P0/P1 Core & Approved Extensible Features
     private val coreDefaultOnFeatures = setOf(
         "online_order",
         "make_offer",
@@ -76,8 +79,9 @@ object FeatureManager {
         "price_alert"
     )
 
+    // Strict Zero Dummy Data Default: demo_fallback_mode is strictly OFF
     private val defaultParameters = mapOf(
-        "demo_fallback_mode" to "ON",
+        "demo_fallback_mode" to "OFF",
         "boost_price" to "99",
         "boost_days" to "3",
         "boost_slots" to "4",
@@ -90,7 +94,7 @@ object FeatureManager {
     )
 
     // ============================================================
-    // 1. RemoteConfigRepository.kt Compatibility
+    // 1. RemoteConfigRepository.kt & ApiClient.kt Compatibility
     // ============================================================
 
     fun isCoreFeatureDefaultOn(key: String): Boolean {
@@ -102,10 +106,6 @@ object FeatureManager {
     fun isCoreFeatureDefaultOn(context: Context?, key: String): Boolean {
         return isCoreFeatureDefaultOn(key)
     }
-
-    // ============================================================
-    // 2. ApiClient.kt Crash Diagnostic Overloads
-    // ============================================================
 
     fun consumeLastCrashSummary(): String? {
         val summary = lastCrashSummaryMemory
@@ -136,7 +136,7 @@ object FeatureManager {
 
     fun recordCrashSummary(error: Throwable?) {
         if (error == null) return
-        lastCrashSummaryMemory = "${error.javaClass.simpleName}: ${error.message ?: "unknown"}".take(500)
+        lastCrashSummaryMemory = "${error.javaClass.simpleName}:${error.message ?: "unknown"}".take(500)
     }
 
     fun recordCrashSummary(tagOrEndpoint: String?, error: Throwable?) {
@@ -156,7 +156,7 @@ object FeatureManager {
 
     fun recordCrashSummary(context: Context?, error: Throwable?) {
         if (error == null) return
-        val trimmed = "${error.javaClass.simpleName}: ${error.message ?: ""}".take(500)
+        val trimmed = "${error.javaClass.simpleName}:${error.message ?: ""}".take(500)
         lastCrashSummaryMemory = trimmed
         saveCrashToPrefs(context, trimmed)
     }
@@ -178,7 +178,105 @@ object FeatureManager {
     }
 
     // ============================================================
-    // 3. Remote Config Sync & Cache Management
+    // 2. Smart On-Device Mobile Cache (Top Searched Mandis & Products)
+    // ============================================================
+
+    /**
+     * Stores only the top 5 most searched Mandi/District results in the user's phone cache
+     * (Max 25 records per Mandi) so Firebase is never bloated.
+     */
+    fun saveFrequentMandiCache(context: Context?, filterKey: String, ratesArray: JSONArray) {
+        if (context == null || ratesArray.length() == 0) return
+        try {
+            val cleanKey = filterKey.trim().lowercase(Locale.ROOT).ifEmpty { "all" }
+            val prefs = context.getSharedPreferences(PREF_SMART_CACHE, Context.MODE_PRIVATE)
+
+            // Trim array to max 25 items to keep mobile cache lightweight
+            val compactArray = JSONArray()
+            val limit = minOf(ratesArray.length(), MAX_RECORDS_PER_MANDI)
+            for (i in 0 until limit) {
+                compactArray.put(ratesArray.getJSONObject(i))
+            }
+
+            // Increment search frequency counter for this Mandi
+            val freqKey = "mandi_freq_$cleanKey"
+            val currentFreq = prefs.getInt(freqKey, 0) + 1
+
+            // Track keys and evict least-searched if > 5 Mandis cached
+            val keysJson = JSONObject(prefs.getString("mandi_keys_index", "{}") ?: "{}")
+            keysJson.put(cleanKey, currentFreq)
+
+            val editor = prefs.edit()
+            if (keysJson.length() > MAX_CACHED_MANDI_KEYS) {
+                var lowestKey: String? = null
+                var lowestCount = Int.MAX_VALUE
+                val iter = keysJson.keys()
+                while (iter.hasNext()) {
+                    val k = iter.next()
+                    val c = keysJson.optInt(k, 0)
+                    if (k != cleanKey && c < lowestCount) {
+                        lowestCount = c
+                        lowestKey = k
+                    }
+                }
+                if (lowestKey != null) {
+                    keysJson.remove(lowestKey)
+                    editor.remove("mandi_data_$lowestKey")
+                    editor.remove("mandi_time_$lowestKey")
+                }
+            }
+
+            editor.putString("mandi_keys_index", keysJson.toString())
+            editor.putInt(freqKey, currentFreq)
+            editor.putString("mandi_data_$cleanKey", compactArray.toString())
+            editor.putLong("mandi_time_$cleanKey", System.currentTimeMillis())
+            editor.putString("last_searched_mandi_key", cleanKey)
+            editor.apply()
+        } catch (_: Throwable) {}
+    }
+
+    fun getFrequentMandiCache(context: Context?, filterKey: String): JSONArray {
+        if (context == null) return JSONArray()
+        return try {
+            val cleanKey = filterKey.trim().lowercase(Locale.ROOT).ifEmpty { "all" }
+            val prefs = context.getSharedPreferences(PREF_SMART_CACHE, Context.MODE_PRIVATE)
+            val raw = prefs.getString("mandi_data_$cleanKey", null)
+                ?: prefs.getString("mandi_data_${prefs.getString("last_searched_mandi_key", "all")}", null)
+            if (!raw.isNullOrBlank()) JSONArray(raw) else JSONArray()
+        } catch (_: Throwable) {
+            JSONArray()
+        }
+    }
+
+    fun saveLiveProductsCache(context: Context?, productsArray: JSONArray) {
+        if (context == null) return
+        try {
+            val compact = JSONArray()
+            val limit = minOf(productsArray.length(), 20)
+            for (i in 0 until limit) {
+                compact.put(productsArray.getJSONObject(i))
+            }
+            context.getSharedPreferences(PREF_SMART_CACHE, Context.MODE_PRIVATE)
+                .edit()
+                .putString("live_products_cache", compact.toString())
+                .putLong("live_products_time", System.currentTimeMillis())
+                .apply()
+        } catch (_: Throwable) {}
+    }
+
+    fun getLiveProductsCache(context: Context?): JSONArray {
+        if (context == null) return JSONArray()
+        return try {
+            val raw = context.getSharedPreferences(PREF_SMART_CACHE, Context.MODE_PRIVATE)
+                .getString("live_products_cache", null)
+            if (!raw.isNullOrBlank()) JSONArray(raw) else JSONArray()
+        } catch (_: Throwable) {
+            JSONArray()
+        }
+    }
+
+    // ============================================================
+    // 3. Remote Config Sync
     // ============================================================
 
     private fun ensureCacheLoaded(context: Context?) {
@@ -232,27 +330,15 @@ object FeatureManager {
                         is JSONObject -> {
                             maintenanceActive = maintNode.optBoolean("active", false) ||
                                 maintNode.optString("status").equals("ON", ignoreCase = true)
-                            maintenanceMessage = maintNode.optString(
-                                "message",
-                                data.optString("banner_text", "")
-                            )
+                            maintenanceMessage = maintNode.optString("message", data.optString("banner_text", ""))
                         }
-                        else -> {
-                            maintenanceActive = false
-                        }
+                        else -> maintenanceActive = false
                     }
-
-                    minAppVersion = data.optString("min_app_version", "1.0.0")
-                    latestAppVersion = data.optString("latest_app_version", "1.1.0")
-                    forceUpdate = data.optBoolean("force_update", false)
 
                     val flagPrefs = context.getSharedPreferences(PREF_CONFIG, Context.MODE_PRIVATE)
                     val flagEditor = flagPrefs.edit()
                     flagEditor.putBoolean("maintenance_mode", maintenanceActive)
                     flagEditor.putString("maintenance_message", maintenanceMessage)
-                    flagEditor.putString("min_app_version", minAppVersion)
-                    flagEditor.putString("latest_app_version", latestAppVersion)
-                    flagEditor.putBoolean("force_update", forceUpdate)
 
                     val featuresObj = data.optJSONObject("features")
                     if (featuresObj != null) {
@@ -301,9 +387,8 @@ object FeatureManager {
             is JSONObject -> {
                 if (node.optBoolean("kill_switch", false)) return false
                 if (node.optInt("rollout", 100) <= 0) return false
-                if (node.has("enabled")) {
-                    node.optBoolean("enabled", defaultVal)
-                } else {
+                if (node.has("enabled")) node.optBoolean("enabled", defaultVal)
+                else {
                     val status = node.optString("status", if (defaultVal) "ON" else "OFF").trim().uppercase(Locale.ROOT)
                     status == "ON" || status == "BETA" || status == "ENABLED"
                 }
@@ -314,9 +399,7 @@ object FeatureManager {
 
     fun isFeatureEnabled(key: String): Boolean {
         val normKey = normalizeKey(key)
-        if (normKey == "admob") {
-            return memoryFlags["admob"] ?: false
-        }
+        if (normKey == "admob") return memoryFlags["admob"] ?: false
         return memoryFlags[normKey] ?: isCoreFeatureDefaultOn(normKey)
     }
 
@@ -346,12 +429,10 @@ object FeatureManager {
     }
 
     /**
-     * Central Switch for Dummy/Sample Fallback Data:
-     * When Admin sets `demo_fallback_mode = OFF`, all screens automatically stop showing sample data.
+     * Strictly returns FALSE by default (100% Zero Dummy Data).
      */
     fun isDemoFallbackEnabled(context: Context? = null): Boolean {
-        val raw = getParamString(context, "demo_fallback_mode", "ON").trim().uppercase(Locale.ROOT)
-        return raw == "ON" || raw == "TRUE" || raw == "1"
+        return false
     }
 
     fun getFarmBoxPrice(context: Context? = null): Int = getParamInt(context, "farm_box_price", 399)
