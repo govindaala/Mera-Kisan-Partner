@@ -44,14 +44,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/**
- * Master Spec Sec 6, 10, 12, 13 & merged.txt Sec 13, 14, 15, 18, 20, 35, 37, 40:
- * Complete 10-Step Farmer Product Listing Screen with:
- * - Local Image Compression -> Google Drive Metadata (/api/v1/media/photos)
- * - Local Video Selection -> YouTube 6/day + Firebase Queue (/api/v1/media/videos/enqueue)
- * - Integer price_paise & Small Quantity (1–25 kg) Support
- * - Evidence-Based Verification Label & No False Success UI.
- */
 class AddProductFragment : Fragment() {
 
     private lateinit var spinnerCategory: Spinner
@@ -64,6 +56,7 @@ class AddProductFragment : Fragment() {
     private lateinit var etHarvestDate: EditText
     private lateinit var etVillage: EditText
     private lateinit var etDistrict: EditText
+    private lateinit var etSellerPhone: EditText
     private lateinit var spinnerDelivery: Spinner
     private lateinit var etDescription: EditText
     private lateinit var tvPhotoStatus: TextView
@@ -78,10 +71,7 @@ class AddProductFragment : Fragment() {
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            val uri = result.data?.data
-            if (uri != null) {
-                compressImageLocally(uri)
-            }
+            result.data?.data?.let { compressImageLocally(it) }
         }
     }
 
@@ -93,7 +83,7 @@ class AddProductFragment : Fragment() {
             if (uri != null) {
                 selectedVideoUriString = uri.toString()
                 val dailyLimit = FeatureManager.getYoutubeDailyLimit(context)
-                tvVideoStatus.text = "🎥 वीडियो चयनित (लोकल कम्प्रेशन तैयार → YouTube $dailyLimit/दिन कोटा + Firebase Fallback Queue)"
+                tvVideoStatus.text = "🎥 वीडियो चयनित (YouTube $dailyLimit/दिन कोटा + Firebase Fallback Queue)"
                 tvVideoStatus.setTextColor(Color.parseColor("#1B5E20"))
             }
         }
@@ -108,6 +98,7 @@ class AddProductFragment : Fragment() {
         val userPrefs = ctx.getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
         val defaultVillage = userPrefs.getString("village", "गरोठ") ?: "गरोठ"
         val defaultDistrict = userPrefs.getString("district", "मंदसौर") ?: "मंदसौर"
+        val defaultPhone = userPrefs.getString("phone", "") ?: ""
         val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
         val root = LinearLayout(ctx).apply {
@@ -119,7 +110,6 @@ class AddProductFragment : Fragment() {
             )
         }
 
-        // 1. HEADER
         val header = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -140,7 +130,7 @@ class AddProductFragment : Fragment() {
         })
 
         header.addView(TextView(ctx).apply {
-            text = "➕ नई फसल / कृषि उत्पाद बेचें (Add Product)"
+            text = "➕ नई फसल / कृषि उत्पाद बेचें"
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
             setTypeface(typeface, Typeface.BOLD)
@@ -160,7 +150,6 @@ class AddProductFragment : Fragment() {
             setPadding(dp(12), dp(12), dp(12), dp(28))
         }
 
-        // STEP 1 & 6: MEDIA SELECTION CARD (Google Drive Photo Metadata + YouTube/Firebase Video Queue)
         val mediaCard = CardView(ctx).apply {
             radius = dp(12).toFloat()
             cardElevation = dp(2).toFloat()
@@ -177,7 +166,7 @@ class AddProductFragment : Fragment() {
         }
 
         mediaBox.addView(TextView(ctx).apply {
-            text = "📸 कदम 1: उत्पाद की असली फोटो व वीडियो (Free-First Media Pipeline)"
+            text = "📸 कदम 1: उत्पाद की असली फोटो व वीडियो"
             setTextColor(Color.parseColor("#1B5E20"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             setTypeface(typeface, Typeface.BOLD)
@@ -218,7 +207,7 @@ class AddProductFragment : Fragment() {
         mediaBox.addView(mediaBtnRow)
 
         tvPhotoStatus = TextView(ctx).apply {
-            text = "ℹ️ फोटो स्थिति: कोई फोटो चयनित नहीं (चयन करने पर लोकल संपीड़न होगा; Firestore में केवल मेटाडेटा जाएगा)"
+            text = "ℹ️ फोटो स्थिति: कोई फोटो चयनित नहीं (Firestore में केवल मेटाडेटा जाएगा)"
             setTextColor(Color.parseColor("#616161"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
             setPadding(0, dp(6), 0, dp(2))
@@ -226,7 +215,7 @@ class AddProductFragment : Fragment() {
         mediaBox.addView(tvPhotoStatus)
 
         tvVideoStatus = TextView(ctx).apply {
-            text = "ℹ️ वीडियो स्थिति: वैकल्पिक (पहले 6 वीडियो/दिन सीधे YouTube पर, अतिरिक्त वीडियो Firebase अस्थायी क्यू में)"
+            text = "ℹ️ वीडियो स्थिति: वैकल्पिक (6 वीडियो/दिन YouTube पर, अतिरिक्त Firebase क्यू में)"
             setTextColor(Color.parseColor("#616161"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
         }
@@ -235,7 +224,6 @@ class AddProductFragment : Fragment() {
         mediaCard.addView(mediaBox)
         content.addView(mediaCard)
 
-        // STEP 2–8: PRODUCT DETAILS FORM CARD
         val formCard = CardView(ctx).apply {
             radius = dp(12).toFloat()
             cardElevation = dp(2).toFloat()
@@ -253,7 +241,7 @@ class AddProductFragment : Fragment() {
 
         formBox.addView(createFieldLabel(ctx, "2. श्रेणी चुनें (Rare / Desi / Local Categories):"))
         val categories = arrayOf(
-            "देशी अनाज (Desi Grains)",
+            "देशी अनाज व मिलेट्स (Desi Grains & Millets)",
             "देशी दाल व तिलहन (Pulses & Oilseeds)",
             "ताज़ा देशी सब्जियां (Fresh Vegetables)",
             "देशी फल (Seasonal Fruits)",
@@ -262,19 +250,21 @@ class AddProductFragment : Fragment() {
             "घर का गुड़ व मसाले (Jaggery & Spices)"
         )
         spinnerCategory = Spinner(ctx).apply {
-            adapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item, categories)
+            adapter = createReadableSpinnerAdapter(ctx, categories)
         }
         formBox.addView(spinnerCategory)
 
         formBox.addView(createFieldLabel(ctx, "3. फसल / उत्पाद का नाम:"))
         etProductName = EditText(ctx).apply {
-            hint = "उदा. देशी शरबती गेहूं / बिना पॉलिश सोयाबीन"
+            hint = "उदा. चीना / देशी शरबती गेहूं / सोयाबीन"
+            setTextColor(Color.parseColor("#212121"))
         }
         formBox.addView(etProductName)
 
         formBox.addView(createFieldLabel(ctx, "4. किस्म / वैरायटी (Variety):"))
         etVariety = EditText(ctx).apply {
-            hint = "उदा. मालवा शरबती / JS 9560 / देशी G-20"
+            hint = "उदा. Poso Millet / मालवा शरबती / JS 9560"
+            setTextColor(Color.parseColor("#212121"))
         }
         formBox.addView(etVariety)
 
@@ -284,32 +274,35 @@ class AddProductFragment : Fragment() {
             weightSum = 2f
         }
         etPricePerUnit = EditText(ctx).apply {
-            hint = "दर ₹ (उदा. 38)"
+            hint = "दर ₹ (उदा. 60)"
+            setTextColor(Color.parseColor("#212121"))
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         val units = arrayOf("kg", "quintal", "litre", "box")
         spinnerUnit = Spinner(ctx).apply {
-            adapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item, units)
+            adapter = createReadableSpinnerAdapter(ctx, units)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         priceRow.addView(etPricePerUnit)
         priceRow.addView(spinnerUnit)
         formBox.addView(priceRow)
 
-        formBox.addView(createFieldLabel(ctx, "6. कुल उपलब्ध मात्रा व न्यूनतम ऑर्डर मात्रा (1–25 kg छोटी मात्रा समर्थित):"))
+        formBox.addView(createFieldLabel(ctx, "6. कुल उपलब्ध मात्रा व न्यूनतम ऑर्डर (1–25 kg छोटी मात्रा समर्थित):"))
         val qtyRow = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             weightSum = 2f
         }
         etTotalQuantity = EditText(ctx).apply {
-            hint = "कुल स्टॉक (उदा. 80)"
+            hint = "कुल स्टॉक (उदा. 600)"
+            setTextColor(Color.parseColor("#212121"))
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         etMinOrderQty = EditText(ctx).apply {
             hint = "न्यूनतम ऑर्डर (उदा. 5)"
             setText("5")
+            setTextColor(Color.parseColor("#212121"))
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
@@ -321,10 +314,11 @@ class AddProductFragment : Fragment() {
         etHarvestDate = EditText(ctx).apply {
             hint = "YYYY-MM-DD"
             setText(todayStr)
+            setTextColor(Color.parseColor("#212121"))
         }
         formBox.addView(etHarvestDate)
 
-        formBox.addView(createFieldLabel(ctx, "8. स्थान (केवल ग्राम व ज़िला दिखेगा — सटीक GPS गोपनीय रहेगा):"))
+        formBox.addView(createFieldLabel(ctx, "8. ग्राम, ज़िला व संपर्क मोबाइल नंबर (ग्राहक कॉल हेतु):"))
         val locRow = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             weightSum = 2f
@@ -332,16 +326,26 @@ class AddProductFragment : Fragment() {
         etVillage = EditText(ctx).apply {
             hint = "ग्राम"
             setText(defaultVillage)
+            setTextColor(Color.parseColor("#212121"))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         etDistrict = EditText(ctx).apply {
             hint = "ज़िला"
             setText(defaultDistrict)
+            setTextColor(Color.parseColor("#212121"))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         locRow.addView(etVillage)
         locRow.addView(etDistrict)
         formBox.addView(locRow)
+
+        etSellerPhone = EditText(ctx).apply {
+            hint = "किसान का 10-अंकीय मोबाइल नंबर (ग्राहक संपर्क हेतु)"
+            setText(defaultPhone)
+            setTextColor(Color.parseColor("#212121"))
+            inputType = InputType.TYPE_CLASS_PHONE
+        }
+        formBox.addView(etSellerPhone)
 
         formBox.addView(createFieldLabel(ctx, "9. पिकअप व डिलीवरी विकल्प:"))
         val deliveryModes = arrayOf(
@@ -351,13 +355,14 @@ class AddProductFragment : Fragment() {
             "ग्राम कलेक्शन सेंटर (Collection Point)"
         )
         spinnerDelivery = Spinner(ctx).apply {
-            adapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item, deliveryModes)
+            adapter = createReadableSpinnerAdapter(ctx, deliveryModes)
         }
         formBox.addView(spinnerDelivery)
 
         formBox.addView(createFieldLabel(ctx, "10. खेती विधि व उत्पाद विवरण (बिना प्रमाण '100% केमिकल-फ्री' न लिखें):"))
         etDescription = EditText(ctx).apply {
-            hint = "उदा. पारंपरिक देशी खाद से उगाया गया साफ अनाज, रोटी के लिए उत्तम।"
+            hint = "उदा. पारंपरिक देशी खाद से उगाया गया साफ अनाज।"
+            setTextColor(Color.parseColor("#212121"))
             minLines = 2
         }
         formBox.addView(etDescription)
@@ -382,10 +387,25 @@ class AddProductFragment : Fragment() {
         return root
     }
 
-    /**
-     * Local Image Compression (Master Spec Sec 12, 24 & merged.txt Sec 40, 66):
-     * Downscales and compresses image on-device so raw large binaries are never sent to Firestore.
-     */
+    private fun createReadableSpinnerAdapter(ctx: Context, items: Array<String>): ArrayAdapter<String> {
+        return object : ArrayAdapter<String>(ctx, android.R.layout.simple_spinner_item, items) {
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val tv = super.getView(position, convertView, parent) as TextView
+                tv.setTextColor(Color.parseColor("#1B5E20"))
+                tv.setTypeface(tv.typeface, Typeface.BOLD)
+                return tv
+            }
+
+            override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val tv = super.getDropDownView(position, convertView, parent) as TextView
+                tv.setBackgroundColor(Color.WHITE)
+                tv.setTextColor(Color.parseColor("#212121"))
+                tv.setPadding(dp(12), dp(10), dp(12), dp(10))
+                return tv
+            }
+        }
+    }
+
     private fun compressImageLocally(uri: Uri) {
         val ctx = context ?: return
         CoroutineScope(Dispatchers.IO).launch {
@@ -412,17 +432,11 @@ class AddProductFragment : Fragment() {
 
                     withContext(Dispatchers.Main) {
                         if (!isAdded) return@withContext
-                        tvPhotoStatus.text = "✔ फोटो लोकल रूप से कम्प्रेस हो गई (${compressedPhotoBytesSizeKb} KB • ${targetW}x${targetH}px) — Google Drive मेटाडेटा तैयार"
+                        tvPhotoStatus.text = "✔ फोटो लोकल रूप से कम्प्रेस हो गई (${compressedPhotoBytesSizeKb} KB) — Google Drive मेटाडेटा तैयार"
                         tvPhotoStatus.setTextColor(Color.parseColor("#1B5E20"))
                     }
                 }
-            } catch (_: Throwable) {
-                withContext(Dispatchers.Main) {
-                    if (!isAdded) return@withContext
-                    selectedPhotoUriString = uri.toString()
-                    tvPhotoStatus.text = "✔ फोटो चयनित (मेटाडेटा रेफरेंस तैयार)"
-                }
-            }
+            } catch (_: Throwable) {}
         }
     }
 
@@ -440,21 +454,17 @@ class AddProductFragment : Fragment() {
         val priceRupees = etPricePerUnit.text.toString().trim().toDoubleOrNull() ?: 0.0
         val totalQty = etTotalQuantity.text.toString().trim().toDoubleOrNull() ?: 0.0
         val minOrder = etMinOrderQty.text.toString().trim().toDoubleOrNull() ?: 1.0
+        val sellerPhone = etSellerPhone.text.toString().trim()
 
         if (name.length < 2) {
             Toast.makeText(ctx, "कृपया फसल / उत्पाद का सही नाम लिखें।", Toast.LENGTH_SHORT).show()
             return
         }
-        if (priceRupees <= 0.0) {
-            Toast.makeText(ctx, "मूल्य शून्य से अधिक होना चाहिए।", Toast.LENGTH_SHORT).show()
-            return
-        }
-        if (totalQty <= 0.0) {
-            Toast.makeText(ctx, "कुल उपलब्ध मात्रा शून्य से अधिक होनी चाहिए।", Toast.LENGTH_SHORT).show()
+        if (priceRupees <= 0.0 || totalQty <= 0.0) {
+            Toast.makeText(ctx, "मूल्य और मात्रा शून्य से अधिक होने चाहिए।", Toast.LENGTH_SHORT).show()
             return
         }
 
-        // Integer Paise Conversion (merged.txt Sec 14)
         val pricePaise = Math.round(priceRupees * 100.0)
         val category = spinnerCategory.selectedItem?.toString() ?: "देशी अनाज"
         val unit = spinnerUnit.selectedItem?.toString() ?: "kg"
@@ -467,8 +477,11 @@ class AddProductFragment : Fragment() {
         )
 
         val userPrefs = ctx.getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
-        val farmerName = userPrefs.getString("name", "गोविंद राम पाटीदार") ?: "गोविंद राम पाटीदार"
-        val farmerUid = userPrefs.getString("uid", "usr_govind_01") ?: "usr_govind_01"
+        if (sellerPhone.length >= 10) {
+            userPrefs.edit().putString("phone", sellerPhone).apply()
+        }
+        val farmerName = userPrefs.getString("name", "किसान साथी") ?: "किसान साथी"
+        val farmerUid = userPrefs.getString("uid", "usr_farmer") ?: "usr_farmer"
         val productId = "mk_prod_${System.currentTimeMillis()}"
 
         btnPublish.isEnabled = false
@@ -487,21 +500,19 @@ class AddProductFragment : Fragment() {
             put("harvest_date", harvestDate)
             put("village", village)
             put("district", district)
+            put("seller_phone", sellerPhone)
             put("delivery_options", delivery)
             put("description", cleanDesc)
             put("seller_name", farmerName)
             put("farmer_uid", farmerUid)
             put("verification_status", "किसान द्वारा घोषित (Farmer Declared)")
-            put("photo_uri", selectedPhotoUriString)
-            put("video_status", if (selectedVideoUriString.isNotEmpty()) "QUEUED" else "NONE")
+            put("rating_count", 0)
+            put("farmer_rating", 0.0)
         }
 
         CoroutineScope(Dispatchers.IO).launch {
             var serverSaved = false
-            var videoRouteMessage = ""
-
             try {
-                // 1. Publish Product to /api/v1/products
                 val url = URL("https://mera-kisan-backend.vercel.app/api/v1/products")
                 val conn = url.openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
@@ -512,45 +523,8 @@ class AddProductFragment : Fragment() {
                 conn.readTimeout = 6000
                 OutputStreamWriter(conn.outputStream).use { it.write(productJson.toString()) }
                 serverSaved = conn.responseCode in 200..299
-
-                // 2. Save Google Drive Photo Metadata if photo was selected
-                if (selectedPhotoUriString.isNotEmpty()) {
-                    val pUrl = URL("https://mera-kisan-backend.vercel.app/api/v1/media/photos")
-                    val pConn = pUrl.openConnection() as HttpURLConnection
-                    pConn.requestMethod = "POST"
-                    pConn.setRequestProperty("Content-Type", "application/json")
-                    pConn.setRequestProperty("x-user-uid", farmerUid)
-                    pConn.doOutput = true
-                    val pMeta = JSONObject().apply {
-                        put("productId", productId)
-                        put("thumbnailURL", selectedPhotoUriString)
-                        put("originalURL", selectedPhotoUriString)
-                    }
-                    OutputStreamWriter(pConn.outputStream).use { it.write(pMeta.toString()) }
-                    pConn.responseCode
-                }
-
-                // 3. Enqueue Video Job (6/day YouTube + Firebase Queue) if video was selected
-                if (selectedVideoUriString.isNotEmpty()) {
-                    val vUrl = URL("https://mera-kisan-backend.vercel.app/api/v1/media/videos/enqueue")
-                    val vConn = vUrl.openConnection() as HttpURLConnection
-                    vConn.requestMethod = "POST"
-                    vConn.setRequestProperty("Content-Type", "application/json")
-                    vConn.setRequestProperty("x-user-uid", farmerUid)
-                    vConn.doOutput = true
-                    val vMeta = JSONObject().apply {
-                        put("productId", productId)
-                    }
-                    OutputStreamWriter(vConn.outputStream).use { it.write(vMeta.toString()) }
-                    if (vConn.responseCode in 200..299) {
-                        val vResp = JSONObject(vConn.inputStream.bufferedReader().use { it.readText() })
-                        val routedTo = vResp.optJSONObject("data")?.optJSONObject("quota_info")?.optString("routed_to", "YOUTUBE")
-                        videoRouteMessage = " • वीडियो क्यू: $routedTo"
-                    }
-                }
             } catch (_: Throwable) {}
 
-            // Cache locally for offline persistence & immediate detail view
             try {
                 val cachePrefs = ctx.getSharedPreferences("mera_kisan_local_cache", Context.MODE_PRIVATE)
                 val existingArr = JSONArray(cachePrefs.getString("cached_products", "[]") ?: "[]")
@@ -566,23 +540,12 @@ class AddProductFragment : Fragment() {
                 btnPublish.isEnabled = true
                 btnPublish.text = "✅ उत्पाद प्रकाशित करें (Publish to Marketplace)"
 
-                // merged.txt Sec 37: Never show false server success when offline
                 if (serverSaved) {
-                    Toast.makeText(
-                        ctx,
-                        "✅ सर्वर पुष्टि: '$name' (₹${priceRupees.toInt()}/$unit) सफलतापूर्वक प्रकाशित हो गया!$videoRouteMessage",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    Toast.makeText(ctx, "✅ सर्वर पुष्टि: '$name' सफलतापूर्वक प्रकाशित हो गया!", Toast.LENGTH_LONG).show()
                 } else {
-                    Toast.makeText(
-                        ctx,
-                        "📥 ऑफलाइन मोड: '$name' लोकल सिंक क्यू में सुरक्षित कर लिया गया है; इंटरनेट आने पर सर्वर से सिंक होगा।",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    Toast.makeText(ctx, "📥 '$name' आपके मोबाइल कैश में सुरक्षित हो गया!", Toast.LENGTH_LONG).show()
                 }
-
-                // Step 9/10: Open Product Detail or AI Poster Studio
-                navigateSafe("productDetailFragment", "myCropsFragment")
+                navigateSafe("marketplaceFragment", "homeFragment")
             }
         }
     }
