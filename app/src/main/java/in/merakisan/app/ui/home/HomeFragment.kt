@@ -34,10 +34,6 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
 
-/**
- * 100% Zero Dummy Data Home Screen:
- * - Displays only real products from Live API (/api/v1/products) or the user's local mobile cache.
- */
 class HomeFragment : Fragment() {
 
     private lateinit var tvRoleIndicator: TextView
@@ -61,7 +57,6 @@ class HomeFragment : Fragment() {
             )
         }
 
-        // 1. TOP BRAND & ROLE SWITCH HEADER
         val header = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -140,7 +135,6 @@ class HomeFragment : Fragment() {
             setPadding(dp(12), dp(12), dp(12), dp(28))
         }
 
-        // 2. SMART SEARCH BAR
         val searchCard = CardView(ctx).apply {
             radius = dp(12).toFloat()
             cardElevation = dp(2).toFloat()
@@ -160,7 +154,6 @@ class HomeFragment : Fragment() {
         })
         content.addView(searchCard)
 
-        // 3. FARMER QUICK DASHBOARD SECTION
         farmerDashboardSection = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
         }
@@ -231,7 +224,6 @@ class HomeFragment : Fragment() {
         farmerDashboardSection.addView(farmerCard)
         content.addView(farmerDashboardSection)
 
-        // 4. CORE DISCOVERY PILLARS
         content.addView(TextView(ctx).apply {
             text = "🌾 मुख्य सुविधाएँ व श्रेणियाँ (Direct Farm Categories)"
             setTextColor(Color.parseColor("#1B5E20"))
@@ -279,7 +271,6 @@ class HomeFragment : Fragment() {
         catScroll.addView(catRow)
         content.addView(catScroll)
 
-        // 5. FEATURE-FLAGGED MODULE CARDS
         if (FeatureManager.isFeatureEnabled(ctx, "mandi_price")) {
             content.addView(createFeatureNavigationCard(
                 ctx = ctx,
@@ -291,20 +282,8 @@ class HomeFragment : Fragment() {
             ))
         }
 
-        if (FeatureManager.isFeatureEnabled(ctx, "buyer_request")) {
-            content.addView(createFeatureNavigationCard(
-                ctx = ctx,
-                badge = "📢 Reverse Marketplace (Demand Board)",
-                title = "‘मुझे यह चाहिए’ — अपनी मांग पोस्ट करें",
-                subtitle = "मनचाही देशी फसल या तेल न मिलने पर मांग डालें; पास के किसान सीधे भाव प्रस्ताव देंगे।",
-                accentHex = "#E65100",
-                targetFragment = "buyerRequestsFragment"
-            ))
-        }
-
-        // 6. LIVE PRODUCTS FEED
         content.addView(TextView(ctx).apply {
-            text = "🥬 लाइव उपलब्ध फसलें (Live Marketplace & Mobile Cache)"
+            text = "🥬 आज खेत से ताज़ा उपलब्ध फसलें (Tap for Full Detail)"
             setTextColor(Color.parseColor("#1B5E20"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
             setTypeface(typeface, Typeface.BOLD)
@@ -320,27 +299,30 @@ class HomeFragment : Fragment() {
         root.addView(scroll)
 
         updateRoleVisibility(activeRole)
-
-        // 1. Render only real products previously cached on the user's phone (Zero Dummy Data)
         renderProductCards(ctx, getRealMobileCachedProducts(ctx))
-
-        // 2. Fetch fresh live products from Backend API
         loadHomeProductsFeed(ctx)
         return root
     }
 
     private fun getRealMobileCachedProducts(ctx: Context): List<JSONObject> {
         val list = mutableListOf<JSONObject>()
+        val seenIds = mutableSetOf<String>()
         try {
             val smartArr = FeatureManager.getLiveProductsCache(ctx)
             for (i in 0 until smartArr.length()) {
-                list.add(smartArr.getJSONObject(i))
+                val obj = smartArr.getJSONObject(i)
+                val id = obj.optString("id", "")
+                if (!id.startsWith("prod_10") && seenIds.add(id)) {
+                    list.add(obj)
+                }
             }
-            if (list.isEmpty()) {
-                val prefs = ctx.getSharedPreferences("mera_kisan_local_cache", Context.MODE_PRIVATE)
-                val arr = JSONArray(prefs.getString("cached_products", "[]") ?: "[]")
-                for (i in 0 until arr.length()) {
-                    list.add(arr.getJSONObject(i))
+            val prefs = ctx.getSharedPreferences("mera_kisan_local_cache", Context.MODE_PRIVATE)
+            val arr = JSONArray(prefs.getString("cached_products", "[]") ?: "[]")
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                val id = obj.optString("id", "loc_$i")
+                if (!id.startsWith("prod_10") && seenIds.add(id)) {
+                    list.add(obj)
                 }
             }
         } catch (_: Throwable) {}
@@ -414,7 +396,10 @@ class HomeFragment : Fragment() {
                     if (arr != null && arr.length() > 0) {
                         FeatureManager.saveLiveProductsCache(ctx, arr)
                         for (i in 0 until arr.length()) {
-                            serverItems.add(arr.getJSONObject(i))
+                            val obj = arr.getJSONObject(i)
+                            if (!obj.optString("id", "").startsWith("prod_10")) {
+                                serverItems.add(obj)
+                            }
                         }
                     }
                 }
@@ -433,8 +418,7 @@ class HomeFragment : Fragment() {
         liveProductsContainer.removeAllViews()
         if (items.isEmpty()) {
             liveProductsContainer.addView(TextView(ctx).apply {
-                text = "📭 अभी कोई लाइव उत्पाद सूचीबद्ध नहीं है (डमी डेटा 100% हटा दिया गया है)।\n" +
-                       "किसान भाई ऊपर '➕ फसल बेचें' दबाकर पहली वास्तविक फसल प्रकाशित करें।"
+                text = "📭 अभी कोई लाइव उत्पाद सूचीबद्ध नहीं है।\nकिसान भाई ऊपर '➕ फसल बेचें' दबाकर अपनी फसल प्रकाशित करें।"
                 gravity = Gravity.CENTER
                 setTextColor(Color.parseColor("#616161"))
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
@@ -456,6 +440,9 @@ class HomeFragment : Fragment() {
             val village = obj.optString("village", "")
             val district = obj.optString("district", "")
             val badge = obj.optString("verification_status", "✔ किसान द्वारा घोषित")
+            val ratingCount = obj.optInt("rating_count", 0)
+            val ratingVal = obj.optDouble("farmer_rating", 0.0)
+            val ratingText = if (ratingCount > 0 && ratingVal > 0.0) " • ⭐ $ratingVal ($ratingCount)" else ""
 
             val openDetailAction = {
                 ctx.getSharedPreferences("mera_kisan_local_cache", Context.MODE_PRIVATE)
@@ -509,7 +496,7 @@ class HomeFragment : Fragment() {
             }
 
             infoCol.addView(TextView(ctx).apply {
-                text = "$badge  •  🧺 न्यूनतम: $minOrd $unit"
+                text = "$badge$ratingText  •  🧺 न्यूनतम: $minOrd $unit"
                 setTextColor(Color.parseColor("#1B5E20"))
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
                 setTypeface(typeface, Typeface.BOLD)
@@ -548,7 +535,7 @@ class HomeFragment : Fragment() {
                 setBackgroundColor(Color.parseColor("#FFEBEE"))
                 layoutParams = LinearLayout.LayoutParams(0, dp(36), 1f).apply { rightMargin = dp(4) }
                 setOnClickListener {
-                    Toast.makeText(ctx, "❤️ '$name' आपके मोबाइल पसंदीदा कैश में सेव किया गया!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(ctx, "❤️ '$name' पसंदीदा सूची में सेव किया गया!", Toast.LENGTH_SHORT).show()
                 }
             })
 
