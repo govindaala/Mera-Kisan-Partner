@@ -1,8 +1,10 @@
 // app/src/main/java/in/merakisan/app/ui/modules/FairPriceCalculatorFragment.kt
 package `in`.merakisan.app.ui.modules
 
+import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.InputType
 import android.util.TypedValue
@@ -20,18 +22,18 @@ import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 
 /**
- * merged.txt Sec 16, 17, 45, 46, 53:
- * Fair Price Calculator & Price Discovery Screen:
- * Compares Mandi Price vs Direct Selling Price with Packaging, Transport & Farmer Net Margin.
+ * Fixes Video Bug #3 (00:31-00:34):
+ * Adds explicit Hindi field labels above every input box in Fair Price Calculator
+ * so the farmer clearly knows what each number represents (merged.txt Sec 16, 17, 46, 53).
  */
 class FairPriceCalculatorFragment : Fragment() {
 
-    private lateinit var etMandiPrice: EditText
+    private lateinit var etMandiModal: EditText
     private lateinit var etProductionCost: EditText
-    private lateinit var etPackagingCost: EditText
     private lateinit var etTransportCost: EditText
+    private lateinit var etPackagingCost: EditText
     private lateinit var etDesiredMargin: EditText
-    private lateinit var tvCalculationOutput: TextView
+    private lateinit var tvResultBox: TextView
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -86,18 +88,22 @@ class FairPriceCalculatorFragment : Fragment() {
 
         val content = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(14), dp(14), dp(24))
+            setPadding(dp(12), dp(12), dp(12), dp(28))
         }
 
         val card = CardView(ctx).apply {
             radius = dp(12).toFloat()
             cardElevation = dp(2).toFloat()
             setCardBackgroundColor(Color.WHITE)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
         }
 
         val box = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(14), dp(16), dp(14))
+            setPadding(dp(16), dp(14), dp(16), dp(16))
         }
 
         box.addView(TextView(ctx).apply {
@@ -105,82 +111,138 @@ class FairPriceCalculatorFragment : Fragment() {
             setTextColor(Color.parseColor("#1B5E20"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, 0, 0, dp(8))
+            setPadding(0, 0, 0, dp(10))
         })
 
-        etMandiPrice = createNumberField(ctx, "1. वर्तमान मंडी थोक भाव (₹/क्विंटल)", "2680")
-        etProductionCost = createNumberField(ctx, "2. किसान की उत्पादन लागत (₹/क्विंटल)", "1950")
-        etPackagingCost = createNumberField(ctx, "3. साफ-सफाई व छोटी पैकिंग लागत (₹/क्विंटल)", "120")
-        etTransportCost = createNumberField(ctx, "4. स्थानीय परिवहन / भाड़ा (₹/क्विंटल)", "100")
-        etDesiredMargin = createNumberField(ctx, "5. मंडी से अतिरिक्त अपेक्षित लाभ (₹/क्विंटल)", "450")
+        etMandiModal = createLabeledNumberInput(
+            ctx,
+            box,
+            "1. वर्तमान मंडी मॉडल भाव (₹ प्रति क्विंटल / 100 kg):",
+            "उदा. 2680",
+            "2680"
+        )
 
-        box.addView(etMandiPrice)
-        box.addView(etProductionCost)
-        box.addView(etPackagingCost)
-        box.addView(etTransportCost)
-        box.addView(etDesiredMargin)
+        etProductionCost = createLabeledNumberInput(
+            ctx,
+            box,
+            "2. आपकी खेती व उत्पादन लागत (₹ प्रति क्विंटल):",
+            "उदा. 1950",
+            "1950"
+        )
 
-        val btnCalculate = Button(ctx).apply {
+        etTransportCost = createLabeledNumberInput(
+            ctx,
+            box,
+            "3. सफाई, ग्रेडिंग व परिवहन खर्च (₹ प्रति क्विंटल):",
+            "उदा. 120",
+            "120"
+        )
+
+        etPackagingCost = createLabeledNumberInput(
+            ctx,
+            box,
+            "4. छोटी पैकिंग / बैग खर्च (₹ प्रति क्विंटल):",
+            "उदा. 100",
+            "100"
+        )
+
+        etDesiredMargin = createLabeledNumberInput(
+            ctx,
+            box,
+            "5. अपेक्षित अतिरिक्त किसान लाभांश (₹ प्रति क्विंटल):",
+            "उदा. 450",
+            "450"
+        )
+
+        val btnCalc = Button(ctx).apply {
             text = "🧮 उचित सीधा मूल्य व किसान शुद्ध आय निकालें"
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#1B5E20"))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 dp(46)
-            ).apply { topMargin = dp(10); bottomMargin = dp(12) }
-            setOnClickListener { computeFairPrice() }
+            ).apply { topMargin = dp(12); bottomMargin = dp(12) }
+            setOnClickListener { calculateAndShowResult() }
         }
-        box.addView(btnCalculate)
+        box.addView(btnCalc)
 
-        tvCalculationOutput = TextView(ctx).apply {
+        tvResultBox = TextView(ctx).apply {
             setTextColor(Color.parseColor("#1B5E20"))
-            setBackgroundColor(Color.parseColor("#E8F5E9"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
             setTypeface(typeface, Typeface.BOLD)
             setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#E8F5E9"))
+                cornerRadius = dp(10).toFloat()
+                setStroke(dp(1), Color.parseColor("#A5D6A7"))
+            }
         }
-        box.addView(tvCalculationOutput)
+        box.addView(tvResultBox)
 
         card.addView(box)
         content.addView(card)
         scroll.addView(content)
         root.addView(scroll)
 
-        computeFairPrice()
+        calculateAndShowResult()
         return root
     }
 
-    private fun createNumberField(ctx: android.content.Context, label: String, defaultVal: String): EditText {
-        return EditText(ctx).apply {
-            hint = label
+    private fun createLabeledNumberInput(
+        ctx: Context,
+        parent: LinearLayout,
+        labelText: String,
+        hintText: String,
+        defaultVal: String
+    ): EditText {
+        parent.addView(TextView(ctx).apply {
+            text = labelText
+            setTextColor(Color.parseColor("#212121"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(0, dp(8), 0, dp(4))
+        })
+
+        val input = EditText(ctx).apply {
+            hint = hintText
             setText(defaultVal)
+            setTextColor(Color.parseColor("#212121"))
+            setHintTextColor(Color.parseColor("#757575"))
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-            textSize = 13f
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#FAFAFA"))
+                cornerRadius = dp(8).toFloat()
+                setStroke(dp(1), Color.parseColor("#BDBDBD"))
+            }
         }
+        parent.addView(input)
+        return input
     }
 
-    private fun computeFairPrice() {
-        val mandi = etMandiPrice.text.toString().toDoubleOrNull() ?: 2680.0
+    private fun calculateAndShowResult() {
+        val mandiModal = etMandiModal.text.toString().toDoubleOrNull() ?: 2680.0
         val prodCost = etProductionCost.text.toString().toDoubleOrNull() ?: 1950.0
-        val pack = etPackagingCost.text.toString().toDoubleOrNull() ?: 120.0
-        val trans = etTransportCost.text.toString().toDoubleOrNull() ?: 100.0
-        val extraMargin = etDesiredMargin.text.toString().toDoubleOrNull() ?: 450.0
+        val transport = etTransportCost.text.toString().toDoubleOrNull() ?: 120.0
+        val packaging = etPackagingCost.text.toString().toDoubleOrNull() ?: 100.0
+        val margin = etDesiredMargin.text.toString().toDoubleOrNull() ?: 450.0
 
-        val minSustainableQuintal = prodCost + pack + trans
-        val directCustomerQuintal = mandi + pack + trans + extraMargin
-        val estimatedFarmerNetQuintal = directCustomerQuintal - (pack + trans)
+        val minSustainableQuintal = prodCost + transport + packaging
+        val suggestedDirectQuintal = maxOf(minSustainableQuintal + margin, mandiModal + transport + packaging + margin)
+        val farmerNetQuintal = suggestedDirectQuintal - (transport + packaging)
+        val extraGainOverMandi = (farmerNetQuintal - mandiModal).coerceAtLeast(0.0)
 
-        val mandiPerKg = String.format("%.1f", mandi / 100.0)
-        val directPerKg = String.format("%.1f", directCustomerQuintal / 100.0)
-        val minSustainablePerKg = String.format("%.1f", minSustainableQuintal / 100.0)
+        val mandiPerKg = String.format("%.1f", mandiModal / 100.0)
+        val minPerKg = String.format("%.1f", minSustainableQuintal / 100.0)
+        val suggestedPerKg = String.format("%.1f", suggestedDirectQuintal / 100.0)
 
-        tvCalculationOutput.text =
+        tvResultBox.text =
             "📊 मूल्य तुलना परिणाम (Price Discovery):\n\n" +
-            "• मंडी थोक भाव: ₹${mandi.toInt()}/क्विंटल (₹$mandiPerKg / kg)\n" +
-            "• न्यूनतम लागत मूल्य: ₹${minSustainableQuintal.toInt()}/क्विंटल (₹$minSustainablePerKg / kg)\n" +
-            "• सुझाया गया सीधा ग्राहक मूल्य: ₹${directCustomerQuintal.toInt()}/क्विंटल (₹$directPerKg / kg)\n" +
-            "• पैकिंग व भाड़ा घटाकर किसान को शुद्ध प्राप्ति: ₹${estimatedFarmerNetQuintal.toInt()}/क्विंटल\n" +
-            "✅ सीधा बेचने पर किसान को मंडी से +₹${extraMargin.toInt()} प्रति क्विंटल अधिक लाभ!"
+            "• मंडी थोक भाव: ₹${mandiModal.toInt()}/क्विंटल (₹$mandiPerKg / kg)\n" +
+            "• न्यूनतम लागत मूल्य: ₹${minSustainableQuintal.toInt()}/क्विंटल (₹$minPerKg / kg)\n" +
+            "• सुझाया गया सीधा ग्राहक मूल्य: ₹${suggestedDirectQuintal.toInt()}/क्विंटल (₹$suggestedPerKg / kg)\n" +
+            "• पैकिंग व भाड़ा घटाकर किसान को शुद्ध प्राप्ति: ₹${farmerNetQuintal.toInt()}/क्विंटल\n\n" +
+            "✅ सीधा बेचने पर किसान को मंडी से +₹${extraGainOverMandi.toInt()} प्रति क्विंटल अधिक लाभ!"
     }
 
     private fun dp(value: Int): Int {
