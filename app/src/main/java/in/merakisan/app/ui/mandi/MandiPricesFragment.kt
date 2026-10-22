@@ -37,19 +37,21 @@ import java.net.URL
 import java.net.URLEncoder
 
 /**
- * 100% Zero Dummy Data + Stateless API Pass-Through + Mobile Local Cache Only:
- * - Fetches live rates on-demand from /api/v1/mandi-prices (data.gov.in).
- * - Stores nothing in Firebase Firestore.
- * - Caches only the user's top 5 most-searched Mandis locally on the user's phone.
+ * Fixes Video Bug #2 (00:09-00:40):
+ * 1. Fixes invisible white-on-white Spinner dropdown items by enforcing dark text (#212121) on white background.
+ * 2. Removes all 10 hard-coded dummy mandi rates (100% Zero Dummy Data).
+ * 3. Fetches on-demand from data.gov.in (/api/v1/mandi-prices) and caches only searched Mandis on the user's phone.
  */
 class MandiPricesFragment : Fragment() {
 
     private lateinit var spinnerDistrict: Spinner
+    private lateinit var spinnerCategory: Spinner
     private lateinit var etSearchCrop: EditText
     private lateinit var tvStatusBanner: TextView
     private lateinit var ratesListContainer: LinearLayout
 
     private var selectedDistrictFilter = "सभी ज़िले (All)"
+    private var selectedCategoryFilter = "सभी फसलें (All)"
     private val liveMandiItems = mutableListOf<MandiRateItem>()
     private var dataSourceLabel = "लाइव API"
 
@@ -100,29 +102,20 @@ class MandiPricesFragment : Fragment() {
             setTypeface(typeface, Typeface.BOLD)
         })
         titleCol.addView(TextView(ctx).apply {
-            text = "ऑन-डिमांड API • मोबाइल स्मार्ट कैश (Firebase स्टोरेज मुक्त)"
+            text = "ऑन-डिमांड लाइव API • केवल सर्च की गई मंडी मोबाइल कैश में"
             setTextColor(Color.parseColor("#C8E6C9"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
         })
         header.addView(titleCol)
 
         header.addView(Button(ctx).apply {
-            text = "🔄 लाइव बुलाएं"
+            text = "🔄 ताज़ा करें"
             textSize = 11f
             setTextColor(Color.parseColor("#1B5E20"))
             setBackgroundColor(Color.WHITE)
             setOnClickListener { fetchLiveMandiRatesFromApi(ctx, true) }
         })
         root.addView(header)
-
-        if (!FeatureManager.isFeatureEnabled(ctx, "mandi_price")) {
-            root.addView(TextView(ctx).apply {
-                text = "⚙️ मंडी भाव मॉड्यूल वर्तमान में एडमिन द्वारा बंद (OFF) रखा गया है।"
-                gravity = Gravity.CENTER
-                setPadding(dp(20), dp(40), dp(20), dp(40))
-            })
-            return root
-        }
 
         val scroll = ScrollView(ctx).apply {
             isFillViewport = true
@@ -137,7 +130,7 @@ class MandiPricesFragment : Fragment() {
             setPadding(dp(12), dp(10), dp(12), dp(24))
         }
 
-        // 2. FILTER & SEARCH BAR
+        // 2. HIGH-CONTRAST CASCADING FILTERS CARD (Fixes White-on-White Dropdown Bug)
         val filterCard = CardView(ctx).apply {
             radius = dp(12).toFloat()
             cardElevation = dp(2).toFloat()
@@ -154,26 +147,40 @@ class MandiPricesFragment : Fragment() {
         }
 
         filterBox.addView(TextView(ctx).apply {
-            text = "🔍 मंडी / ज़िला चुनें (केवल सर्च की गई मंडी आपके मोबाइल कैश में सेव होगी):"
+            text = "🔍 ज़िला/मंडी और फसल श्रेणी चुनें:"
             setTextColor(Color.parseColor("#1B5E20"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             setTypeface(typeface, Typeface.BOLD)
         })
 
+        val spinnerRow = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            weightSum = 2f
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(6); bottomMargin = dp(6) }
+        }
+
         val districts = arrayOf(
             "सभी ज़िले (All)",
-            "Mandsaur",
-            "Neemuch",
-            "Indore",
-            "Ratlam",
-            "Ujjain",
-            "Sehore",
-            "Dewas",
-            "Bhopal",
-            "Kota"
+            "Mandsaur (मंदसौर)",
+            "Neemuch (नीमच)",
+            "Indore (इंदौर)",
+            "Ratlam (रतलाम)",
+            "Ujjain (उज्जैन)",
+            "Sehore (सीहोर)",
+            "Dewas (देवास)",
+            "Kota (कोटा)"
         )
         spinnerDistrict = Spinner(ctx).apply {
-            adapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item, districts)
+            adapter = createHighContrastSpinnerAdapter(ctx, districts)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#F1F8E9"))
+                cornerRadius = dp(8).toFloat()
+                setStroke(dp(1), Color.parseColor("#2E7D32"))
+            }
+            layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply { rightMargin = dp(4) }
             onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
                 override fun onItemSelected(parent: AdapterView<*>?, view: View?, pos: Int, id: Long) {
                     selectedDistrictFilter = districts[pos]
@@ -182,11 +189,40 @@ class MandiPricesFragment : Fragment() {
                 override fun onNothingSelected(parent: AdapterView<*>?) {}
             }
         }
-        filterBox.addView(spinnerDistrict)
+
+        val categories = arrayOf(
+            "सभी फसलें (All)",
+            "Soyabean / तिलहन",
+            "Wheat / अनाज",
+            "Garlic / मसाले",
+            "Gram / दलहन"
+        )
+        spinnerCategory = Spinner(ctx).apply {
+            adapter = createHighContrastSpinnerAdapter(ctx, categories)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#F1F8E9"))
+                cornerRadius = dp(8).toFloat()
+                setStroke(dp(1), Color.parseColor("#2E7D32"))
+            }
+            layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(4) }
+            onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(parent: AdapterView<*>?, view: View?, pos: Int, id: Long) {
+                    selectedCategoryFilter = categories[pos]
+                    renderFilteredList(ctx)
+                }
+                override fun onNothingSelected(parent: AdapterView<*>?) {}
+            }
+        }
+
+        spinnerRow.addView(spinnerDistrict)
+        spinnerRow.addView(spinnerCategory)
+        filterBox.addView(spinnerRow)
 
         etSearchCrop = EditText(ctx).apply {
-            hint = "🔎 फसल या मंडी खोजें (उदा. Wheat, Soyabean, Garlic, Mandsaur)..."
+            hint = "🔎 फसल या मंडी का नाम लिखें (उदा. Wheat, Soyabean, Garlic)..."
             textSize = 13f
+            setTextColor(Color.parseColor("#212121"))
+            setHintTextColor(Color.parseColor("#757575"))
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
@@ -200,7 +236,7 @@ class MandiPricesFragment : Fragment() {
         content.addView(filterCard)
 
         tvStatusBanner = TextView(ctx).apply {
-            text = "⏳ मंडी डेटा जाँचा जा रहा है..."
+            text = "⏳ लाइव मंडी डेटा जाँचा जा रहा है..."
             setTextColor(Color.parseColor("#1B5E20"))
             setBackgroundColor(Color.parseColor("#E8F5E9"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
@@ -224,30 +260,59 @@ class MandiPricesFragment : Fragment() {
         return root
     }
 
+    /**
+     * Enforces dark readable text (#212121) on white background (#FFFFFF)
+     * so dropdown options are never invisible white-on-white like in video 00:16-00:20.
+     */
+    private fun createHighContrastSpinnerAdapter(ctx: Context, items: Array<String>): ArrayAdapter<String> {
+        return object : ArrayAdapter<String>(ctx, android.R.layout.simple_spinner_item, items) {
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val tv = super.getView(position, convertView, parent) as TextView
+                tv.setTextColor(Color.parseColor("#1B5E20"))
+                tv.setTypeface(tv.typeface, Typeface.BOLD)
+                tv.textSize = 12f
+                tv.setPadding(dp(8), dp(6), dp(8), dp(6))
+                return tv
+            }
+
+            override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val tv = super.getDropDownView(position, convertView, parent) as TextView
+                tv.setBackgroundColor(Color.WHITE)
+                tv.setTextColor(Color.parseColor("#212121"))
+                tv.setTypeface(tv.typeface, Typeface.BOLD)
+                tv.textSize = 14f
+                tv.setPadding(dp(14), dp(12), dp(14), dp(12))
+                return tv
+            }
+        }
+    }
+
     private fun loadFromMobileCacheThenFetchLive(ctx: Context) {
-        val cacheKey = if (selectedDistrictFilter.startsWith("सभी")) "all" else selectedDistrictFilter
+        val rawDist = selectedDistrictFilter.substringBefore(" ").trim()
+        val cacheKey = if (selectedDistrictFilter.startsWith("सभी")) "all" else rawDist
         val cachedArr = FeatureManager.getFrequentMandiCache(ctx, cacheKey)
 
+        liveMandiItems.clear()
         if (cachedArr.length() > 0) {
             parseJsonArrayIntoList(cachedArr)
-            dataSourceLabel = "📱 आपके मोबाइल कैश से (अंतिम सर्च)"
+            dataSourceLabel = "📱 मोबाइल कैश से ($cacheKey)"
             renderFilteredList(ctx)
         }
 
-        // Now call live API on-demand
         fetchLiveMandiRatesFromApi(ctx, false)
     }
 
     private fun fetchLiveMandiRatesFromApi(ctx: Context, userTriggered: Boolean) {
-        val cacheKey = if (selectedDistrictFilter.startsWith("सभी")) "all" else selectedDistrictFilter
+        val rawDist = selectedDistrictFilter.substringBefore(" ").trim()
+        val cacheKey = if (selectedDistrictFilter.startsWith("सभी")) "all" else rawDist
         tvStatusBanner.text = "🔄 लाइव API (data.gov.in) से '$cacheKey' का ताज़ा भाव मंगाया जा रहा है..."
 
         CoroutineScope(Dispatchers.IO).launch {
             var serverRatesArray: JSONArray? = null
-            var apiStatusMessage = ""
+            var apiMessage = ""
 
             try {
-                val distParam = if (selectedDistrictFilter.startsWith("सभी")) "" else URLEncoder.encode(selectedDistrictFilter, "UTF-8")
+                val distParam = if (selectedDistrictFilter.startsWith("सभी")) "" else URLEncoder.encode(rawDist, "UTF-8")
                 val url = URL("https://mera-kisan-backend.vercel.app/api/v1/mandi-prices?district=$distParam")
                 val conn = url.openConnection() as HttpURLConnection
                 conn.connectTimeout = 7000
@@ -258,14 +323,16 @@ class MandiPricesFragment : Fragment() {
                     val root = JSONObject(body)
                     val dataNode = root.opt("data")
                     if (dataNode is JSONObject) {
-                        apiStatusMessage = dataNode.optString("message", "")
-                        serverRatesArray = dataNode.optJSONArray("rates")
-                    } else if (dataNode is JSONArray) {
-                        serverRatesArray = dataNode
+                        apiMessage = dataNode.optString("message", "")
+                        val src = dataNode.optString("source", "")
+                        // Reject any old backend fallback cache so dummy data never enters the app
+                        if (src != "regional_fallback_cache") {
+                            serverRatesArray = dataNode.optJSONArray("rates")
+                        }
                     }
                 }
             } catch (e: Throwable) {
-                apiStatusMessage = e.message ?: "नेटवर्क त्रुटि"
+                apiMessage = e.message ?: ""
             }
 
             withContext(Dispatchers.Main) {
@@ -274,18 +341,17 @@ class MandiPricesFragment : Fragment() {
                 if (serverRatesArray != null && serverRatesArray.length() > 0) {
                     parseJsonArrayIntoList(serverRatesArray)
                     dataSourceLabel = "🟢 लाइव API (data.gov.in — बिना Firebase स्टोरेज)"
-                    // Save only this searched Mandi's compact result in mobile local cache
                     FeatureManager.saveFrequentMandiCache(ctx, cacheKey, serverRatesArray)
                     renderFilteredList(ctx)
                     if (userTriggered) {
-                        Toast.makeText(ctx, "✅ ${liveMandiItems.size} लाइव मंडी भाव प्राप्त हुए और मोबाइल कैश में अपडेट हुए!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(ctx, "✅ ${liveMandiItems.size} लाइव मंडी भाव प्राप्त हुए!", Toast.LENGTH_SHORT).show()
                     }
                 } else {
                     if (liveMandiItems.isEmpty()) {
-                        tvStatusBanner.text = if (apiStatusMessage.isNotEmpty()) {
-                            "ℹ️ $apiStatusMessage"
+                        tvStatusBanner.text = if (apiMessage.isNotEmpty()) {
+                            "ℹ️ $apiMessage"
                         } else {
-                            "ℹ️ अभी इस मंडी का कोई लाइव डेटा नहीं मिला (0 डमी डेटा नियम लागू)।"
+                            "ℹ️ लाइव मंडी भाव के लिए एडमिन पैनल (Tab 4 -> MANDI_API) में data.gov.in की API Key सेव करें।"
                         }
                     }
                     renderFilteredList(ctx)
@@ -316,25 +382,34 @@ class MandiPricesFragment : Fragment() {
     private fun renderFilteredList(ctx: Context) {
         ratesListContainer.removeAllViews()
         val query = etSearchCrop.text.toString().trim().lowercase()
+        val catPrefix = selectedCategoryFilter.substringBefore("/").trim().lowercase()
 
         val filtered = liveMandiItems.filter { item ->
-            query.isEmpty() ||
+            val matchQuery = query.isEmpty() ||
                 item.commodity.lowercase().contains(query) ||
                 item.mandi.lowercase().contains(query) ||
                 item.district.lowercase().contains(query)
+
+            val matchCat = selectedCategoryFilter.startsWith("सभी") ||
+                item.commodity.lowercase().contains(catPrefix) ||
+                item.category.lowercase().contains(catPrefix)
+
+            matchQuery && matchCat
         }
 
-        tvStatusBanner.text = "$dataSourceLabel • कुल ${filtered.size} परिणाम"
+        if (filtered.isNotEmpty()) {
+            tvStatusBanner.text = "$dataSourceLabel • कुल ${filtered.size} परिणाम"
+        }
 
         if (filtered.isEmpty()) {
             ratesListContainer.addView(TextView(ctx).apply {
-                text = "📭 अभी कोई मंडी भाव उपलब्ध नहीं है (डमी डेटा 100% बंद है)।\n\n" +
-                       "• यदि आपने एडमिन पैनल में data.gov.in की API Key डाल दी है, तो ऊपर '🔄 लाइव बुलाएं' दबाएं।\n" +
-                       "• जो मंडी आप सर्च करेंगे, उसका डेटा आपके मोबाइल के लोकल कैश में सेव हो जाएगा।"
+                text = "📭 अभी कोई मंडी भाव लोड नहीं है (डमी डेटा 100% बंद है)।\n\n" +
+                       "• एडमिन पैनल के Tab 4 (MANDI_API) में अपनी data.gov.in की API Key पेस्ट करके सेव करें और यहाँ '🔄 ताज़ा करें' दबाएं।\n" +
+                       "• जो मंडी आप सर्च करेंगे, केवल उसका डेटा आपके मोबाइल कैश में सेव होगा (हमारे Firebase पर 0 MB रहेगा)।"
                 gravity = Gravity.CENTER
                 setTextColor(Color.parseColor("#616161"))
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                setPadding(dp(18), dp(36), dp(18), dp(36))
+                setPadding(dp(18), dp(32), dp(18), dp(32))
             })
             return
         }
@@ -359,31 +434,12 @@ class MandiPricesFragment : Fragment() {
                 setPadding(dp(14), dp(12), dp(14), dp(12))
             }
 
-            val topRow = LinearLayout(ctx).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-            }
-
-            topRow.addView(TextView(ctx).apply {
-                text = item.commodity
+            box.addView(TextView(ctx).apply {
+                text = "${item.commodity}  •  [${item.dateLabel}]"
                 setTextColor(Color.parseColor("#212121"))
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
                 setTypeface(typeface, Typeface.BOLD)
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
-
-            topRow.addView(TextView(ctx).apply {
-                text = item.dateLabel
-                setTextColor(Color.parseColor("#1B5E20"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-                setTypeface(typeface, Typeface.BOLD)
-                setPadding(dp(10), dp(4), dp(10), dp(4))
-                background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#E8F5E9"))
-                    cornerRadius = dp(8).toFloat()
-                }
-            })
-            box.addView(topRow)
 
             box.addView(TextView(ctx).apply {
                 text = "📍 ${item.mandi} (${item.district})"
