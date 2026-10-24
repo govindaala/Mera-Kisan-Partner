@@ -3,168 +3,227 @@ package `in`.merakisan.app.core.security
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
+import org.json.JSONArray
+import org.json.JSONObject
 
-data class UserSession(
-    val uid: String,
-    val name: String,
-    val phone: String,
-    val role: String,
-    val isAuthenticated: Boolean,
-    val email: String = ""
-)
+/**
+ * MERA KISAN — ENCRYPTED SESSION & ROLE STATE MANAGER
+ * सुरक्षा मानक: कोई भी प्लेनटेक्स्ट पिन कभी सेव नहीं किया जाएगा (Rule 7 & merged.txt Sec 5)।
+ */
+object SessionManager {
 
-class SessionManager(context: Context) {
+    private const val ENCRYPTED_PREFS_FILE = "mera_kisan_secure_session_v2"
+    private const val FALLBACK_PREFS_FILE = "mera_kisan_session_fallback_v2"
 
-    private val prefs: SharedPreferences =
-        context.applicationContext.getSharedPreferences(
-            PREFS_NAME,
-            Context.MODE_PRIVATE
-        )
+    private const val KEY_UID = "user_uid"
+    private const val KEY_AUTH_TOKEN = "auth_id_token"
+    private const val KEY_NAME = "user_name"
+    private const val KEY_PHONE = "self_declared_phone"
+    private const val KEY_EMAIL = "user_email"
+    private const val KEY_ROLES_CSV = "user_roles_csv"
+    private const val KEY_ACTIVE_MODE = "active_role_mode" // "FARMER" or "BUYER"
+    private const val KEY_ONBOARDING_DONE = "onboarding_completed"
+    private const val KEY_VILLAGE = "user_village"
+    private const val KEY_DISTRICT = "user_district"
+    private const val KEY_STATE = "user_state"
+    private const val KEY_VERIFICATION_STATUS = "verification_status"
 
-    companion object {
-        private const val PREFS_NAME = "mera_kisan_secure_session"
+    // अधिकृत कृषि दवाई विक्रेता (Dealer) सत्र
+    private const val KEY_DEALER_TOKEN = "agri_dealer_session_token"
+    private const val KEY_DEALER_SHOP_NAME = "agri_dealer_shop_name"
+    private const val KEY_DEALER_LOGIN_ID = "agri_dealer_login_id"
 
-        private const val KEY_TOKEN = "auth_id_token"
-        private const val KEY_UID = "user_uid"
-        private const val KEY_NAME = "user_name"
-        private const val KEY_PHONE = "user_phone"
-        private const val KEY_ROLE = "user_role"
-        private const val KEY_EMAIL = "user_email"
+    // बार-बार खोजी गई मंडी का लोकल मोबाइल कैश (केवल रीड कैश, 0% डमी डेटा)
+    private const val KEY_FREQUENT_MANDI_STATE = "frequent_mandi_state"
+    private const val KEY_FREQUENT_MANDI_DISTRICT = "frequent_mandi_district"
+    private const val KEY_FREQUENT_MANDI_CACHE_JSON = "frequent_mandi_rates_json"
+    private const val KEY_FREQUENT_MANDI_CACHE_TIME = "frequent_mandi_rates_time"
 
-        fun getAuthToken(context: Context): String? {
-            return SessionManager(context).getAuthToken()
-        }
+    @Volatile
+    private var cachedPrefs: SharedPreferences? = null
 
-        fun getUserUid(context: Context): String? {
-            return SessionManager(context).getUserUid()
-        }
-
-        fun getUserRole(context: Context): String {
-            return SessionManager(context).getUserSession().role
-        }
-
-        fun saveSession(
-            context: Context,
-            token: String,
-            uid: String,
-            role: String,
-            name: String = "",
-            phone: String = "",
-            email: String = ""
-        ) {
-            SessionManager(context).saveSession(
-                token = token,
-                uid = uid,
-                name = name,
-                phone = phone,
-                role = role,
-                email = email
-            )
-        }
-                private const val KEY_FCM_TOKEN = "fcm_registration_token"
-
-        fun saveFcmToken(context: Context, token: String) {
-            if (token.isBlank()) return
-
-            context.applicationContext
-                .getSharedPreferences(
-                    "mera_kisan_secure_session",
-                    Context.MODE_PRIVATE
+    private fun getSecurePrefs(context: Context): SharedPreferences {
+        cachedPrefs?.let { return it }
+        synchronized(this) {
+            cachedPrefs?.let { return it }
+            val appCtx = context.applicationContext
+            val prefs = try {
+                val masterKey = MasterKey.Builder(appCtx)
+                    .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                    .build()
+                EncryptedSharedPreferences.create(
+                    appCtx,
+                    ENCRYPTED_PREFS_FILE,
+                    masterKey,
+                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
                 )
-                .edit()
-                .putString(KEY_FCM_TOKEN, token)
-                .apply()
-        }
-
-        fun getFcmToken(context: Context): String? {
-            return context.applicationContext
-                .getSharedPreferences(
-                    "mera_kisan_secure_session",
-                    Context.MODE_PRIVATE
-                )
-                .getString(KEY_FCM_TOKEN, null)
+            } catch (_: Exception) {
+                appCtx.getSharedPreferences(FALLBACK_PREFS_FILE, Context.MODE_PRIVATE)
+            }
+            cachedPrefs = prefs
+            return prefs
         }
     }
 
-    fun saveAuthToken(token: String) {
-        if (token.isNotBlank() &&
-            token != "guest_session" &&
-            !token.startsWith("guest_")
-        ) {
-            prefs.edit().putString(KEY_TOKEN, token).apply()
-        }
+    fun saveAuthToken(context: Context, token: String) {
+        if (token.isBlank()) return
+        getSecurePrefs(context).edit().putString(KEY_AUTH_TOKEN, token.trim()).apply()
     }
 
-    fun getAuthToken(): String? {
-        return prefs.getString(KEY_TOKEN, null)
-    }
+    fun getAuthToken(context: Context): String? =
+        getSecurePrefs(context).getString(KEY_AUTH_TOKEN, null)
 
-    fun getUserUid(): String {
-        return prefs.getString(KEY_UID, "").orEmpty()
-    }
-
-    fun getUserId(): String {
-        return getUserUid()
-    }
-
-    fun saveUserSession(
+    fun saveOnboardedUserSession(
+        context: Context,
         uid: String,
         name: String,
         phone: String,
-        role: String,
-        email: String = ""
+        roles: List<String>,
+        activeMode: String,
+        village: String? = null,
+        district: String? = null,
+        state: String? = null,
+        verificationStatus: String = "farmer_declared"
     ) {
-        prefs.edit()
-            .putString(KEY_UID, uid)
-            .putString(KEY_NAME, name)
-            .putString(KEY_PHONE, phone)
-            .putString(KEY_ROLE, role.uppercase())
-            .putString(KEY_EMAIL, email)
+        val cleanRoles = roles.map { it.trim().lowercase() }.filter { it in listOf("farmer", "buyer") }.distinct()
+        val resolvedMode = when (activeMode.trim().uppercase()) {
+            "BUYER" -> "BUYER"
+            "FARMER", "SELLER" -> "FARMER"
+            else -> if (cleanRoles.contains("farmer")) "FARMER" else "BUYER"
+        }
+
+        getSecurePrefs(context).edit().apply {
+            putString(KEY_UID, uid.trim())
+            putString(KEY_NAME, name.trim())
+            putString(KEY_PHONE, phone.trim())
+            putString(KEY_ROLES_CSV, cleanRoles.joinToString(","))
+            putString(KEY_ACTIVE_MODE, resolvedMode)
+            putBoolean(KEY_ONBOARDING_DONE, true)
+            if (!village.isNullOrBlank()) putString(KEY_VILLAGE, village.trim())
+            if (!district.isNullOrBlank()) putString(KEY_DISTRICT, district.trim())
+            if (!state.isNullOrBlank()) putString(KEY_STATE, state.trim())
+            putString(KEY_VERIFICATION_STATUS, verificationStatus.trim().lowercase())
+            apply()
+        }
+    }
+
+    fun isLoggedInAndOnboarded(context: Context): Boolean {
+        val prefs = getSecurePrefs(context)
+        val uid = prefs.getString(KEY_UID, null)
+        val phone = prefs.getString(KEY_PHONE, null)
+        val onboarded = prefs.getBoolean(KEY_ONBOARDING_DONE, false)
+        return !uid.isNullOrBlank() && !phone.isNullOrBlank() && onboarded
+    }
+
+    fun getUserUid(context: Context): String? =
+        getSecurePrefs(context).getString(KEY_UID, null)
+
+    fun getUserName(context: Context): String =
+        getSecurePrefs(context).getString(KEY_NAME, "") ?: ""
+
+    fun getSelfDeclaredPhone(context: Context): String =
+        getSecurePrefs(context).getString(KEY_PHONE, "") ?: ""
+
+    fun getUserVillage(context: Context): String =
+        getSecurePrefs(context).getString(KEY_VILLAGE, "") ?: ""
+
+    fun getUserDistrict(context: Context): String =
+        getSecurePrefs(context).getString(KEY_DISTRICT, "") ?: ""
+
+    fun getUserState(context: Context): String =
+        getSecurePrefs(context).getString(KEY_STATE, "") ?: ""
+
+    fun getVerificationStatus(context: Context): String =
+        getSecurePrefs(context).getString(KEY_VERIFICATION_STATUS, "farmer_declared") ?: "farmer_declared"
+
+    fun getAllowedRoles(context: Context): List<String> {
+        val csv = getSecurePrefs(context).getString(KEY_ROLES_CSV, "") ?: ""
+        return csv.split(",").map { it.trim().lowercase() }.filter { it.isNotEmpty() }
+    }
+
+    /**
+     * वर्तमान सक्रिय मोड: हमेशा स्पष्ट रूप से "FARMER" या "BUYER" लौटाता है।
+     * नियम: किसान मोड में खरीदार के विकल्प नहीं दिखेंगे, और खरीदार मोड में किसान के विकल्प नहीं दिखेंगे।
+     */
+    fun getActiveMode(context: Context): String {
+        val saved = getSecurePrefs(context).getString(KEY_ACTIVE_MODE, "FARMER") ?: "FARMER"
+        return if (saved.uppercase() == "BUYER") "BUYER" else "FARMER"
+    }
+
+    fun isFarmerModeActive(context: Context): Boolean =
+        getActiveMode(context) == "FARMER"
+
+    fun isBuyerModeActive(context: Context): Boolean =
+        getActiveMode(context) == "BUYER"
+
+    fun setActiveMode(context: Context, mode: String) {
+        val resolved = if (mode.trim().uppercase() == "BUYER") "BUYER" else "FARMER"
+        val currentRoles = getAllowedRoles(context).toMutableSet()
+        currentRoles.add(resolved.lowercase())
+        getSecurePrefs(context).edit()
+            .putString(KEY_ACTIVE_MODE, resolved)
+            .putString(KEY_ROLES_CSV, currentRoles.joinToString(","))
             .apply()
     }
 
-    fun saveSession(
-        token: String,
-        uid: String,
-        name: String,
-        phone: String,
-        role: String,
-        email: String = ""
+    // अधिकृत कृषि दवाई विक्रेता (Dealer) सत्र प्रबंधन
+    fun saveDealerSession(context: Context, token: String, loginId: String, shopName: String) {
+        getSecurePrefs(context).edit()
+            .putString(KEY_DEALER_TOKEN, token.trim())
+            .putString(KEY_DEALER_LOGIN_ID, loginId.trim())
+            .putString(KEY_DEALER_SHOP_NAME, shopName.trim())
+            .apply()
+    }
+
+    fun getDealerToken(context: Context): String? =
+        getSecurePrefs(context).getString(KEY_DEALER_TOKEN, null)
+
+    fun getDealerShopName(context: Context): String =
+        getSecurePrefs(context).getString(KEY_DEALER_SHOP_NAME, "") ?: ""
+
+    fun clearDealerSession(context: Context) {
+        getSecurePrefs(context).edit()
+            .remove(KEY_DEALER_TOKEN)
+            .remove(KEY_DEALER_LOGIN_ID)
+            .remove(KEY_DEALER_SHOP_NAME)
+            .apply()
+    }
+
+    // बार-बार खोजी गई मंडी का लोकल कैश (केवल यूज़र के मोबाइल में, हमारे फायरबेस पर 0 MB बोझ)
+    fun saveFrequentMandiCache(
+        context: Context,
+        state: String,
+        district: String,
+        ratesArray: JSONArray
     ) {
-        if (token.isNotBlank() &&
-            token != "guest_session" &&
-            !token.startsWith("guest_")
-        ) {
-            saveAuthToken(token)
+        if (ratesArray.length() == 0) return
+        getSecurePrefs(context).edit()
+            .putString(KEY_FREQUENT_MANDI_STATE, state)
+            .putString(KEY_FREQUENT_MANDI_DISTRICT, district)
+            .putString(KEY_FREQUENT_MANDI_CACHE_JSON, ratesArray.toString())
+            .putLong(KEY_FREQUENT_MANDI_CACHE_TIME, System.currentTimeMillis())
+            .apply()
+    }
+
+    fun getFrequentMandiCache(context: Context): JSONObject? {
+        val prefs = getSecurePrefs(context)
+        val rawJson = prefs.getString(KEY_FREQUENT_MANDI_CACHE_JSON, null) ?: return null
+        return try {
+            JSONObject().apply {
+                put("state", prefs.getString(KEY_FREQUENT_MANDI_STATE, "") ?: "")
+                put("district", prefs.getString(KEY_FREQUENT_MANDI_DISTRICT, "") ?: "")
+                put("cached_at_ms", prefs.getLong(KEY_FREQUENT_MANDI_CACHE_TIME, 0L))
+                put("rates", JSONArray(rawJson))
+            }
+        } catch (_: Exception) {
+            null
         }
-
-        saveUserSession(
-            uid = uid,
-            name = name,
-            phone = phone,
-            role = role,
-            email = email
-        )
     }
 
-    fun getUserSession(): UserSession {
-        val uid = getUserUid()
-        val token = getAuthToken()
-
-        return UserSession(
-            uid = uid,
-            name = prefs.getString(KEY_NAME, "").orEmpty(),
-            phone = prefs.getString(KEY_PHONE, "").orEmpty(),
-            role = prefs.getString(KEY_ROLE, "BUYER")
-                .orEmpty()
-                .ifBlank { "BUYER" },
-            isAuthenticated = uid.isNotBlank() &&
-                !token.isNullOrBlank(),
-            email = prefs.getString(KEY_EMAIL, "").orEmpty()
-        )
-    }
-
-    fun clearSession() {
-        prefs.edit().clear().apply()
+    fun clearAllSession(context: Context) {
+        getSecurePrefs(context).edit().clear().apply()
     }
 }
