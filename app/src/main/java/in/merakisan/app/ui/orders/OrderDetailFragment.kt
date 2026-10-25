@@ -1,266 +1,586 @@
 // app/src/main/java/in/merakisan/app/ui/orders/OrderDetailFragment.kt
 package `in`.merakisan.app.ui.orders
 
+import android.app.AlertDialog
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
+import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.ScrollView
+import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
-import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
-import androidx.navigation.fragment.findNavController
+import `in`.merakisan.app.core.config.FeatureManager
 import `in`.merakisan.app.core.network.ApiClient
-import `in`.merakisan.app.core.network.UpdateOrderStatusRequest
-import `in`.merakisan.app.core.network.model.OrderDto
 import `in`.merakisan.app.core.security.SessionManager
-import `in`.merakisan.app.databinding.FragmentOrderDetailBinding
-import `in`.merakisan.app.ui.reviews.AddReviewDialogFragment
-import kotlinx.coroutines.Dispatchers
+import `in`.merakisan.app.ui.main.MainActivity
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.util.Locale
+import org.json.JSONObject
 
 /**
- * MERA KISAN — विस्तृत ऑर्डर प्रबंधन स्क्रीन
- * Master Spec v1.1 Section 8, 9, 11 & 18: State Machine, Review & Dispute Integration
+ * MERA KISAN — DEEP ORDER DETAIL, TIMELINE STEPPER & STATE MACHINE
+ * Exact Repository Path: app/src/main/java/in/merakisan/app/ui/orders/OrderDetailFragment.kt
+ *
+ * Implements (Master Spec Sec 9, 11 & merged.txt Sec 15-20, 41):
+ * - Visual status progress timeline (PLACED -> ACCEPTED -> READY -> SHIPPED -> DELIVERED -> COMPLETED).
+ * - Detailed price breakdown (Item total, Delivery fee, Farmer net realization in paise/rupees).
+ * - Role-enforced transitions: Farmer can accept/ready/ship/deliver; Buyer can confirm delivery / cancel if placed.
+ * - Call / WhatsApp counterparty integration.
+ * - Multi-parameter Rating trigger ONLY when order is COMPLETED.
+ * - Dispute filing trigger with category & evidence notes.
  */
 class OrderDetailFragment : Fragment() {
 
-    private var _binding: FragmentOrderDetailBinding? = null
-    private val binding get() = _binding!!
+    private var targetOrderId: String = ""
+    private var currentOrderData: JSONObject? = null
 
-    private var currentOrderId: String = ""
-    private var currentOrder: OrderDto? = null
+    private lateinit var progressBar: ProgressBar
+    private lateinit var contentContainer: LinearLayout
+
+    private val disputeCategories = listOf(
+        "PRODUCT_QUALITY" to "उत्पाद की गुणवत्ता में अंतर (Product Quality)",
+        "QUANTITY_MISMATCH" to "मात्रा कम होना (Quantity Mismatch)",
+        "WRONG_PRODUCT" to "गलत उत्पाद प्राप्त होना (Wrong Product)",
+        "DELIVERY_DELAY" to "डिलीवरी में अत्यधिक देरी (Delivery Delay)",
+        "PAYMENT_ISSUE" to "भुगतान संबंधित समस्या (Payment Issue)",
+        "OTHER" to "अन्य समस्या (Other)"
+    )
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        targetOrderId = arguments?.getString("order_id") ?: ""
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-        _binding = FragmentOrderDetailBinding.inflate(inflater, container, false)
-        return binding.root
+        val ctx = requireContext()
+        val scroll = ScrollView(ctx).apply {
+            isFillViewport = true
+            setBackgroundColor(Color.parseColor("#F2F6F2"))
+        }
+
+        val root = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(28))
+        }
+
+        progressBar = ProgressBar(ctx).apply {
+            visibility = View.VISIBLE
+            setPadding(0, dp(16), 0, dp(16))
+        }
+        root.addView(progressBar)
+
+        contentContainer = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        root.addView(contentContainer)
+
+        scroll.addView(root)
+        return scroll
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        currentOrderId = arguments?.getString("orderId", "").orEmpty()
-
-        setupListeners()
-        loadOrderDetail()
+        loadOrderDetailFromServer()
     }
 
-    private fun setupListeners() {
-        findView("btnBack", "ivBack", "btnNavBack")?.setOnClickListener {
-            findNavController().navigateUp()
+    private fun loadOrderDetailFromServer() {
+        val ctx = context ?: return
+        if (targetOrderId.isBlank()) {
+            progressBar.visibility = View.GONE
+            Toast.makeText(ctx, "ऑर्डर ID उपलब्ध नहीं है।", Toast.LENGTH_SHORT).show()
+            return
         }
 
-        // विवाद निवारण (Dispute) बटन
-        findView("btnDispute", "btnOpenDispute", "btnReportIssue")?.setOnClickListener {
-            if (currentOrderId.isNotBlank()) {
-                val disputeDialog = CreateDisputeDialogFragment.newInstance(currentOrderId) { isSubmitted ->
-                    if (isSubmitted) {
-                        loadOrderDetail()
+        progressBar.visibility = View.VISIBLE
+        contentContainer.removeAllViews()
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            val res = ApiClient.request(ctx, "/orders/$targetOrderId", method = "GET")
+            if (!isAdded) return@launch
+            progressBar.visibility = View.GONE
+
+            val ord = res.dataObject
+            if (!res.isSuccess || ord == null) {
+                contentContainer.addView(
+                    TextView(ctx).apply {
+                        text = res.errorMessage ?: "ऑर्डर का विवरण लोड करने में समस्या आई।"
+                        setTextColor(Color.parseColor("#B71C1C"))
+                        setPadding(dp(12), dp(20), dp(12), dp(20))
                     }
-                }
-                disputeDialog.show(parentFragmentManager, "CreateDisputeDialogFragment")
+                )
+                return@launch
             }
-        }
 
-        // समीक्षा एवं 5-स्टार रेटिंग बटन (केवल डिलीवरी के बाद)
-        findView("btnLeaveReview", "btnReview", "btnAddReview", "btnRateProduct")?.setOnClickListener {
-            val order = currentOrder
-            if (order != null) {
-                val reviewDialog = AddReviewDialogFragment.newInstance(
-                    orderId = order.orderId,
-                    productId = order.productId,
-                    sellerUid = order.sellerUid,
-                    productName = order.productName
-                ) {
-                    loadOrderDetail()
-                }
-                reviewDialog.show(parentFragmentManager, "AddReviewDialogFragment")
-            }
+            currentOrderData = ord
+            renderOrderDetailUi(ord)
         }
     }
 
-    private fun loadOrderDetail() {
-        if (currentOrderId.isBlank()) return
+    private fun renderOrderDetailUi(ord: JSONObject) {
+        val ctx = requireContext()
+        val orderId = ord.optString("id", targetOrderId)
+        val prodName = ord.optString("product_name", "कृषि उत्पाद")
+        val qty = ord.optDouble("quantity", 1.0)
+        val unit = ord.optString("unit", "kg")
+        val totalPaise = ord.optLong("total_paise", 0L)
+        val totalRupees = ord.optDouble("total_rupees", totalPaise / 100.0)
+        val farmerNetPaise = ord.optLong("farmer_net_paise", totalPaise)
+        val farmerNetRupees = farmerNetPaise / 100.0
+        val deliveryFee = ord.optDouble("delivery_fee_rupees", 0.0)
 
-        setLoading(true)
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val api = ApiClient.getApiService(requireContext())
-                val resp = api.getOrderDetail(currentOrderId)
-                withContext(Dispatchers.Main) {
-                    setLoading(false)
-                    if (resp.isSuccessful && resp.body()?.success == true) {
-                        val order = resp.body()?.data
-                        if (order != null) {
-                            currentOrder = order
-                            bindOrder(order)
-                        }
-                    } else {
-                        Toast.makeText(requireContext(), "ऑर्डर विवरण लोड करने में समस्या आई", Toast.LENGTH_SHORT).show()
+        val status = ord.optString("status", "PLACED").uppercase()
+        val paymentMethod = ord.optString("payment_method", "COD")
+        val paymentStatus = ord.optString("payment_status", "COD_PENDING")
+        val createdAt = ord.optString("created_at", "").take(19).replace("T", " ")
+        val shippingAddress = ord.optString("shipping_address", "")
+        val buyerName = ord.optString("buyer_name", "खरीदार")
+        val buyerPhone = ord.optString("buyer_phone", "")
+        val farmerName = ord.optString("farmer_name", "किसान")
+        val farmerPhone = ord.optString("farmer_phone", "")
+        val farmerUid = ord.optString("farmer_uid", ord.optString("seller_uid", ""))
+
+        val myUid = SessionManager.getUserUid(ctx) ?: ""
+        val amIFarmer = myUid == farmerUid
+
+        // 1. Status Progress Header Card
+        val statusCard = createCard()
+        val statusTitleHi = when (status) {
+            "PLACED" -> "🆕 नया ऑर्डर (स्वीकृति बाकी)"
+            "ACCEPTED" -> "✅ किसान द्वारा स्वीकृत"
+            "PROCESSING" -> "⚙️ पैकिंग व तैयारी जारी"
+            "READY" -> "📦 डिस्पैच / पिकअप के लिए तैयार"
+            "SHIPPED" -> "🚚 रवाना हो चुका है (In Transit)"
+            "DELIVERED" -> "📍 पहुँच चुका है (खरीदार पुष्टि बाकी)"
+            "COMPLETED" -> "🎉 सफलतापूर्वक पूर्ण (COMPLETED)"
+            "DISPUTED" -> "⚖️ विवादित (Dispute Under Review)"
+            "CANCELLED" -> "❌ रद्द (Cancelled)"
+            "REJECTED" -> "❌ अस्वीकृत (Rejected)"
+            else -> status
+        }
+
+        statusCard.addView(
+            TextView(ctx).apply {
+                text = "ऑर्डर #$orderId"
+                setTextColor(Color.parseColor("#4A5A4A"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            }
+        )
+        statusCard.addView(
+            TextView(ctx).apply {
+                text = statusTitleHi
+                setTextColor(
+                    when (status) {
+                        "COMPLETED" -> Color.parseColor("#1B5E20")
+                        "DISPUTED", "CANCELLED", "REJECTED" -> Color.parseColor("#B71C1C")
+                        else -> Color.parseColor("#0D47A1")
                     }
+                )
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+                setTypeface(typeface, Typeface.BOLD)
+                setPadding(0, dp(4), 0, dp(6))
+            }
+        )
+
+        // Visual Stepper Dots
+        statusCard.addView(renderVisualOrderStepper(status))
+        contentContainer.addView(statusCard)
+
+        // 2. Order Items & Price Summary Card
+        val itemCard = createCard()
+        itemCard.addView(createSectionHeading("🌾 उत्पाद व मूल्य विवरण"))
+        itemCard.addView(
+            TextView(ctx).apply {
+                text = "$prodName — $qty $unit"
+                setTextColor(Color.parseColor("#1A241A"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+                setTypeface(typeface, Typeface.BOLD)
+                setPadding(0, dp(2), 0, dp(6))
+            }
+        )
+
+        val priceBreakdown = buildString {
+            append("• कुल ऑर्डर मूल्य: ₹$totalRupees\n")
+            if (deliveryFee > 0) append("• डिलीवरी / भाड़ा शुल्क: ₹$deliveryFee\n")
+            append("• भुगतान माध्यम: $paymentMethod ($paymentStatus)\n")
+            if (amIFarmer) {
+                append("• किसान को शुद्ध प्राप्ति: ₹$farmerNetRupees\n")
+            }
+            append("• ऑर्डर समय: $createdAt")
+        }
+
+        itemCard.addView(
+            TextView(ctx).apply {
+                text = priceBreakdown
+                setTextColor(Color.parseColor("#BF360C"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                setTypeface(typeface, Typeface.BOLD)
+            }
+        )
+        contentContainer.addView(itemCard)
+
+        // 3. Counterparty & Delivery Details Card
+        val contactCard = createCard()
+        contactCard.addView(createSectionHeading("📍 संपर्क व डिलीवरी पता"))
+
+        val detailsText = if (amIFarmer) {
+            "🛒 खरीदार: $buyerName\n📍 डिलीवरी/पिकअप पता: $shippingAddress"
+        } else {
+            "👨‍🌾 किसान: $farmerName\n📍 आपका डिलीवरी पता: $shippingAddress"
+        }
+
+        contactCard.addView(
+            TextView(ctx).apply {
+                text = detailsText
+                setTextColor(Color.parseColor("#333333"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                setPadding(0, 0, 0, dp(10))
+            }
+        )
+
+        val contactPhone = if (amIFarmer) buyerPhone else farmerPhone
+        if (contactPhone.isNotBlank() && contactPhone != "null") {
+            val contactRow = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
+
+            val btnCall = Button(ctx).apply {
+                text = "📞 कॉल करें ($contactPhone)"
+                isAllCaps = false
+                setTextColor(Color.WHITE)
+                background = roundedBg("#0D47A1", "#0D47A1", dp(8))
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    rightMargin = dp(6)
                 }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    setLoading(false)
-                    Toast.makeText(requireContext(), "नेटवर्क त्रुटि: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                setOnClickListener {
+                    startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$contactPhone")))
                 }
             }
+
+            val btnWa = Button(ctx).apply {
+                text = "🟢 WhatsApp"
+                isAllCaps = false
+                setTextColor(Color.WHITE)
+                background = roundedBg("#2E7D32", "#2E7D32", dp(8))
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                setOnClickListener {
+                    val clean = contactPhone.replace("\\D".toRegex(), "")
+                    val intl = if (clean.length == 10) "91$clean" else clean
+                    startActivity(
+                        Intent(
+                            Intent.ACTION_VIEW,
+                            Uri.parse("https://wa.me/$intl?text=${Uri.encode("नमस्ते, यह 'मेरा किसान' ऑर्डर #$orderId ($prodName) के संबंध में है।")}")
+                        )
+                    )
+                }
+            }
+
+            contactRow.addView(btnCall)
+            contactRow.addView(btnWa)
+            contactCard.addView(contactRow)
         }
-    }
+        contentContainer.addView(contactCard)
 
-    private fun bindOrder(order: OrderDto) {
-        val sessionManager = SessionManager(requireContext())
-        val userSession = sessionManager.getUserSession()
-        val isFarmer = order.sellerUid == userSession.uid
-        val isBuyer = order.buyerUid == userSession.uid
+        // 4. Role-Enforced Action Controls
+        val actionCard = createCard()
+        actionCard.addView(createSectionHeading("⚙️ ऑर्डर कार्रवाई"))
+        val actionRow = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
 
-        // 1. टेक्स्ट फ़ील्ड्स बाइंडिंग
-        findTextView("tvOrderId", "tvOrderNumber")?.text = "ऑर्डर ID: #${order.orderId.takeLast(8)}"
-        findTextView("tvProductName", "tvCropName")?.text = order.productName
-        findTextView("tvOrderQuantity", "tvQuantity")?.text = "मात्रा: ${order.quantity}${order.unit}"
-
-        // Master Spec Rule 14: वित्तीय अखंडता (Paise to Rupee display conversion)
-        val totalRupees = order.totalAmountPaise / 100.0
-        findTextView("tvTotalAmount", "tvPrice")?.text = String.format(Locale.getDefault(), "कुल राशि: ₹%.0f", totalRupees)
-
-        val status = order.orderStatus.uppercase(Locale.getDefault())
-        findTextView("tvOrderStatus", "tvStatus")?.text = "स्थिति: $status"
-
-        findTextView("tvDeliveryAddress", "tvAddress")?.apply {
-            text = "डिलीवरी पता: ${order.deliveryAddress.ifBlank { "खेत से सीधा पिकअप / स्थानीय डिलीवरी" }}"
-            isVisible = true
-        }
-
-        // 2. किसान एवं खरीदार भूमिका-आधारित एक्शन बटन्स का प्रबंधन
-        val primaryBtn = findButton("btnPrimaryAction", "btnAction", "btnUpdateStatus")
-        val reviewBtn = findView("btnLeaveReview", "btnReview", "btnAddReview", "btnRateProduct")
-        val disputeBtn = findView("btnDispute", "btnOpenDispute", "btnReportIssue")
-
-        // समीक्षा बटन केवल खरीदार को और केवल 'DELIVERED' स्थिति पर दिखाई देगा
-        reviewBtn?.isVisible = isBuyer && (status == "DELIVERED" || status == "COMPLETED")
-
-        // विवाद बटन सामान्य सक्रिय ऑर्डर्स या हालिया डिलीवरी पर दिखाई देगा
-        disputeBtn?.isVisible = status != "CANCELLED" && status != "REFUNDED" && status != "DISPUTED"
-
-        if (isFarmer) {
-            // किसान के लिए स्थिति आगे बढ़ाने के विकल्प
+        if (amIFarmer) {
             when (status) {
-                "CREATED", "PLACED" -> {
-                    primaryBtn?.isVisible = true
-                    primaryBtn?.text = "ऑर्डर स्वीकार करें (Accept)"
-                    primaryBtn?.setOnClickListener {
-                        updateStatus("ACCEPTED", "किसान द्वारा ऑर्डर स्वीकार किया गया")
-                    }
+                "PLACED" -> {
+                    actionRow.addView(
+                        createActionButton("✅ ऑर्डर स्वीकार करें (Accept Order)", "#1B5E20") {
+                            updateOrderStatus(orderId, "ACCEPTED")
+                        }
+                    )
+                    actionRow.addView(
+                        createActionButton("❌ ऑर्डर अस्वीकार करें (Reject)", "#B71C1C") {
+                            updateOrderStatus(orderId, "REJECTED")
+                        }
+                    )
                 }
-                "ACCEPTED" -> {
-                    primaryBtn?.isVisible = true
-                    primaryBtn?.text = "माल रवाना करें (Mark Shipped)"
-                    primaryBtn?.setOnClickListener {
-                        updateStatus("SHIPPED", "फसल खेत से रवाना कर दी गई है")
-                    }
+                "ACCEPTED", "PROCESSING" -> {
+                    actionRow.addView(
+                        createActionButton("📦 माल पैक हो गया — तैयार है (READY)", "#0D47A1") {
+                            updateOrderStatus(orderId, "READY")
+                        }
+                    )
+                    actionRow.addView(
+                        createActionButton("🚚 रवाना किया (SHIPPED)", "#1B5E20") {
+                            updateOrderStatus(orderId, "SHIPPED")
+                        }
+                    )
                 }
-                "SHIPPED", "IN_TRANSIT" -> {
-                    primaryBtn?.isVisible = true
-                    primaryBtn?.text = "डिलीवरी पूर्ण चिन्हित करें (Delivered)"
-                    primaryBtn?.setOnClickListener {
-                        updateStatus("DELIVERED", "उपज खरीदार को सफलतापूर्वक डिलीवर हुई")
-                    }
-                }
-                else -> {
-                    primaryBtn?.isVisible = false
+                "READY", "SHIPPED" -> {
+                    actionRow.addView(
+                        createActionButton("📍 डिलीवर हो गया मार्क करें (DELIVERED)", "#1B5E20") {
+                            updateOrderStatus(orderId, "DELIVERED")
+                        }
+                    )
                 }
             }
         } else {
-            // खरीदार केवल तभी डिलीवरी की पुष्टि कर सकता है जब माल रास्ते में हो
-            if (status == "SHIPPED" || status == "IN_TRANSIT") {
-                primaryBtn?.isVisible = true
-                primaryBtn?.text = "मुझे माल मिल गया (Confirm Delivery)"
-                primaryBtn?.setOnClickListener {
-                    updateStatus("DELIVERED", "खरीदार द्वारा डिलीवरी की पुष्टि की गई")
+            when (status) {
+                "PLACED" -> {
+                    actionRow.addView(
+                        createActionButton("❌ ऑर्डर रद्द करें (Cancel Order)", "#B71C1C") {
+                            updateOrderStatus(orderId, "CANCELLED")
+                        }
+                    )
                 }
+                "READY", "SHIPPED", "DELIVERED" -> {
+                    actionRow.addView(
+                        createActionButton("🎉 माल मिल गया — डिलीवरी की पुष्टि करें (Confirm)", "#1B5E20") {
+                            updateOrderStatus(orderId, "COMPLETED")
+                        }
+                    )
+                }
+            }
+        }
+
+        if (status == "COMPLETED" && !amIFarmer && FeatureManager.isEnabled("ratings", ctx)) {
+            actionRow.addView(
+                createActionButton("⭐ किसान को सत्यापित रेटिंग व रिव्यू दें", "#F57F17") {
+                    showRatingDialog(orderId, prodName, farmerName)
+                }
+            )
+        }
+
+        if (status !in listOf("CANCELLED", "REJECTED", "DISPUTED", "REFUNDED")) {
+            actionRow.addView(
+                createActionButton("⚖️ कोई समस्या है? विवाद दर्ज करें (Raise Dispute)", "#4E342E") {
+                    showRaiseDisputeDialog(orderId, prodName)
+                }
+            )
+        }
+
+        actionCard.addView(actionRow)
+        contentContainer.addView(actionCard)
+    }
+
+    private fun renderVisualOrderStepper(currentStatus: String): View {
+        val ctx = requireContext()
+        val steps = listOf("PLACED", "ACCEPTED", "SHIPPED", "DELIVERED", "COMPLETED")
+        val currentIdx = steps.indexOf(currentStatus).let { if (it >= 0) it else 0 }
+
+        val row = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(8), 0, dp(4))
+        }
+
+        for (i in steps.indices) {
+            val isDone = i <= currentIdx
+            val dot = View(ctx).apply {
+                val size = dp(14)
+                layoutParams = LinearLayout.LayoutParams(size, size)
+                background = roundedBg(
+                    if (isDone) "#1B5E20" else "#CCCCCC",
+                    if (isDone) "#1B5E20" else "#AAAAAA",
+                    size / 2
+                )
+            }
+            row.addView(dot)
+
+            if (i < steps.size - 1) {
+                val line = View(ctx).apply {
+                    layoutParams = LinearLayout.LayoutParams(0, dp(3), 1f)
+                    setBackgroundColor(if (i < currentIdx) Color.parseColor("#1B5E20") else Color.parseColor("#DDDDDD"))
+                }
+                row.addView(line)
+            }
+        }
+        return row
+    }
+
+    private fun updateOrderStatus(orderId: String, nextStatus: String) {
+        val ctx = context ?: return
+        progressBar.visibility = View.VISIBLE
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            val res = ApiClient.updateOrderStatus(ctx, orderId, nextStatus)
+            if (!isAdded) return@launch
+            progressBar.visibility = View.GONE
+
+            if (res.isSuccess) {
+                Toast.makeText(ctx, "✅ ऑर्डर स्थिति '$nextStatus' पर अपडेट हो गई!", Toast.LENGTH_SHORT).show()
+                loadOrderDetailFromServer()
             } else {
-                primaryBtn?.isVisible = false
+                Toast.makeText(ctx, res.errorMessage ?: "स्टेटस बदलने में त्रुटि।", Toast.LENGTH_LONG).show()
             }
         }
     }
 
-    private fun updateStatus(nextStatus: String, notes: String) {
-        setLoading(true)
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val api = ApiClient.getApiService(requireContext())
-                val req = UpdateOrderStatusRequest(
-                    nextStatus = nextStatus,
-                    status = nextStatus,
-                    notes = notes
-                )
-                val resp = api.updateOrderStatus(currentOrderId, req)
-                withContext(Dispatchers.Main) {
-                    setLoading(false)
-                    if (resp.isSuccessful) {
-                        Toast.makeText(requireContext(), "ऑर्डर स्थिति अद्यतित: $nextStatus", Toast.LENGTH_SHORT).show()
-                        loadOrderDetail()
+    private fun showRatingDialog(orderId: String, prodName: String, farmerName: String) {
+        val ctx = context ?: return
+        val layout = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(12), dp(20), dp(8))
+        }
+
+        val starOptions = listOf(
+            "5 ⭐⭐⭐⭐⭐ (उत्कृष्ट)",
+            "4 ⭐⭐⭐⭐ (बहुत अच्छा)",
+            "3 ⭐⭐⭐ (सामान्य)",
+            "2 ⭐⭐ (सुधार आवश्यक)",
+            "1 ⭐ (असंतुष्ट)"
+        )
+
+        val spinner = Spinner(ctx).apply {
+            adapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item, starOptions)
+        }
+        val commentInput = EditText(ctx).apply {
+            hint = "उत्पाद की गुणवत्ता और किसान के व्यवहार पर अपनी राय लिखें..."
+        }
+
+        layout.addView(spinner)
+        layout.addView(commentInput)
+
+        AlertDialog.Builder(ctx)
+            .setTitle("⭐ रेटिंग दें: $prodName ($farmerName)")
+            .setView(layout)
+            .setPositiveButton("रेटिंग सेव करें") { _, _ ->
+                val ratingVal = 5 - spinner.selectedItemPosition
+                val comment = commentInput.text?.toString()?.trim() ?: ""
+
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val payload = JSONObject().apply {
+                        put("order_id", orderId)
+                        put("rating", ratingVal)
+                        put("quality_rating", ratingVal)
+                        put("communication_rating", ratingVal)
+                        put("comment", comment)
+                    }
+                    val res = ApiClient.submitReview(ctx, payload)
+                    if (res.isSuccess) {
+                        Toast.makeText(ctx, "🙏 आपकी सत्यापित रेटिंग दर्ज हो गई!", Toast.LENGTH_LONG).show()
                     } else {
-                        Toast.makeText(requireContext(), "स्थिति अपडेट करने में समस्या आई", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(ctx, res.errorMessage ?: "रेटिंग देने में समस्या आई।", Toast.LENGTH_LONG).show()
                     }
                 }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    setLoading(false)
-                    Toast.makeText(requireContext(), "त्रुटि: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("बंद करें", null)
+            .show()
+    }
+
+    private fun showRaiseDisputeDialog(orderId: String, prodName: String) {
+        val ctx = context ?: return
+        val layout = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(12), dp(20), dp(8))
+        }
+
+        val catSpinner = Spinner(ctx).apply {
+            adapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item, disputeCategories.map { it.second })
+        }
+        val descInput = EditText(ctx).apply {
+            hint = "समस्या का पूरा विवरण लिखें (कम से कम 10 अक्षर) *"
+        }
+
+        layout.addView(catSpinner)
+        layout.addView(descInput)
+
+        AlertDialog.Builder(ctx)
+            .setTitle("⚖️ विवाद दर्ज करें (#$orderId)")
+            .setMessage("उत्पाद: $prodName")
+            .setView(layout)
+            .setPositiveButton("विवाद दर्ज करें") { _, _ ->
+                val catCode = disputeCategories.getOrNull(catSpinner.selectedItemPosition)?.first ?: "OTHER"
+                val desc = descInput.text?.toString()?.trim() ?: ""
+
+                if (desc.length < 10) {
+                    Toast.makeText(ctx, "कृपया समस्या का स्पष्ट विवरण लिखें।", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val payload = JSONObject().apply {
+                        put("order_id", orderId)
+                        put("category", catCode)
+                        put("description", desc)
+                    }
+                    val res = ApiClient.createDispute(ctx, payload)
+                    if (res.isSuccess) {
+                        Toast.makeText(ctx, "⚖️ आपका विवाद दर्ज हो गया है। एडमिन टीम इसकी जाँच करेगी।", Toast.LENGTH_LONG).show()
+                        loadOrderDetailFromServer()
+                    } else {
+                        Toast.makeText(ctx, res.errorMessage ?: "विवाद दर्ज करने में त्रुटि।", Toast.LENGTH_LONG).show()
+                    }
                 }
             }
+            .setNegativeButton("रद्द करें", null)
+            .show()
+    }
+
+    private fun createCard(): LinearLayout {
+        val ctx = requireContext()
+        return LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBg("#FFFFFF", "#D4E2D4", dp(14))
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            val lp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            lp.topMargin = dp(10)
+            layoutParams = lp
         }
     }
 
-    private fun setLoading(isLoading: Boolean) {
-        findView("pbOrderDetailsLoading", "progressBar", "pbLoading")?.isVisible = isLoading
-    }
-
-    private fun findTextView(vararg candidateNames: String): TextView? {
-        for (name in candidateNames) {
-            val id = resources.getIdentifier(name, "id", requireContext().packageName)
-            if (id != 0) {
-                val v = binding.root.findViewById<View>(id)
-                if (v is TextView) return v
-            }
+    private fun createSectionHeading(title: String): TextView =
+        TextView(requireContext()).apply {
+            text = title
+            setTextColor(Color.parseColor("#124116"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(0, 0, 0, dp(8))
         }
-        return null
-    }
 
-    private fun findButton(vararg candidateNames: String): Button? {
-        for (name in candidateNames) {
-            val id = resources.getIdentifier(name, "id", requireContext().packageName)
-            if (id != 0) {
-                val v = binding.root.findViewById<View>(id)
-                if (v is Button) return v
-            }
+    private fun createActionButton(label: String, bgHex: String, onClick: () -> Unit): Button =
+        Button(requireContext()).apply {
+            text = label
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, Typeface.BOLD)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            background = roundedBg(bgHex, bgHex, dp(8))
+            minHeight = dp(44)
+            val lp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            lp.topMargin = dp(6)
+            layoutParams = lp
+            setOnClickListener { onClick() }
         }
-        return null
-    }
 
-    private fun findView(vararg candidateNames: String): View? {
-        for (name in candidateNames) {
-            val id = resources.getIdentifier(name, "id", requireContext().packageName)
-            if (id != 0) {
-                val v = binding.root.findViewById<View>(id)
-                if (v != null) return v
-            }
+    private fun roundedBg(fillHex: String, strokeHex: String, radiusPx: Int): GradientDrawable =
+        GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = radiusPx.toFloat()
+            setColor(Color.parseColor(fillHex))
+            setStroke(dp(1), Color.parseColor(strokeHex))
         }
-        return null
-    }
 
-    override fun onDestroyView() {
-        super.onDestroyView()
-        _binding = null
-    }
+    private fun dp(value: Int): Int =
+        TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP,
+            value.toFloat(),
+            resources.displayMetrics
+        ).toInt()
 }
