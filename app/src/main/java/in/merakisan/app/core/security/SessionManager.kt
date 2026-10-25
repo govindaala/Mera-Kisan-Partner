@@ -10,40 +10,150 @@ import org.json.JSONObject
 
 /**
  * MERA KISAN — ENCRYPTED SESSION & ROLE STATE MANAGER
- * Supports BOTH:
- * 1) Instance initialization: `val sessionManager = SessionManager(context)` (used by AuthTokenProvider, OrderRepository, AuthViewModel)
- * 2) Static Companion calls: `SessionManager.getAuthToken(context)`, `SessionManager.saveFcmToken(context, token)` (used by Fragments & Services)
+ * Includes `UserSession`, `getUserSession()`, `saveSession(...)`, `email` support,
+ * and `consumeLastCrashSummary()` for full ViewModel & Repository compatibility.
  */
 class SessionManager(private val context: Context) {
 
-    // Instance methods delegating to encrypted companion methods
-    fun saveAuthToken(token: String) = Companion.saveAuthToken(context, token)
-    fun getAuthToken(): String? = Companion.getAuthToken(context)
+    data class UserSession(
+        val uid: String = "",
+        val name: String = "",
+        val phone: String = "",
+        val email: String = "",
+        val role: String = "farmer",
+        val activeRole: String = "farmer",
+        val activeMode: String = "FARMER",
+        val roles: List<String> = listOf("farmer", "buyer"),
+        val village: String = "",
+        val district: String = "",
+        val state: String = "",
+        val pincode: String = "",
+        val token: String = "",
+        val idToken: String = "",
+        val authToken: String = "",
+        val fcmToken: String = "",
+        val isVerified: Boolean = false,
+        val organicVerified: Boolean = false,
+        val verificationStatus: String = "farmer_declared",
+        val isLoggedIn: Boolean = false,
+        val isOnboarded: Boolean = false,
+        val farmStory: String = "",
+        val farmingMethod: String = ""
+    ) {
+        val userId: String get() = uid
+        val id: String get() = uid
+        val userName: String get() = name
+        val mobile: String get() = phone
+        val userPhone: String get() = phone
+        val location: String
+            get() = if (village.isNotBlank() && district.isNotBlank()) "$village, $district" else district.ifBlank { village }
 
-    fun saveFcmToken(token: String) = Companion.saveFcmToken(context, token)
-    fun getFcmToken(): String? = Companion.getFcmToken(context)
+        fun isFarmer(): Boolean =
+            activeMode.equals("FARMER", ignoreCase = true) || role.equals("farmer", ignoreCase = true)
 
+        fun isBuyer(): Boolean =
+            activeMode.equals("BUYER", ignoreCase = true) || role.equals("buyer", ignoreCase = true)
+    }
+
+    fun getUserSession(): UserSession = Companion.getUserSession(context)
+
+    fun saveSession(session: UserSession) = Companion.saveSession(context, session)
+
+    @JvmOverloads
+    fun saveSession(
+        uid: String = getUserUid() ?: "",
+        name: String = getUserName(),
+        phone: String = getSelfDeclaredPhone(),
+        email: String? = getUserEmail(),
+        role: String = getActiveRole(),
+        activeRole: String? = null,
+        activeMode: String? = null,
+        roles: List<String>? = null,
+        village: String? = getUserVillage(),
+        district: String? = getUserDistrict(),
+        state: String? = getUserState(),
+        pincode: String? = null,
+        token: String? = null,
+        idToken: String? = null,
+        isVerified: Boolean = false,
+        organicVerified: Boolean = false,
+        verificationStatus: String = getVerificationStatus()
+    ) {
+        val resolvedMode = (activeMode ?: activeRole ?: role).let {
+            if (it.equals("buyer", ignoreCase = true)) "BUYER" else "FARMER"
+        }
+        val resolvedRoles = roles ?: if (role.equals("both", ignoreCase = true)) {
+            listOf("farmer", "buyer")
+        } else {
+            listOf(role.lowercase())
+        }
+        val finalToken = idToken ?: token
+        if (!finalToken.isNullOrBlank()) {
+            saveAuthToken(finalToken)
+        }
+        Companion.saveOnboardedUserSession(
+            context = context,
+            uid = uid,
+            name = name,
+            phone = phone,
+            roles = resolvedRoles,
+            activeMode = resolvedMode,
+            village = village,
+            district = district,
+            state = state,
+            verificationStatus = if (organicVerified) "organic_certified" else if (isVerified) "verified_farmer" else verificationStatus,
+            email = email,
+            pincode = pincode,
+            idToken = finalToken
+        )
+    }
+
+    @JvmOverloads
     fun saveOnboardedUserSession(
         uid: String,
         name: String,
         phone: String,
-        roles: List<String>,
-        activeMode: String,
+        roles: List<String> = listOf("farmer", "buyer"),
+        activeMode: String = "FARMER",
         village: String? = null,
         district: String? = null,
         state: String? = null,
-        verificationStatus: String = "farmer_declared"
+        verificationStatus: String = "farmer_declared",
+        email: String? = null,
+        pincode: String? = null,
+        idToken: String? = null,
+        role: String? = null,
+        isVerified: Boolean = false
     ) = Companion.saveOnboardedUserSession(
-        context, uid, name, phone, roles, activeMode, village, district, state, verificationStatus
+        context = context,
+        uid = uid,
+        name = name,
+        phone = phone,
+        roles = if (!role.isNullOrBlank() && roles.isEmpty()) listOf(role.lowercase()) else roles,
+        activeMode = activeMode.ifBlank { role ?: "FARMER" },
+        village = village,
+        district = district,
+        state = state,
+        verificationStatus = if (isVerified && verificationStatus == "farmer_declared") "verified_farmer" else verificationStatus,
+        email = email,
+        pincode = pincode,
+        idToken = idToken
     )
 
+    @JvmOverloads
     fun saveUserSession(
-        uid: String,
-        name: String,
-        phone: String,
-        role: String,
+        uid: String = "",
+        name: String = "",
+        phone: String = "",
+        role: String = "farmer",
         district: String? = null,
-        village: String? = null
+        village: String? = null,
+        state: String? = null,
+        email: String? = null,
+        pincode: String? = null,
+        idToken: String? = null,
+        token: String? = null,
+        isVerified: Boolean = false
     ) = Companion.saveOnboardedUserSession(
         context = context,
         uid = uid,
@@ -52,8 +162,22 @@ class SessionManager(private val context: Context) {
         roles = if (role.equals("both", ignoreCase = true)) listOf("farmer", "buyer") else listOf(role.lowercase()),
         activeMode = if (role.equals("buyer", ignoreCase = true)) "BUYER" else "FARMER",
         village = village,
-        district = district
+        district = district,
+        state = state,
+        verificationStatus = if (isVerified) "verified_farmer" else "farmer_declared",
+        email = email,
+        pincode = pincode,
+        idToken = idToken ?: token
     )
+
+    fun saveAuthToken(token: String) = Companion.saveAuthToken(context, token)
+    fun getAuthToken(): String? = Companion.getAuthToken(context)
+
+    fun saveFcmToken(token: String) = Companion.saveFcmToken(context, token)
+    fun getFcmToken(): String? = Companion.getFcmToken(context)
+
+    fun consumeLastCrashSummary(): String? = Companion.consumeLastCrashSummary(context)
+    fun saveCrashSummary(summary: String) = Companion.saveCrashSummary(context, summary)
 
     fun isLoggedInAndOnboarded(): Boolean = Companion.isLoggedInAndOnboarded(context)
     fun isLoggedIn(): Boolean = Companion.isLoggedInAndOnboarded(context)
@@ -70,6 +194,9 @@ class SessionManager(private val context: Context) {
     fun getUserPhone(): String = Companion.getSelfDeclaredPhone(context)
     fun getPhone(): String = Companion.getSelfDeclaredPhone(context)
     fun saveUserPhone(phone: String) = Companion.saveUserPhone(context, phone)
+
+    fun getUserEmail(): String = Companion.getUserEmail(context)
+    fun saveUserEmail(email: String) = Companion.saveUserEmail(context, email)
 
     fun getUserVillage(): String = Companion.getUserVillage(context)
     fun getVillage(): String = Companion.getUserVillage(context)
@@ -108,6 +235,8 @@ class SessionManager(private val context: Context) {
         private const val KEY_FCM_TOKEN = "fcm_push_token"
         private const val KEY_NAME = "user_name"
         private const val KEY_PHONE = "self_declared_phone"
+        private const val KEY_EMAIL = "user_email"
+        private const val KEY_PINCODE = "user_pincode"
         private const val KEY_ROLES_CSV = "user_roles_csv"
         private const val KEY_ACTIVE_MODE = "active_role_mode"
         private const val KEY_ONBOARDING_DONE = "onboarding_completed"
@@ -115,6 +244,7 @@ class SessionManager(private val context: Context) {
         private const val KEY_DISTRICT = "user_district"
         private const val KEY_STATE = "user_state"
         private const val KEY_VERIFICATION_STATUS = "verification_status"
+        private const val KEY_LAST_CRASH_SUMMARY = "last_crash_summary"
 
         private const val KEY_DEALER_TOKEN = "agri_dealer_session_token"
         private const val KEY_DEALER_SHOP_NAME = "agri_dealer_shop_name"
@@ -156,6 +286,83 @@ class SessionManager(private val context: Context) {
         }
 
         @JvmStatic
+        fun getUserSession(context: Context): UserSession {
+            val prefs = getSecurePrefs(context)
+            val uid = prefs.getString(KEY_UID, "") ?: ""
+            val name = prefs.getString(KEY_NAME, "") ?: ""
+            val phone = prefs.getString(KEY_PHONE, "") ?: ""
+            val email = prefs.getString(KEY_EMAIL, "") ?: ""
+            val pincode = prefs.getString(KEY_PINCODE, "") ?: ""
+            val activeMode = getActiveMode(context)
+            val activeRole = activeMode.lowercase()
+            val rolesList = getAllowedRoles(context).ifEmpty { listOf("farmer", "buyer") }
+            val village = prefs.getString(KEY_VILLAGE, "") ?: ""
+            val district = prefs.getString(KEY_DISTRICT, "") ?: ""
+            val state = prefs.getString(KEY_STATE, "") ?: ""
+            val token = prefs.getString(KEY_AUTH_TOKEN, "") ?: ""
+            val fcm = prefs.getString(KEY_FCM_TOKEN, "") ?: ""
+            val verif = prefs.getString(KEY_VERIFICATION_STATUS, "farmer_declared") ?: "farmer_declared"
+            val onboarded = prefs.getBoolean(KEY_ONBOARDING_DONE, false)
+
+            return UserSession(
+                uid = uid,
+                name = name,
+                phone = phone,
+                email = email,
+                role = activeRole,
+                activeRole = activeRole,
+                activeMode = activeMode,
+                roles = rolesList,
+                village = village,
+                district = district,
+                state = state,
+                pincode = pincode,
+                token = token,
+                idToken = token,
+                authToken = token,
+                fcmToken = fcm,
+                isVerified = verif != "unverified" && verif != "farmer_declared",
+                organicVerified = verif == "organic_certified",
+                verificationStatus = verif,
+                isLoggedIn = uid.isNotBlank() && phone.isNotBlank(),
+                isOnboarded = onboarded
+            )
+        }
+
+        @JvmStatic
+        fun saveSession(context: Context, session: UserSession) {
+            if (session.idToken.isNotBlank()) {
+                saveAuthToken(context, session.idToken)
+            } else if (session.token.isNotBlank()) {
+                saveAuthToken(context, session.token)
+            }
+            if (session.fcmToken.isNotBlank()) {
+                saveFcmToken(context, session.fcmToken)
+            }
+            val resolvedMode = when {
+                session.activeMode.equals("BUYER", ignoreCase = true) -> "BUYER"
+                session.activeRole.equals("buyer", ignoreCase = true) -> "BUYER"
+                session.role.equals("buyer", ignoreCase = true) -> "BUYER"
+                else -> "FARMER"
+            }
+            saveOnboardedUserSession(
+                context = context,
+                uid = session.uid,
+                name = session.name,
+                phone = session.phone,
+                roles = session.roles.ifEmpty { listOf(session.role.lowercase()) },
+                activeMode = resolvedMode,
+                village = session.village,
+                district = session.district,
+                state = session.state,
+                verificationStatus = session.verificationStatus,
+                email = session.email,
+                pincode = session.pincode,
+                idToken = session.idToken.ifBlank { session.token }
+            )
+        }
+
+        @JvmStatic
         fun saveAuthToken(context: Context, token: String) {
             if (token.isBlank()) return
             getSecurePrefs(context).edit().putString(KEY_AUTH_TOKEN, token.trim()).apply()
@@ -176,6 +383,22 @@ class SessionManager(private val context: Context) {
             getSecurePrefs(context).getString(KEY_FCM_TOKEN, null)
 
         @JvmStatic
+        fun consumeLastCrashSummary(context: Context): String? {
+            val prefs = getSecurePrefs(context)
+            val summary = prefs.getString(KEY_LAST_CRASH_SUMMARY, null)
+            if (!summary.isNullOrBlank()) {
+                prefs.edit().remove(KEY_LAST_CRASH_SUMMARY).apply()
+            }
+            return summary
+        }
+
+        @JvmStatic
+        fun saveCrashSummary(context: Context, summary: String) {
+            if (summary.isBlank()) return
+            getSecurePrefs(context).edit().putString(KEY_LAST_CRASH_SUMMARY, summary.trim()).apply()
+        }
+
+        @JvmStatic
         fun saveUserId(context: Context, uid: String) {
             getSecurePrefs(context).edit().putString(KEY_UID, uid.trim()).apply()
         }
@@ -191,22 +414,35 @@ class SessionManager(private val context: Context) {
         }
 
         @JvmStatic
+        fun getUserEmail(context: Context): String =
+            getSecurePrefs(context).getString(KEY_EMAIL, "") ?: ""
+
+        @JvmStatic
+        fun saveUserEmail(context: Context, email: String) {
+            getSecurePrefs(context).edit().putString(KEY_EMAIL, email.trim()).apply()
+        }
+
+        @JvmStatic
         fun saveUserDistrict(context: Context, district: String) {
             getSecurePrefs(context).edit().putString(KEY_DISTRICT, district.trim()).apply()
         }
 
         @JvmStatic
+        @JvmOverloads
         fun saveOnboardedUserSession(
             context: Context,
             uid: String,
             name: String,
             phone: String,
-            roles: List<String>,
-            activeMode: String,
+            roles: List<String> = listOf("farmer", "buyer"),
+            activeMode: String = "FARMER",
             village: String? = null,
             district: String? = null,
             state: String? = null,
-            verificationStatus: String = "farmer_declared"
+            verificationStatus: String = "farmer_declared",
+            email: String? = null,
+            pincode: String? = null,
+            idToken: String? = null
         ) {
             val cleanRoles = roles.map { it.trim().lowercase() }.filter { it in listOf("farmer", "buyer") }.distinct()
             val resolvedMode = when (activeMode.trim().uppercase()) {
@@ -225,6 +461,9 @@ class SessionManager(private val context: Context) {
                 if (!village.isNullOrBlank()) putString(KEY_VILLAGE, village.trim())
                 if (!district.isNullOrBlank()) putString(KEY_DISTRICT, district.trim())
                 if (!state.isNullOrBlank()) putString(KEY_STATE, state.trim())
+                if (!email.isNullOrBlank()) putString(KEY_EMAIL, email.trim())
+                if (!pincode.isNullOrBlank()) putString(KEY_PINCODE, pincode.trim())
+                if (!idToken.isNullOrBlank()) putString(KEY_AUTH_TOKEN, idToken.trim())
                 putString(KEY_VERIFICATION_STATUS, verificationStatus.trim().lowercase())
                 apply()
             }
