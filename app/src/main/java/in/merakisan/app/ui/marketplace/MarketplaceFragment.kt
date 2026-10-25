@@ -1,5 +1,5 @@
-// app/src/main/java/in/merakisan/app/ui/crops/MarketplaceFragment.kt
-package `in`.merakisan.app.ui.crops
+// app/src/main/java/in/merakisan/app/ui/marketplace/MarketplaceFragment.kt
+package `in`.merakisan.app.ui.marketplace
 
 import android.app.AlertDialog
 import android.graphics.Color
@@ -7,7 +7,6 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.util.TypedValue
-import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -32,14 +31,6 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 
-/**
- * MERA KISAN — UNIFIED MARKETPLACE & FARMER "MY CROPS" MANAGER
- *
- * Modes:
- * - FARMER_MY_CROPS: Farmer manages own listings (Active / Sold, Edit, Mark Sold, Delete, Crop Boost, Poster Share).
- * - BUYER_DISCOVERY: Buyer searches by natural Hindi query, category (including separate Seeds & Cold Pressed Oil),
- *   Small Quantity (1-25 kg), Fresh Today, District, and can save search alerts.
- */
 class MarketplaceFragment : Fragment() {
 
     private var screenMode: String = "BUYER_DISCOVERY"
@@ -69,8 +60,6 @@ class MarketplaceFragment : Fragment() {
         val argMode = arguments?.getString("mode")
         screenMode = if (!argMode.isNullOrBlank()) {
             argMode
-        } else if (SessionManager.isFarmerModeActive(requireContext())) {
-            "FARMER_MY_CROPS"
         } else {
             "BUYER_DISCOVERY"
         }
@@ -94,7 +83,6 @@ class MarketplaceFragment : Fragment() {
 
         val isFarmerMyCrops = screenMode == "FARMER_MY_CROPS"
 
-        // 1. Header & Filter Card
         val topCard = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             background = roundedBg("#FFFFFF", "#D4E2D4", dp(14))
@@ -132,6 +120,11 @@ class MarketplaceFragment : Fragment() {
                     android.R.layout.simple_spinner_dropdown_item,
                     categoriesList.map { it.second }
                 )
+            }
+            val initialCat = arguments?.getString("initial_category")
+            if (!initialCat.isNullOrBlank()) {
+                val idx = categoriesList.indexOfFirst { it.first == initialCat }
+                if (idx >= 0) spinnerCategory.setSelection(idx)
             }
             topCard.addView(spinnerCategory)
 
@@ -323,7 +316,6 @@ class MarketplaceFragment : Fragment() {
             }
         )
 
-        // Row 1: Edit | Mark Sold | Delete
         val row1 = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
 
         val btnEdit = createButton("✏️ एडिट", "#0D47A1") {
@@ -356,35 +348,6 @@ class MarketplaceFragment : Fragment() {
         row1.addView(btnDelete)
         card.addView(row1)
 
-        // Row 2: Poster & Share | Crop Boost (if enabled)
-        val row2 = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, dp(8), 0, 0)
-        }
-
-        val btnPosterShare = createButton("🎨 .JPG पोस्टर व शेयर", "#1B5E20") {
-            (activity as? MainActivity)?.openProductDetailScreen(prodId)
-        }.apply {
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                rightMargin = dp(4)
-            }
-        }
-        row2.addView(btnPosterShare)
-
-        if (FeatureManager.isEnabled("crop_boost", ctx)) {
-            val boostFee = FeatureManager.getBoostPriceRupees()
-            val boostDays = FeatureManager.getBoostDurationDays()
-            val btnBoost = createButton("🚀 बूस्ट (₹$boostFee/${boostDays}d)", "#BF360C") {
-                requestCropBoost(prodId, name)
-            }.apply {
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    leftMargin = dp(4)
-                }
-            }
-            row2.addView(btnBoost)
-        }
-
-        card.addView(row2)
         return card
     }
 
@@ -483,23 +446,6 @@ class MarketplaceFragment : Fragment() {
             }
             .setNegativeButton("नहीं", null)
             .show()
-    }
-
-    private fun requestCropBoost(productId: String, name: String) {
-        val ctx = context ?: return
-        viewLifecycleOwner.lifecycleScope.launch {
-            val body = JSONObject().apply { put("product_id", productId) }
-            val res = ApiClient.request(ctx, "/crop-boost", method = "POST", bodyJson = body)
-            if (res.isSuccess) {
-                Toast.makeText(
-                    ctx,
-                    "'$name' के लिए बूस्ट अनुरोध दर्ज हो गया! सत्यापन के बाद यह शीर्ष पर दिखेगी।",
-                    Toast.LENGTH_LONG
-                ).show()
-            } else {
-                Toast.makeText(ctx, res.errorMessage ?: "बूस्ट अनुरोध विफल रहा।", Toast.LENGTH_LONG).show()
-            }
-        }
     }
 
     private fun saveCurrentSearchAlert() {
