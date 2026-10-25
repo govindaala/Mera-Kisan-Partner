@@ -70,7 +70,7 @@ import kotlinx.coroutines.launch
 
 - - ui/offers/NegotiationHistoryFragment.kt
 
-- - ui/modules/*
+- - ui/modules/
 
 - - ui/profile/ProfileFragment.kt
     */
