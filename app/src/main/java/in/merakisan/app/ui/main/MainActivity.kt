@@ -23,29 +23,42 @@ import androidx.lifecycle.lifecycleScope
 import `in`.merakisan.app.core.config.FeatureManager
 import `in`.merakisan.app.core.network.ApiClient
 import `in`.merakisan.app.core.security.SessionManager
-import `in`.merakisan.app.ui.agri.AgriInputsSeedsFragment
 import `in`.merakisan.app.ui.auth.LoginFragment
 import `in`.merakisan.app.ui.auth.SplashFragment
-import `in`.merakisan.app.ui.crops.AddProductFragment
-import `in`.merakisan.app.ui.crops.MarketplaceFragment
-import `in`.merakisan.app.ui.crops.ProductDetailFragment
+import `in`.merakisan.app.ui.farmer.AddProductFragment
+import `in`.merakisan.app.ui.farmer.FarmerPublicProfileFragment
+import `in`.merakisan.app.ui.farmer.MyCropsFragment
+import `in`.merakisan.app.ui.favorites.FavoritesFragment
 import `in`.merakisan.app.ui.home.HomeFragment
 import `in`.merakisan.app.ui.mandi.MandiPricesFragment
-import `in`.merakisan.app.ui.modules.BuyerRequestFragment
-import `in`.merakisan.app.ui.modules.FavoritesFollowFragment
+import `in`.merakisan.app.ui.marketing.AiPosterStudioFragment
+import `in`.merakisan.app.ui.marketplace.MarketplaceFragment
+import `in`.merakisan.app.ui.marketplace.ProductDetailFragment
+import `in`.merakisan.app.ui.modules.BatchQrTraceabilityFragment
+import `in`.merakisan.app.ui.modules.FairPriceCalculatorFragment
+import `in`.merakisan.app.ui.modules.FarmBoxGroupBuyFragment
+import `in`.merakisan.app.ui.modules.OilMillMarketplaceFragment
+import `in`.merakisan.app.ui.offers.NegotiationHistoryFragment
 import `in`.merakisan.app.ui.orders.OrdersFragment
 import `in`.merakisan.app.ui.profile.ProfileFragment
+import `in`.merakisan.app.ui.requests.BuyerRequestsFragment
 import kotlinx.coroutines.launch
 
 /**
  * MERA KISAN — UNIFIED MAIN ACTIVITY
- *
- * Implements:
- * - Strict Farmer vs Buyer Bottom Navigation (Master Spec Sec 5 & merged.txt Sec 76).
- * - 1-Tap Role Switcher synced with Backend `/auth/role`.
- * - Remote Feature Flag Tab Visibility (`FeatureManager.isEnabled`).
- * - Deep Link Routing (`/product/{productId}` and `merakisan://product/{productId}`).
- * - AdMob Architectural Slot (Default OFF / View.GONE unless enabled by Admin).
+ * Strictly aligned with actual repository tree:
+ * - ui/farmer/MyCropsFragment.kt
+ * - ui/farmer/AddProductFragment.kt
+ * - ui/marketplace/MarketplaceFragment.kt
+ * - ui/marketplace/ProductDetailFragment.kt
+ * - ui/requests/BuyerRequestsFragment.kt
+ * - ui/favorites/FavoritesFragment.kt
+ * - ui/orders/OrdersFragment.kt
+ * - ui/mandi/MandiPricesFragment.kt
+ * - ui/marketing/AiPosterStudioFragment.kt
+ * - ui/offers/NegotiationHistoryFragment.kt
+ * - ui/modules/*
+ * - ui/profile/ProfileFragment.kt
  */
 class MainActivity : AppCompatActivity() {
 
@@ -53,15 +66,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var activeModeBadgeText: TextView
     private lateinit var btnSwitchMode: Button
     private lateinit var btnQuickMandi: Button
-    private lateinit var btnQuickAgriInputs: Button
+    private lateinit var btnQuickSeedsAgri: Button
+    private lateinit var btnQuickOffers: Button
+    private lateinit var btnQuickFairPrice: Button
 
     private lateinit var fragmentContainer: FrameLayout
     private lateinit var adMobBannerSlot: FrameLayout
     private lateinit var bottomNavContainer: LinearLayout
 
     private var pendingDeepLinkProductId: String? = null
-    private var currentSelectedTabKey: String = "HOME"
-
     private val fragmentContainerId = View.generateViewId()
 
     data class NavTabItem(
@@ -101,7 +114,7 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
-        // 1. Top Role & Quick Utility Bar (Visible after Onboarding)
+        // 1. Top Role Switcher & Quick Feature Bar
         topGovernanceBar = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#1B5E20"))
@@ -137,7 +150,6 @@ class MainActivity : AppCompatActivity() {
         topRow.addView(activeModeBadgeText)
         topRow.addView(btnSwitchMode)
 
-        // Quick Action Chips Row (Live Mandi Prices + Seeds & Agri-Inputs)
         val quickRowScroll = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
             setPadding(0, dp(8), 0, 0)
@@ -147,43 +159,33 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
         }
 
-        btnQuickMandi = Button(this).apply {
-            text = "📈 लाइव मंडी भाव व AI सलाह"
-            isAllCaps = false
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            setTextColor(Color.parseColor("#1B5E20"))
-            background = roundedDrawable("#E8F5E9", dp(8))
-            setPadding(dp(10), dp(4), dp(10), dp(4))
-            minHeight = dp(34)
-            setOnClickListener { openMandiPricesScreen() }
+        btnQuickMandi = createQuickChipButton("📈 लाइव मंडी व AI सलाह", "#E8F5E9", "#1B5E20") {
+            openMandiPricesScreen()
         }
 
-        btnQuickAgriInputs = Button(this).apply {
-            text = "🧪 बीज, खाद व कृषि दवाई (Pickup)"
-            isAllCaps = false
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            setTextColor(Color.parseColor("#1B5E20"))
-            background = roundedDrawable("#FFF8E1", dp(8))
-            setPadding(dp(10), dp(4), dp(10), dp(4))
-            minHeight = dp(34)
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            lp.leftMargin = dp(8)
-            layoutParams = lp
-            setOnClickListener { openAgriInputsAndSeedsScreen() }
+        btnQuickSeedsAgri = createQuickChipButton("🌱 बीज, खाद व कृषि दवाई", "#FFF8E1", "#1B5E20") {
+            openAgriInputsAndSeedsScreen("seeds")
+        }
+
+        btnQuickOffers = createQuickChipButton("🤝 मोलभाव (Offers)", "#E3F2FD", "#0D47A1") {
+            openNegotiationOffersScreen()
+        }
+
+        btnQuickFairPrice = createQuickChipButton("🧮 उचित दाम कैलकुलेटर", "#F3E5F5", "#4A148C") {
+            openFairPriceCalculatorScreen()
         }
 
         quickRow.addView(btnQuickMandi)
-        quickRow.addView(btnQuickAgriInputs)
+        quickRow.addView(btnQuickSeedsAgri)
+        quickRow.addView(btnQuickOffers)
+        quickRow.addView(btnQuickFairPrice)
         quickRowScroll.addView(quickRow)
 
         topGovernanceBar.addView(topRow)
         topGovernanceBar.addView(quickRowScroll)
         root.addView(topGovernanceBar)
 
-        // 2. Main Fragment Container
+        // 2. Main Fragment Host
         fragmentContainer = FrameLayout(this).apply {
             id = fragmentContainerId
             layoutParams = LinearLayout.LayoutParams(
@@ -194,7 +196,7 @@ class MainActivity : AppCompatActivity() {
         }
         root.addView(fragmentContainer)
 
-        // 3. AdMob Architectural Slot (Default OFF / View.GONE — Master Spec Sec 17)
+        // 3. AdMob Banner Slot (Default OFF / View.GONE — Master Spec Sec 17)
         adMobBannerSlot = FrameLayout(this).apply {
             visibility = View.GONE
             setBackgroundColor(Color.parseColor("#ECEFF1"))
@@ -221,6 +223,29 @@ class MainActivity : AppCompatActivity() {
         setContentView(root)
     }
 
+    private fun createQuickChipButton(
+        label: String,
+        bgHex: String,
+        textHex: String,
+        onClick: () -> Unit
+    ): Button =
+        Button(this).apply {
+            text = label
+            isAllCaps = false
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setTextColor(Color.parseColor(textHex))
+            background = roundedDrawable(bgHex, dp(8))
+            setPadding(dp(10), dp(4), dp(10), dp(4))
+            minHeight = dp(34)
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            lp.rightMargin = dp(8)
+            layoutParams = lp
+            setOnClickListener { onClick() }
+        }
+
     private fun extractDeepLinkProductId(incomingIntent: Intent?) {
         val dataUri: Uri = incomingIntent?.data ?: return
         val pathSegments = dataUri.pathSegments
@@ -238,9 +263,6 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
-    /**
-     * SplashFragment या LoginFragment में प्रमाणीकरण व ऑनबोर्डिंग पूर्ण होने पर कॉल होता है।
-     */
     fun onUserAuthenticatedAndOnboarded() {
         topGovernanceBar.visibility = View.VISIBLE
         bottomNavContainer.visibility = View.VISIBLE
@@ -262,9 +284,6 @@ class MainActivity : AppCompatActivity() {
             .commitAllowingStateLoss()
     }
 
-    /**
-     * किसान मोड <-> खरीदार मोड स्विच करना (सर्वर के `/auth/role` के साथ लाइव सिंक)
-     */
     fun toggleFarmerBuyerMode() {
         val currentlyFarmer = SessionManager.isFarmerModeActive(this)
         val nextMode = if (currentlyFarmer) "BUYER" else "FARMER"
@@ -280,9 +299,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * वर्तमान भूमिका (Farmer vs Buyer) और FeatureManager फ्लैग्स के अनुसार बॉटम टैब्स रेंडर करता है।
-     */
     fun refreshRoleNavigation(defaultTabKey: String = "HOME") {
         val isFarmer = SessionManager.isFarmerModeActive(this)
         val userName = SessionManager.getUserName(this)
@@ -296,16 +312,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnQuickMandi.visibility = if (FeatureManager.isEnabled("mandi_price", this)) View.VISIBLE else View.GONE
-        btnQuickAgriInputs.visibility = if (
-            FeatureManager.isEnabled("agri_inputs_marketplace", this) ||
-            FeatureManager.isEnabled("seeds_marketplace", this)
-        ) {
-            View.VISIBLE
-        } else {
-            View.GONE
-        }
+        btnQuickOffers.visibility = if (FeatureManager.isEnabled("make_offer", this)) View.VISIBLE else View.GONE
+        btnQuickFairPrice.visibility = if (FeatureManager.isEnabled("fair_price", this)) View.VISIBLE else View.GONE
 
-        // Master Spec Sec 5 & merged.txt Sec 76 Role-Specific Navigation Tabs
+        // Master Spec Sec 5 & merged.txt Sec 76 Role-Specific Bottom Navigation
         val rawTabs = if (isFarmer) {
             listOf(
                 NavTabItem("HOME", "🏠 होम", "farmer_mode"),
@@ -351,7 +361,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun selectBottomTab(tabKey: String, tabs: List<NavTabItem>) {
-        currentSelectedTabKey = tabKey
         for (i in 0 until bottomNavContainer.childCount) {
             val child = bottomNavContainer.getChildAt(i) as? TextView ?: continue
             val item = tabs.getOrNull(i) ?: continue
@@ -366,17 +375,14 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // Routes strictly to the exact Fragment classes in your repository tree
         val targetFragment: Fragment = when (tabKey) {
             "HOME" -> HomeFragment()
-            "MY_CROPS" -> MarketplaceFragment().apply {
-                arguments = Bundle().apply { putString("mode", "FARMER_MY_CROPS") }
-            }
+            "MY_CROPS" -> MyCropsFragment()
             "ADD_PRODUCT" -> AddProductFragment()
-            "SEARCH" -> MarketplaceFragment().apply {
-                arguments = Bundle().apply { putString("mode", "BUYER_DISCOVERY") }
-            }
-            "BUYER_REQUEST" -> BuyerRequestFragment()
-            "FAVORITES" -> FavoritesFollowFragment()
+            "SEARCH" -> MarketplaceFragment()
+            "BUYER_REQUEST" -> BuyerRequestsFragment()
+            "FAVORITES" -> FavoritesFragment()
             "ORDERS" -> OrdersFragment()
             "PROFILE" -> ProfileFragment()
             else -> HomeFragment()
@@ -387,7 +393,10 @@ class MainActivity : AppCompatActivity() {
             .commitAllowingStateLoss()
     }
 
-    // अन्य स्क्रीन खोलने के नेविगेशन हेल्पर्स
+    // ========================================================================
+    // NAVIGATION HELPERS MATCHING EXACT REPOSITORY FRAGMENTS
+    // ========================================================================
+
     fun openProductDetailScreen(productId: String) {
         val frag = ProductDetailFragment().apply {
             arguments = Bundle().apply { putString("product_id", productId) }
@@ -395,29 +404,6 @@ class MainActivity : AppCompatActivity() {
         supportFragmentManager.beginTransaction()
             .replace(fragmentContainerId, frag)
             .addToBackStack("product_detail")
-            .commitAllowingStateLoss()
-    }
-
-    fun openMandiPricesScreen() {
-        if (!FeatureManager.isEnabled("mandi_price", this)) {
-            Toast.makeText(this, "मंडी भाव सुविधा अभी बंद है।", Toast.LENGTH_SHORT).show()
-            return
-        }
-        supportFragmentManager.beginTransaction()
-            .replace(fragmentContainerId, MandiPricesFragment())
-            .addToBackStack("mandi_prices")
-            .commitAllowingStateLoss()
-    }
-
-    fun openAgriInputsAndSeedsScreen(initialCategory: String? = null) {
-        val frag = AgriInputsSeedsFragment().apply {
-            if (!initialCategory.isNullOrBlank()) {
-                arguments = Bundle().apply { putString("initial_category", initialCategory) }
-            }
-        }
-        supportFragmentManager.beginTransaction()
-            .replace(fragmentContainerId, frag)
-            .addToBackStack("agri_inputs_seeds")
             .commitAllowingStateLoss()
     }
 
@@ -433,10 +419,72 @@ class MainActivity : AppCompatActivity() {
             .commitAllowingStateLoss()
     }
 
+    fun openMyCropsScreen() {
+        supportFragmentManager.beginTransaction()
+            .replace(fragmentContainerId, MyCropsFragment())
+            .addToBackStack("my_crops")
+            .commitAllowingStateLoss()
+    }
+
+    fun openFarmerPublicProfileScreen(farmerUid: String) {
+        val frag = FarmerPublicProfileFragment().apply {
+            arguments = Bundle().apply { putString("farmer_uid", farmerUid) }
+        }
+        supportFragmentManager.beginTransaction()
+            .replace(fragmentContainerId, frag)
+            .addToBackStack("farmer_public_profile")
+            .commitAllowingStateLoss()
+    }
+
+    fun openAiPosterStudioScreen(productId: String? = null) {
+        val frag = AiPosterStudioFragment().apply {
+            if (!productId.isNullOrBlank()) {
+                arguments = Bundle().apply { putString("product_id", productId) }
+            }
+        }
+        supportFragmentManager.beginTransaction()
+            .replace(fragmentContainerId, frag)
+            .addToBackStack("ai_poster_studio")
+            .commitAllowingStateLoss()
+    }
+
+    fun openMandiPricesScreen() {
+        if (!FeatureManager.isEnabled("mandi_price", this)) {
+            Toast.makeText(this, "मंडी भाव सुविधा अभी बंद है।", Toast.LENGTH_SHORT).show()
+            return
+        }
+        supportFragmentManager.beginTransaction()
+            .replace(fragmentContainerId, MandiPricesFragment())
+            .addToBackStack("mandi_prices")
+            .commitAllowingStateLoss()
+    }
+
+    fun openAgriInputsAndSeedsScreen(initialCategory: String? = null) {
+        val frag = MarketplaceFragment().apply {
+            arguments = Bundle().apply {
+                putString("mode", "AGRI_INPUTS_AND_SEEDS")
+                if (!initialCategory.isNullOrBlank()) {
+                    putString("initial_category", initialCategory)
+                }
+            }
+        }
+        supportFragmentManager.beginTransaction()
+            .replace(fragmentContainerId, frag)
+            .addToBackStack("agri_inputs_seeds")
+            .commitAllowingStateLoss()
+    }
+
     fun openBuyerRequestsScreen() {
         supportFragmentManager.beginTransaction()
-            .replace(fragmentContainerId, BuyerRequestFragment())
+            .replace(fragmentContainerId, BuyerRequestsFragment())
             .addToBackStack("buyer_requests")
+            .commitAllowingStateLoss()
+    }
+
+    fun openNegotiationOffersScreen() {
+        supportFragmentManager.beginTransaction()
+            .replace(fragmentContainerId, NegotiationHistoryFragment())
+            .addToBackStack("negotiation_offers")
             .commitAllowingStateLoss()
     }
 
@@ -444,6 +492,39 @@ class MainActivity : AppCompatActivity() {
         supportFragmentManager.beginTransaction()
             .replace(fragmentContainerId, OrdersFragment())
             .addToBackStack("orders_screen")
+            .commitAllowingStateLoss()
+    }
+
+    fun openFairPriceCalculatorScreen() {
+        supportFragmentManager.beginTransaction()
+            .replace(fragmentContainerId, FairPriceCalculatorFragment())
+            .addToBackStack("fair_price_calculator")
+            .commitAllowingStateLoss()
+    }
+
+    fun openBatchQrTraceabilityScreen(batchId: String? = null) {
+        val frag = BatchQrTraceabilityFragment().apply {
+            if (!batchId.isNullOrBlank()) {
+                arguments = Bundle().apply { putString("batch_id", batchId) }
+            }
+        }
+        supportFragmentManager.beginTransaction()
+            .replace(fragmentContainerId, frag)
+            .addToBackStack("batch_qr_traceability")
+            .commitAllowingStateLoss()
+    }
+
+    fun openFarmBoxGroupBuyScreen() {
+        supportFragmentManager.beginTransaction()
+            .replace(fragmentContainerId, FarmBoxGroupBuyFragment())
+            .addToBackStack("farm_box_group_buy")
+            .commitAllowingStateLoss()
+    }
+
+    fun openOilMillMarketplaceScreen() {
+        supportFragmentManager.beginTransaction()
+            .replace(fragmentContainerId, OilMillMarketplaceFragment())
+            .addToBackStack("oil_mill_marketplace")
             .commitAllowingStateLoss()
     }
 
