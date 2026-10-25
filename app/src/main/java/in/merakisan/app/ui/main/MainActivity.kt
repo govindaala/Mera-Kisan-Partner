@@ -44,8 +44,8 @@ import `in`.merakisan.app.ui.profile.ProfileFragment
 import `in`.merakisan.app.ui.requests.BuyerRequestsFragment
 import kotlinx.coroutines.launch
 
-/*
- * MERA KISAN — UNIFIED MAIN ACTIVITY
+
+ /* MERA KISAN — UNIFIED MAIN ACTIVITY
  * Strictly aligned with actual repository tree:
  * - ui/farmer/MyCropsFragment.kt
  * - ui/farmer/AddProductFragment.kt
@@ -58,8 +58,7 @@ import kotlinx.coroutines.launch
  * - ui/marketing/AiPosterStudioFragment.kt
  * - ui/offers/NegotiationHistoryFragment.kt
  * - ui/modules/*
- * - ui/profile/ProfileFragment.kt
- */
+ * - ui/profile/ProfileFragment.kt */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var topGovernanceBar: LinearLayout
