@@ -44,7 +44,7 @@ import `in`.merakisan.app.ui.profile.ProfileFragment
 import `in`.merakisan.app.ui.requests.BuyerRequestsFragment
 import kotlinx.coroutines.launch
 
-/**
+/*
  * MERA KISAN — UNIFIED MAIN ACTIVITY
  * Strictly aligned with actual repository tree:
  * - ui/farmer/MyCropsFragment.kt
