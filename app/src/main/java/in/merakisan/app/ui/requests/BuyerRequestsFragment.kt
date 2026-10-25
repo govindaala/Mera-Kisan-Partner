@@ -2,437 +2,601 @@
 package `in`.merakisan.app.ui.requests
 
 import android.app.AlertDialog
-import android.content.Context
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Bundle
+import android.text.InputFilter
 import android.text.InputType
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
+import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
-import androidx.cardview.widget.CardView
 import androidx.fragment.app.Fragment
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import androidx.lifecycle.lifecycleScope
+import `in`.merakisan.app.core.config.FeatureManager
+import `in`.merakisan.app.core.network.ApiClient
+import `in`.merakisan.app.core.security.SessionManager
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.OutputStreamWriter
-import java.net.HttpURLConnection
-import java.net.URL
 
+/**
+ * MERA KISAN — BUYER DEMAND BOARD ("मुझे यह चाहिए" / Reverse Marketplace)
+ * Exact Repository Path: app/src/main/java/in/merakisan/app/ui/requests/BuyerRequestsFragment.kt
+ *
+ * Implements (Master Spec Sec 7 & merged.txt Sec 14, 15, 38, 61, 77):
+ * - Buyers post what they need (Product, Variety, Quantity, Unit, Target Budget, District, Radius, Notes).
+ * - Farmers browse active buyer requests and submit offers ("मेरे पास उपलब्ध है — भाव भेजें").
+ * - Buyers view all farmer responses (`GET /requests/{id}/matches`) and contact the farmer via WhatsApp/Call.
+ */
 class BuyerRequestsFragment : Fragment() {
 
-    private lateinit var containerRequests: LinearLayout
+    private lateinit var tvSubtitle: TextView
+    private lateinit var btnCreateNewRequest: Button
+    private lateinit var btnFilterAllDistricts: Button
+    private lateinit var btnFilterMyDistrict: Button
     private lateinit var progressBar: ProgressBar
-    private lateinit var tvCountHeader: TextView
+    private lateinit var requestsListContainer: LinearLayout
 
-    private val defaultRequests = listOf(
-        DemandItem(
-            id = "req_101",
-            productName = "सोयाबीन (बिना पॉलिश / बीज ग्रेड)",
-            variety = "JS 9560 / बिना पॉलिश",
-            quantity = "100 kg",
-            targetPrice = "₹52 / kg",
-            buyerName = "गोविंद पाटीदार",
-            district = "मंदसौर",
-            notes = "घर पर पहुंचाएं • साफ दाना",
-            dateLabel = "अभी ताज़ा मांग"
-        ),
-        DemandItem(
-            id = "req_102",
-            productName = "देशी शरबती गेहूं (छोटी मात्रा)",
-            variety = "सीहोर / मालवा शरबती",
-            quantity = "25 kg",
-            targetPrice = "₹40 / kg",
-            buyerName = "राजेश सेठिया",
-            district = "गरोठ, मंदसौर",
-            notes = "बिना केमिकल दावे के सामान्य देशी साफ गेहूं चाहिए",
-            dateLabel = "आज"
-        ),
-        DemandItem(
-            id = "req_103",
-            productName = "कच्ची घानी मूंगफली तेल",
-            variety = "लकड़ी घानी शुद्ध",
-            quantity = "10 litre",
-            targetPrice = "₹210 / litre",
-            buyerName = "अनिल शर्मा",
-            district = "इंदौर / नीमच",
-            notes = "बैच ट्रेसबिलिटी के साथ ताज़ा तेल चाहिए",
-            dateLabel = "आज"
-        )
-    )
+    private var filterByMyDistrictOnly: Boolean = false
+    private val unitList = listOf("kg", "quintal", "litre", "packet", "piece")
 
     override fun onCreateView(
-        inflater: LayoutInflater, container: ViewGroup?,
+        inflater: LayoutInflater,
+        container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
         val ctx = requireContext()
-
-        val root = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#F4F6F8"))
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        }
-
-        // 1. HEADER BAR
-        val header = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.WHITE)
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-        }
-
-        header.addView(TextView(ctx).apply {
-            text = "📢 ग्राहक मांग बोर्ड ('मुझे यह चाहिए')"
-            setTextColor(Color.parseColor("#1B5E20"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
-            setTypeface(typeface, Typeface.BOLD)
-        })
-
-        header.addView(TextView(ctx).apply {
-            text = "खरीदारों की सीधी मांग देखें या अपनी आवश्यकता पोस्ट करें — पास के किसान सीधा ऑफर भेजेंगे।"
-            setTextColor(Color.parseColor("#616161"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            setPadding(0, dp(2), 0, dp(8))
-        })
-
-        val btnPostDemand = Button(ctx).apply {
-            text = "+ मुझे यह चाहिए (मांग दर्ज करें)"
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#2E7D32"))
-            setOnClickListener { showPostDemandDialog() }
-        }
-        header.addView(btnPostDemand)
-        root.addView(header)
-
-        tvCountHeader = TextView(ctx).apply {
-            text = "सक्रिय मांगें लोड हो रही हैं..."
-            setTextColor(Color.parseColor("#E65100"))
-            setBackgroundColor(Color.parseColor("#FFF3E0"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            setTypeface(typeface, Typeface.BOLD)
-            setPadding(dp(14), dp(6), dp(14), dp(6))
-        }
-        root.addView(tvCountHeader)
-
-        progressBar = ProgressBar(ctx).apply {
-            visibility = View.GONE
-            layoutParams = LinearLayout.LayoutParams(dp(32), dp(32)).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-                topMargin = dp(8)
-            }
-        }
-        root.addView(progressBar)
+        val isFarmer = SessionManager.isFarmerModeActive(ctx)
 
         val scroll = ScrollView(ctx).apply {
             isFillViewport = true
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.MATCH_PARENT
+            setBackgroundColor(Color.parseColor("#F2F6F2"))
+        }
+
+        val root = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(28))
+        }
+
+        val headerCard = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBg("#FFFFFF", "#D4E2D4", dp(14))
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+        }
+
+        headerCard.addView(
+            TextView(ctx).apply {
+                text = if (isFarmer) {
+                    "📢 ग्राहकों की मांग बोर्ड (“मुझे यह चाहिए”)"
+                } else {
+                    "📢 मुझे यह चाहिए — अपनी मांग पोस्ट करें"
+                }
+                setTextColor(Color.parseColor("#124116"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 19f)
+                setTypeface(typeface, Typeface.BOLD)
+            }
+        )
+
+        tvSubtitle = TextView(ctx).apply {
+            text = if (isFarmer) {
+                "ग्राहकों ने सीधे नीचे दिए गए उत्पाद माँगे हैं। यदि आपके पास उपलब्ध है, तो अपना भाव प्रस्ताव भेजें:"
+            } else {
+                "यदि आपका मनचाहा देशी उत्पाद सूची में नहीं दिख रहा है, तो यहाँ अपनी मांग लिखें — किसान स्वयं आपसे संपर्क करेंगे:"
+            }
+            setTextColor(Color.parseColor("#4A5A4A"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            setPadding(0, dp(4), 0, dp(10))
+        }
+        headerCard.addView(tvSubtitle)
+
+        btnCreateNewRequest = Button(ctx).apply {
+            text = "➕ नई मांग ('मुझे यह चाहिए') पोस्ट करें"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, Typeface.BOLD)
+            background = roundedBg("#BF360C", "#BF360C", dp(10))
+            minHeight = dp(46)
+            setOnClickListener { showCreateBuyerRequestDialog() }
+        }
+        headerCard.addView(btnCreateNewRequest)
+
+        val filterRow = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(10), 0, 0)
+        }
+
+        btnFilterAllDistricts = Button(ctx).apply {
+            text = "🌍 सभी ज़िलों की मांगें"
+            isAllCaps = false
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setTypeface(typeface, Typeface.BOLD)
+            minHeight = dp(38)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                rightMargin = dp(6)
+            }
+            setOnClickListener {
+                filterByMyDistrictOnly = false
+                updateFilterButtonStyles()
+                loadBuyerRequests()
+            }
+        }
+
+        val myDist = SessionManager.getUserDistrict(ctx).ifBlank { "मेरा ज़िला" }
+        btnFilterMyDistrict = Button(ctx).apply {
+            text = "📍 केवल $myDist"
+            isAllCaps = false
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setTypeface(typeface, Typeface.BOLD)
+            minHeight = dp(38)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                leftMargin = dp(6)
+            }
+            setOnClickListener {
+                filterByMyDistrictOnly = true
+                updateFilterButtonStyles()
+                loadBuyerRequests()
+            }
+        }
+
+        filterRow.addView(btnFilterAllDistricts)
+        filterRow.addView(btnFilterMyDistrict)
+        headerCard.addView(filterRow)
+
+        root.addView(headerCard)
+
+        progressBar = ProgressBar(ctx).apply {
+            visibility = View.GONE
+            setPadding(0, dp(12), 0, dp(12))
+        }
+        root.addView(progressBar)
+
+        requestsListContainer = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(8), 0, 0)
+        }
+        root.addView(requestsListContainer)
+
+        scroll.addView(root)
+        return scroll
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        updateFilterButtonStyles()
+        loadBuyerRequests()
+    }
+
+    private fun updateFilterButtonStyles() {
+        if (!filterByMyDistrictOnly) {
+            btnFilterAllDistricts.background = roundedBg("#1B5E20", "#1B5E20", dp(8))
+            btnFilterAllDistricts.setTextColor(Color.WHITE)
+            btnFilterMyDistrict.background = roundedBg("#E8F5E9", "#81C784", dp(8))
+            btnFilterMyDistrict.setTextColor(Color.parseColor("#1B5E20"))
+        } else {
+            btnFilterMyDistrict.background = roundedBg("#1B5E20", "#1B5E20", dp(8))
+            btnFilterMyDistrict.setTextColor(Color.WHITE)
+            btnFilterAllDistricts.background = roundedBg("#E8F5E9", "#81C784", dp(8))
+            btnFilterAllDistricts.setTextColor(Color.parseColor("#1B5E20"))
+        }
+    }
+
+    private fun loadBuyerRequests() {
+        val ctx = context ?: return
+        progressBar.visibility = View.VISIBLE
+        requestsListContainer.removeAllViews()
+
+        val distParam = if (filterByMyDistrictOnly) {
+            SessionManager.getUserDistrict(ctx).takeIf { it.isNotBlank() }
+        } else {
+            null
+        }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            val res = ApiClient.getBuyerRequests(ctx, district = distParam)
+            if (!isAdded) return@launch
+            progressBar.visibility = View.GONE
+
+            val arr = res.dataArray ?: JSONArray()
+            if (arr.length() == 0) {
+                requestsListContainer.addView(
+                    TextView(ctx).apply {
+                        text = "अभी इस श्रेणी में कोई खुली ग्राहक मांग नहीं है। ऊपर बटन दबाकर पहली मांग पोस्ट करें!"
+                        setTextColor(Color.parseColor("#555555"))
+                        setPadding(dp(8), dp(18), dp(8), dp(18))
+                    }
+                )
+                return@launch
+            }
+
+            val myUid = SessionManager.getUserUid(ctx) ?: ""
+            for (i in 0 until arr.length()) {
+                val item = arr.optJSONObject(i) ?: continue
+                requestsListContainer.addView(buildRequestCard(item, myUid))
+            }
+        }
+    }
+
+    private fun buildRequestCard(reqObj: JSONObject, myUid: String): View {
+        val ctx = requireContext()
+        val reqId = reqObj.optString("id", "")
+        val buyerUid = reqObj.optString("buyer_uid", "")
+        val buyerName = reqObj.optString("buyer_name", "ग्राहक")
+        val prodName = reqObj.optString("product_name", "कृषि उत्पाद")
+        val variety = reqObj.optString("variety", "")
+        val qty = reqObj.optDouble("quantity", 1.0)
+        val unit = reqObj.optString("unit", "kg")
+        val targetRupees = reqObj.optDouble("target_price_rupees", 0.0)
+        val district = reqObj.optString("district", "")
+        val village = reqObj.optString("village", "")
+        val radiusKm = reqObj.optInt("radius_km", FeatureManager.getDefaultSearchRadiusKm())
+        val notes = reqObj.optString("notes", "")
+        val responsesCount = reqObj.optInt("responses_count", 0)
+        val createdAt = reqObj.optString("created_at", "").take(10)
+
+        val isMyOwnRequest = myUid.isNotBlank() && myUid == buyerUid
+
+        val card = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBg("#FFFFFF", "#C8E6C9", dp(12))
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            val lp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            lp.topMargin = dp(10)
+            layoutParams = lp
+        }
+
+        card.addView(
+            TextView(ctx).apply {
+                text = "📌 मांग: $prodName ${if (variety.isNotBlank() && variety != "null") "($variety)" else ""}"
+                setTextColor(Color.parseColor("#124116"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+                setTypeface(typeface, Typeface.BOLD)
+            }
+        )
+
+        card.addView(
+            TextView(ctx).apply {
+                text = "📦 आवश्यक मात्रा: $qty $unit  |  💰 अपेक्षित बजट: ₹$targetRupees / $unit"
+                setTextColor(Color.parseColor("#BF360C"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                setTypeface(typeface, Typeface.BOLD)
+                setPadding(0, dp(4), 0, dp(4))
+            }
+        )
+
+        card.addView(
+            TextView(ctx).apply {
+                text = "👤 ग्राहक: $buyerName • 📍 ${if (village.isNotBlank() && village != "null") "$village, " else ""}$district (${radiusKm} km दायरा) • 📅 $createdAt"
+                setTextColor(Color.parseColor("#4A5A4A"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            }
+        )
+
+        if (notes.isNotBlank() && notes != "null") {
+            card.addView(
+                TextView(ctx).apply {
+                    text = "📝 विवरण: $notes"
+                    setTextColor(Color.parseColor("#333333"))
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                    setPadding(0, dp(4), 0, dp(4))
+                }
             )
         }
 
-        containerRequests = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(10), dp(12), dp(24))
+        val btnRow = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(10), 0, 0)
         }
-        scroll.addView(containerRequests)
-        root.addView(scroll)
 
-        loadBuyerRequestsSafe()
-
-        return root
-    }
-
-    /**
-     * सुरक्षित डेटा लोडर: ISO String ("2026-10-18T...") या Long दोनों को बिना NumberFormatException के पढ़ता है
-     */
-    private fun loadBuyerRequestsSafe() {
-        progressBar.visibility = View.VISIBLE
-        val combined = mutableListOf<DemandItem>()
-
-        // 1. पहले लोकल कैश में सेव की गई मांगें जोड़ना
-        try {
-            val prefs = requireContext().getSharedPreferences("mera_kisan_local_cache", Context.MODE_PRIVATE)
-            val localRaw = prefs.getString("cached_demands", "[]") ?: "[]"
-            val localArr = JSONArray(localRaw)
-            for (i in 0 until localArr.length()) {
-                val obj = localArr.getJSONObject(i)
-                combined.add(parseDemandJsonSafely(obj))
-            }
-        } catch (_: Throwable) {}
-
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val url = URL("https://mera-kisan-backend.vercel.app/api/v1/requests")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "GET"
-                conn.connectTimeout = 5000
-                conn.readTimeout = 5000
-
-                if (conn.responseCode in 200..299) {
-                    val raw = conn.inputStream.bufferedReader().use { it.readText() }
-                    val json = JSONObject(raw)
-                    val dataNode = json.opt("data")
-                    val arr: JSONArray? = when {
-                        dataNode is JSONArray -> dataNode
-                        dataNode is JSONObject && dataNode.has("requests") -> dataNode.getJSONArray("requests")
-                        else -> null
-                    }
-                    if (arr != null) {
-                        for (i in 0 until arr.length()) {
-                            combined.add(parseDemandJsonSafely(arr.getJSONObject(i)))
-                        }
-                    }
-                }
-            } catch (_: Throwable) {
-            } finally {
-                withContext(Dispatchers.Main) {
-                    if (!isAdded) return@withContext
-                    progressBar.visibility = View.GONE
-                    combined.addAll(defaultRequests)
-                    val uniqueList = combined.distinctBy { "${it.productName}_${it.quantity}_${it.district}" }
-                    renderRequestsList(uniqueList)
-                }
-            }
-        }
-    }
-
-    private fun parseDemandJsonSafely(obj: JSONObject): DemandItem {
-        val rawDate = obj.opt("createdAt")?.toString() ?: obj.opt("created_at")?.toString() ?: "आज"
-        val cleanDate = if (rawDate.contains("T")) rawDate.substringBefore("T") else "आज"
-
-        val qty = obj.optString("quantity", "50")
-        val unit = obj.optString("unit", "kg")
-        val price = obj.optString("target_price", obj.optString("targetPrice", "बाज़ार भाव"))
-
-        return DemandItem(
-            id = obj.optString("id", "req_${System.currentTimeMillis()}"),
-            productName = obj.optString("product_name", obj.optString("productName", "फसल")),
-            variety = obj.optString("variety", "देशी"),
-            quantity = if (qty.contains(unit)) qty else "$qty $unit",
-            targetPrice = if (price.startsWith("₹")) price else "₹$price / $unit",
-            buyerName = obj.optString("buyer_name", obj.optString("buyerName", "ग्राहक साथी")),
-            district = obj.optString("district", obj.optString("location", "मंदसौर")),
-            notes = obj.optString("description", obj.optString("notes", "सीधे किसान से खरीदना है")),
-            dateLabel = cleanDate
-        )
-    }
-
-    private fun renderRequestsList(items: List<DemandItem>) {
-        val ctx = context ?: return
-        containerRequests.removeAllViews()
-        tvCountHeader.text = "✅ कुल ${items.size} सक्रिय ग्राहक मांगें उपलब्ध (किसान सीधा ऑफर भेज सकते हैं)"
-
-        for (item in items) {
-            val card = CardView(ctx).apply {
-                radius = dp(10).toFloat()
-                cardElevation = dp(2).toFloat()
-                setCardBackgroundColor(Color.WHITE)
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = dp(10) }
-            }
-
-            val inner = LinearLayout(ctx).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(14), dp(12), dp(14), dp(12))
-            }
-
-            val topRow = LinearLayout(ctx).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-            }
-
-            topRow.addView(TextView(ctx).apply {
-                text = "📢 चाहिए: ${item.productName}"
-                setTextColor(Color.parseColor("#1B5E20"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-                setTypeface(typeface, Typeface.BOLD)
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            })
-
-            topRow.addView(TextView(ctx).apply {
-                text = item.dateLabel
-                setTextColor(Color.parseColor("#E65100"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-                setPadding(dp(8), dp(2), dp(8), dp(2))
-                background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#FFF3E0"))
-                    cornerRadius = dp(6).toFloat()
-                }
-            })
-            inner.addView(topRow)
-
-            inner.addView(TextView(ctx).apply {
-                text = "किस्म: ${item.variety}  •  मात्रा: ${item.quantity}  •  अपेक्षित दर: ${item.targetPrice}"
-                setTextColor(Color.parseColor("#212121"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                setTypeface(typeface, Typeface.BOLD)
-                setPadding(0, dp(4), 0, dp(4))
-            })
-
-            inner.addView(TextView(ctx).apply {
-                text = "👤 ग्राहक: ${item.buyerName}  •  📍 ${item.district}\n📝 विवरण: ${item.notes}"
-                setTextColor(Color.parseColor("#616161"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            })
-
+        if (!isMyOwnRequest) {
             val btnOffer = Button(ctx).apply {
-                text = "💬 किसान ऑफर भेजें (Send Farmer Offer)"
+                text = "✋ मेरे पास उपलब्ध है — भाव भेजें"
+                isAllCaps = false
                 setTextColor(Color.WHITE)
-                setBackgroundColor(Color.parseColor("#1B5E20"))
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    dp(42)
-                ).apply { topMargin = dp(8) }
+                setTypeface(typeface, Typeface.BOLD)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                background = roundedBg("#1B5E20", "#1B5E20", dp(8))
+                minHeight = dp(42)
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    rightMargin = dp(6)
+                }
                 setOnClickListener {
-                    showSendOfferToBuyerDialog(item)
+                    showFarmerRespondDialog(reqId, prodName, qty, unit)
                 }
             }
-            inner.addView(btnOffer)
-
-            card.addView(inner)
-            containerRequests.addView(card)
+            btnRow.addView(btnOffer)
         }
+
+        val btnViewMatches = Button(ctx).apply {
+            text = "📬 किसानों के प्रस्ताव देखें ($responsesCount)"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, Typeface.BOLD)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            background = roundedBg("#0D47A1", "#0D47A1", dp(8))
+            minHeight = dp(42)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            setOnClickListener {
+                loadAndShowFarmerMatchesDialog(reqId, prodName, unit)
+            }
+        }
+        btnRow.addView(btnViewMatches)
+
+        card.addView(btnRow)
+        return card
     }
 
-    private fun showPostDemandDialog() {
+    private fun showCreateBuyerRequestDialog() {
         val ctx = context ?: return
-        val box = LinearLayout(ctx).apply {
+        val scroll = ScrollView(ctx)
+        val form = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(12), dp(20), dp(4))
+            setPadding(dp(20), dp(14), dp(20), dp(10))
         }
 
-        val etCrop = EditText(ctx).apply { hint = "फसल / उत्पाद का नाम (उदा. सोयाबीन, देशी गेहूं)" }
-        val etVariety = EditText(ctx).apply { hint = "किस्म / प्राथमिकता (उदा. बिना पॉलिश, शरबती)" }
-        val etQty = EditText(ctx).apply {
-            hint = "मात्रा (उदा. 100 kg या 10 litre)"
-            inputType = InputType.TYPE_CLASS_TEXT
+        val prodInput = EditText(ctx).apply {
+            hint = "उत्पाद का नाम (उदा. देशी गेहूं, मूंगफली तेल) *"
+            filters = arrayOf(InputFilter.LengthFilter(100))
         }
-        val etPrice = EditText(ctx).apply {
-            hint = "अपेक्षित दर ₹ प्रति किलो (वैकल्पिक)"
-            inputType = InputType.TYPE_CLASS_NUMBER
+        val varietyInput = EditText(ctx).apply {
+            hint = "किस्म (उदा. शरबती, बिना पॉलिश दाल - वैकल्पिक)"
+            filters = arrayOf(InputFilter.LengthFilter(60))
         }
-        val etDistrict = EditText(ctx).apply {
-            hint = "आपका ज़िला / तहसील"
-            setText("मंदसौर")
+        val qtyInput = EditText(ctx).apply {
+            hint = "आवश्यक मात्रा (उदा. 20) *"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
         }
-        val etNotes = EditText(ctx).apply { hint = "अन्य विवरण (उदा. घर पर पहुंचाएं)" }
+        val unitSpinner = Spinner(ctx).apply {
+            adapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item, unitList)
+        }
+        val priceInput = EditText(ctx).apply {
+            hint = "आपका अधिकतम बजट भाव (₹ प्रति इकाई) *"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+        }
+        val distInput = EditText(ctx).apply {
+            hint = "आपका ज़िला / शहर *"
+            setText(SessionManager.getUserDistrict(ctx))
+            filters = arrayOf(InputFilter.LengthFilter(80))
+        }
+        val notesInput = EditText(ctx).apply {
+            hint = "अतिरिक्त जानकारी (कब तक चाहिए, गुणवत्ता आदि)"
+            filters = arrayOf(InputFilter.LengthFilter(250))
+        }
 
-        box.addView(etCrop)
-        box.addView(etVariety)
-        box.addView(etQty)
-        box.addView(etPrice)
-        box.addView(etDistrict)
-        box.addView(etNotes)
+        form.addView(prodInput)
+        form.addView(varietyInput)
+        form.addView(qtyInput)
+        form.addView(unitSpinner)
+        form.addView(priceInput)
+        form.addView(distInput)
+        form.addView(notesInput)
+        scroll.addView(form)
 
         AlertDialog.Builder(ctx)
-            .setTitle("📢 'मुझे यह चाहिए' — मांग दर्ज करें")
-            .setView(box)
-            .setPositiveButton("मांग पोस्ट करें") { _, _ ->
-                val crop = etCrop.text.toString().trim()
-                if (crop.isEmpty()) {
-                    Toast.makeText(ctx, "कृपया फसल का नाम लिखें", Toast.LENGTH_SHORT).show()
+            .setTitle("📢 मुझे यह चाहिए — नई मांग पोस्ट करें")
+            .setView(scroll)
+            .setPositiveButton("मांग प्रकाशित करें") { _, _ ->
+                val pName = prodInput.text?.toString()?.trim() ?: ""
+                val qtyVal = qtyInput.text?.toString()?.toDoubleOrNull() ?: 0.0
+                val budgetVal = priceInput.text?.toString()?.toDoubleOrNull() ?: 0.0
+                val distVal = distInput.text?.toString()?.trim() ?: ""
+                val unitVal = unitList.getOrNull(unitSpinner.selectedItemPosition) ?: "kg"
+
+                if (pName.length < 2 || qtyVal <= 0.0 || budgetVal <= 0.0 || distVal.length < 2) {
+                    Toast.makeText(ctx, "कृपया उत्पाद नाम, मात्रा, बजट और ज़िला सही भरें।", Toast.LENGTH_LONG).show()
                     return@setPositiveButton
                 }
-                val newObj = JSONObject().apply {
-                    put("id", "req_${System.currentTimeMillis()}")
-                    put("product_name", crop)
-                    put("variety", etVariety.text.toString().trim().ifEmpty { "देशी" })
-                    put("quantity", etQty.text.toString().trim().ifEmpty { "50 kg" })
-                    put("unit", "kg")
-                    put("target_price", etPrice.text.toString().trim().ifEmpty { "50" })
-                    put("district", etDistrict.text.toString().trim().ifEmpty { "मंदसौर" })
-                    put("description", etNotes.text.toString().trim().ifEmpty { "सीधे किसान से संपर्क" })
-                    put("created_at", "आज अभी")
+
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val payload = JSONObject().apply {
+                        put("product_name", pName)
+                        put("variety", varietyInput.text?.toString()?.trim() ?: "")
+                        put("quantity", qtyVal)
+                        put("unit", unitVal)
+                        put("target_price_paise", Math.round(budgetVal * 100))
+                        put("district", distVal)
+                        put("village", SessionManager.getUserVillage(ctx))
+                        put("radius_km", FeatureManager.getDefaultSearchRadiusKm())
+                        put("notes", notesInput.text?.toString()?.trim() ?: "")
+                    }
+                    val res = ApiClient.createBuyerRequest(ctx, payload)
+                    if (res.isSuccess) {
+                        Toast.makeText(ctx, "✅ आपकी मांग डिमांड बोर्ड पर प्रकाशित हो गई!", Toast.LENGTH_LONG).show()
+                        loadBuyerRequests()
+                    } else {
+                        Toast.makeText(ctx, res.errorMessage ?: "मांग पोस्ट करने में त्रुटि।", Toast.LENGTH_LONG).show()
+                    }
                 }
-
-                // लोकल कैश में सेव कर तुरंत लिस्ट रिफ्रेश करना
-                try {
-                    val prefs = ctx.getSharedPreferences("mera_kisan_local_cache", Context.MODE_PRIVATE)
-                    val arr = JSONArray(prefs.getString("cached_demands", "[]") ?: "[]")
-                    val next = JSONArray()
-                    next.put(newObj)
-                    for (i in 0 until arr.length()) next.put(arr.getJSONObject(i))
-                    prefs.edit().putString("cached_demands", next.toString()).apply()
-                } catch (_: Throwable) {}
-
-                Toast.makeText(ctx, "✅ आपकी मांग सफलतापूर्वक पोस्ट हो गई और बोर्ड पर लाइव है!", Toast.LENGTH_SHORT).show()
-                loadBuyerRequestsSafe()
             }
             .setNegativeButton("रद्द करें", null)
             .show()
     }
 
-    private fun showSendOfferToBuyerDialog(item: DemandItem) {
+    private fun showFarmerRespondDialog(
+        requestId: String,
+        productName: String,
+        requestedQty: Double,
+        unit: String
+    ) {
         val ctx = context ?: return
-        val box = LinearLayout(ctx).apply {
+        val form = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(12), dp(20), dp(4))
+            setPadding(dp(20), dp(12), dp(20), dp(8))
         }
-        val etOfferPrice = EditText(ctx).apply {
-            hint = "आपकी प्रस्तावित दर ₹ (उदा. ₹48/kg)"
-            inputType = InputType.TYPE_CLASS_NUMBER
+
+        val priceInput = EditText(ctx).apply {
+            hint = "आपका प्रस्तावित भाव (₹ प्रति $unit) *"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
         }
-        val etAvailableQty = EditText(ctx).apply {
-            hint = "उपलब्ध मात्रा (उदा. ${item.quantity})"
-            setText(item.quantity)
+        val availQtyInput = EditText(ctx).apply {
+            hint = "आपके पास उपलब्ध मात्रा ($unit में) *"
+            setText(requestedQty.toString())
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
         }
-        val etMsg = EditText(ctx).apply {
-            hint = "संदेश (उदा. मेरे पास गरोठ में साफ माल तैयार है)"
+        val msgInput = EditText(ctx).apply {
+            hint = "ग्राहक के लिए संदेश"
+            setText("मेरे पास ताज़ा '$productName' उपलब्ध है।")
         }
-        box.addView(etOfferPrice)
-        box.addView(etAvailableQty)
-        box.addView(etMsg)
+
+        form.addView(priceInput)
+        form.addView(availQtyInput)
+        form.addView(msgInput)
 
         AlertDialog.Builder(ctx)
-            .setTitle("🌾 '${item.productName}' के लिए ऑफर भेजें")
-            .setView(box)
-            .setPositiveButton("ऑफर लॉक कर भेजें") { _, _ ->
-                Toast.makeText(
-                    ctx,
-                    "✅ ग्राहक (${item.buyerName}) को आपका ऑफर ₹${etOfferPrice.text} सफलतापूर्वक भेज दिया गया!",
-                    Toast.LENGTH_LONG
-                ).show()
+            .setTitle("✋ '$productName' के लिए अपना भाव दें")
+            .setView(form)
+            .setPositiveButton("भाव प्रस्ताव भेजें") { _, _ ->
+                val priceVal = priceInput.text?.toString()?.toDoubleOrNull() ?: 0.0
+                val availVal = availQtyInput.text?.toString()?.toDoubleOrNull() ?: requestedQty
+                val msg = msgInput.text?.toString()?.trim() ?: ""
+
+                if (priceVal <= 0.0) {
+                    Toast.makeText(ctx, "कृपया मान्य भाव (₹) दर्ज करें।", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val res = ApiClient.respondToBuyerRequest(
+                        context = ctx,
+                        requestId = requestId,
+                        offeredPriceRupees = priceVal,
+                        availableQty = availVal,
+                        message = msg
+                    )
+                    if (res.isSuccess) {
+                        Toast.makeText(ctx, "✅ आपका प्रस्ताव ग्राहक को भेज दिया गया!", Toast.LENGTH_LONG).show()
+                        loadBuyerRequests()
+                    } else {
+                        Toast.makeText(ctx, res.errorMessage ?: "प्रस्ताव भेजने में समस्या आई।", Toast.LENGTH_LONG).show()
+                    }
+                }
             }
-            .setNegativeButton("बंद करें", null)
+            .setNegativeButton("रद्द करें", null)
             .show()
     }
 
-    private fun dp(value: Int): Int {
-        return TypedValue.applyDimension(
+    private fun loadAndShowFarmerMatchesDialog(requestId: String, productName: String, unit: String) {
+        val ctx = context ?: return
+        progressBar.visibility = View.VISIBLE
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            val res = ApiClient.request(ctx, "/requests/$requestId/matches", method = "GET")
+            if (!isAdded) return@launch
+            progressBar.visibility = View.GONE
+
+            val arr = res.dataArray ?: JSONArray()
+            if (arr.length() == 0) {
+                AlertDialog.Builder(ctx)
+                    .setTitle("📬 '$productName' पर किसानों के प्रस्ताव")
+                    .setMessage("अभी तक किसी किसान ने इस मांग पर प्रस्ताव नहीं भेजा है।")
+                    .setPositiveButton("ठीक है", null)
+                    .show()
+                return@launch
+            }
+
+            val scroll = ScrollView(ctx)
+            val listLayout = LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(18), dp(12), dp(18), dp(12))
+            }
+
+            for (i in 0 until arr.length()) {
+                val m = arr.optJSONObject(i) ?: continue
+                val fName = m.optString("farmer_name", "किसान")
+                val fPhone = m.optString("farmer_phone", "")
+                val fVillage = m.optString("farmer_village", "")
+                val fDist = m.optString("farmer_district", "")
+                val offRupees = m.optDouble("offered_price_rupees", 0.0)
+                val availQty = m.optDouble("available_quantity", 1.0)
+                val msg = m.optString("message", "")
+
+                val box = LinearLayout(ctx).apply {
+                    orientation = LinearLayout.VERTICAL
+                    background = roundedBg("#F1F8E9", "#A5D6A7", dp(10))
+                    setPadding(dp(12), dp(10), dp(12), dp(10))
+                    val lp = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                    lp.bottomMargin = dp(8)
+                    layoutParams = lp
+                }
+
+                box.addView(
+                    TextView(ctx).apply {
+                        text = "👨‍🌾 $fName (${if (fVillage.isNotBlank() && fVillage != "null") "$fVillage, " else ""}$fDist)"
+                        setTextColor(Color.parseColor("#1B5E20"))
+                        setTypeface(typeface, Typeface.BOLD)
+                    }
+                )
+                box.addView(
+                    TextView(ctx).apply {
+                        text = "💰 किसान का भाव: ₹$offRupees/$unit • उपलब्ध: $availQty $unit\n💬 \"$msg\""
+                        setTextColor(Color.parseColor("#333333"))
+                        setPadding(0, dp(4), 0, dp(6))
+                    }
+                )
+
+                if (fPhone.isNotBlank() && fPhone != "null") {
+                    val contactBtn = Button(ctx).apply {
+                        text = "📞 किसान से बात करें / WhatsApp ($fPhone)"
+                        isAllCaps = false
+                        setTextColor(Color.WHITE)
+                        background = roundedBg("#2E7D32", "#2E7D32", dp(8))
+                        setOnClickListener {
+                            val clean = fPhone.replace("\\D".toRegex(), "")
+                            val intl = if (clean.length == 10) "91$clean" else clean
+                            startActivity(
+                                Intent(
+                                    Intent.ACTION_VIEW,
+                                    Uri.parse("https://wa.me/$intl?text=${Uri.encode("नमस्ते $fName जी, मैंने 'मेरा किसान' डिमांड बोर्ड पर '$productName' के लिए आपका प्रस्ताव (₹$offRupees/$unit) देखा।")}")
+                                )
+                            )
+                        }
+                    }
+                    box.addView(contactBtn)
+                }
+
+                listLayout.addView(box)
+            }
+
+            scroll.addView(listLayout)
+            AlertDialog.Builder(ctx)
+                .setTitle("📬 किसानों के प्राप्त प्रस्ताव (${arr.length()})")
+                .setView(scroll)
+                .setPositiveButton("बंद करें", null)
+                .show()
+        }
+    }
+
+    private fun roundedBg(fillHex: String, strokeHex: String, radiusPx: Int): GradientDrawable =
+        GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = radiusPx.toFloat()
+            setColor(Color.parseColor(fillHex))
+            setStroke(dp(1), Color.parseColor(strokeHex))
+        }
+
+    private fun dp(value: Int): Int =
+        TypedValue.applyDimension(
             TypedValue.COMPLEX_UNIT_DIP,
             value.toFloat(),
             resources.displayMetrics
         ).toInt()
-    }
-
-    data class DemandItem(
-        val id: String,
-        val productName: String,
-        val variety: String,
-        val quantity: String,
-        val targetPrice: String,
-        val buyerName: String,
-        val district: String,
-        val notes: String,
-        val dateLabel: String
-    )
 }
