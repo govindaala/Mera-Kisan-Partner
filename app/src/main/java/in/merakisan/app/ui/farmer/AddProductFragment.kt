@@ -1,92 +1,90 @@
 // app/src/main/java/in/merakisan/app/ui/farmer/AddProductFragment.kt
 package `in`.merakisan.app.ui.farmer
 
-import android.app.Activity
-import android.content.Context
-import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
+import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.Typeface
-import android.net.Uri
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
-import android.provider.MediaStore
+import android.text.InputFilter
 import android.text.InputType
 import android.util.TypedValue
-import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.cardview.widget.CardView
 import androidx.fragment.app.Fragment
-import androidx.navigation.fragment.findNavController
+import androidx.lifecycle.lifecycleScope
 import `in`.merakisan.app.core.config.FeatureManager
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import `in`.merakisan.app.core.network.ApiClient
+import `in`.merakisan.app.core.security.SessionManager
+import `in`.merakisan.app.ui.main.MainActivity
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.json.JSONArray
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
-import java.io.OutputStreamWriter
-import java.net.HttpURLConnection
-import java.net.URL
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
+/**
+ * MERA KISAN — ADD / EDIT PRODUCT & CROP SCREEN
+ * Exact Repository Path: app/src/main/java/in/merakisan/app/ui/farmer/AddProductFragment.kt
+ *
+ * Implements (Master Spec Sec 6, 12, 13 & merged.txt Sec 8, 37):
+ * - Complete 10-step listing & editing flow.
+ * - Small quantity marketplace support (1-25 kg).
+ * - Separate Seeds, Cold Pressed Oil, Rare/Desi & Traditional food categories.
+ * - Auto Crop Photo matching by crop name via ApiClient.getCropImageByName.
+ * - Fair Price Calculator integration (`/modules/fair-price`).
+ * - Google Drive photo metadata & YouTube (6 videos/day + Firebase queue) video job registration.
+ */
 class AddProductFragment : Fragment() {
 
+    private var editProductId: String? = null
+    private var resolvedCropImageUrl: String? = null
+
+    private lateinit var screenHeaderTitle: TextView
+    private lateinit var inputProductName: EditText
     private lateinit var spinnerCategory: Spinner
-    private lateinit var etProductName: EditText
-    private lateinit var etVariety: EditText
-    private lateinit var etPricePerUnit: EditText
+    private lateinit var inputVariety: EditText
+    private lateinit var inputPriceRupees: EditText
     private lateinit var spinnerUnit: Spinner
-    private lateinit var etTotalQuantity: EditText
-    private lateinit var etMinOrderQty: EditText
-    private lateinit var etHarvestDate: EditText
-    private lateinit var etVillage: EditText
-    private lateinit var etDistrict: EditText
-    private lateinit var etSellerPhone: EditText
-    private lateinit var spinnerDelivery: Spinner
-    private lateinit var etDescription: EditText
+    private lateinit var inputStockQty: EditText
+    private lateinit var inputMinOrderQty: EditText
+    private lateinit var inputHarvestDate: EditText
+    private lateinit var checkFreshToday: CheckBox
+    private lateinit var inputDescription: EditText
+    private lateinit var inputVillage: EditText
+    private lateinit var inputDistrict: EditText
+    private lateinit var inputState: EditText
     private lateinit var tvPhotoStatus: TextView
-    private lateinit var tvVideoStatus: TextView
-    private lateinit var btnPublish: Button
+    private lateinit var inputCustomImageUrl: EditText
+    private lateinit var inputVideoTempPath: EditText
+    private lateinit var progressBar: ProgressBar
+    private lateinit var btnPublishProduct: Button
 
-    private var compressedPhotoBytesSizeKb: Int = 0
-    private var selectedPhotoUriString: String = ""
-    private var selectedVideoUriString: String = ""
+    private val categoryOptions = listOf(
+        "grains" to "🌾 देशी अनाज व मिलेट्स (Grains & Millets)",
+        "pulses_oilseeds" to "🥜 दाल व तिलहन (Pulses & Oilseeds)",
+        "vegetables" to "🥬 ताज़ा सब्जियां (Fresh Vegetables)",
+        "fruits" to "🍊 देशी फल (Fruits)",
+        "cold_pressed_oil" to "🫙 कच्ची घानी तेल (Cold Pressed Oil)",
+        "spices_jaggery" to "🍯 गुड़ व मसाले (Jaggery & Spices)",
+        "seeds" to "🌱 देशी व प्रमाणित बीज (Seeds)",
+        "traditional" to "🏺 दुर्लभ / पारंपरिक किस्म (Rare / Desi)",
+        "other" to "📦 अन्य कृषि उत्पाद"
+    )
 
-    private val photoPickerLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            result.data?.data?.let { compressImageLocally(it) }
-        }
-    }
+    private val unitOptions = listOf("kg", "quintal", "litre", "packet", "piece", "box")
 
-    private val videoPickerLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val uri = result.data?.data
-            if (uri != null) {
-                selectedVideoUriString = uri.toString()
-                val dailyLimit = FeatureManager.getYoutubeDailyLimit(context)
-                tvVideoStatus.text = "🎥 वीडियो चयनित (YouTube $dailyLimit/दिन कोटा + Firebase Fallback Queue)"
-                tvVideoStatus.setTextColor(Color.parseColor("#1B5E20"))
-            }
-        }
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        editProductId = arguments?.getString("edit_product_id")
     }
 
     override fun onCreateView(
@@ -95,490 +93,539 @@ class AddProductFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         val ctx = requireContext()
-        val userPrefs = ctx.getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
-        val defaultVillage = userPrefs.getString("village", "गरोठ") ?: "गरोठ"
-        val defaultDistrict = userPrefs.getString("district", "मंदसौर") ?: "मंदसौर"
-        val defaultPhone = userPrefs.getString("phone", "") ?: ""
-        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val scroll = ScrollView(ctx).apply {
+            isFillViewport = true
+            setBackgroundColor(Color.parseColor("#F2F6F2"))
+        }
 
         val root = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#F4F6F8"))
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
+            setPadding(dp(14), dp(14), dp(14), dp(30))
         }
 
-        val header = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(Color.parseColor("#1B5E20"))
-            setPadding(dp(12), dp(10), dp(14), dp(10))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(58))
+        val card = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBg("#FFFFFF", "#D4E2D4", dp(14))
+            setPadding(dp(16), dp(16), dp(16), dp(16))
         }
 
-        header.addView(TextView(ctx).apply {
-            text = "←"
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
-            setTypeface(typeface, Typeface.BOLD)
-            setPadding(dp(6), dp(2), dp(14), dp(2))
-            setOnClickListener {
-                try { findNavController().popBackStack() } catch (_: Throwable) {}
+        screenHeaderTitle = TextView(ctx).apply {
+            text = if (editProductId.isNullOrBlank()) {
+                "➕ नई फसल / बीज / कृषि उत्पाद बेचें"
+            } else {
+                "✏️ फसल विवरण व स्टॉक एडिट करें"
             }
-        })
-
-        header.addView(TextView(ctx).apply {
-            text = "➕ नई फसल / कृषि उत्पाद बेचें"
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            setTextColor(Color.parseColor("#124116"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 19f)
             setTypeface(typeface, Typeface.BOLD)
-        })
-        root.addView(header)
+            setPadding(0, 0, 0, dp(6))
+        }
+        card.addView(screenHeaderTitle)
 
-        val scroll = ScrollView(ctx).apply {
-            isFillViewport = true
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.MATCH_PARENT
+        card.addView(
+            TextView(ctx).apply {
+                text = "छोटी मात्रा (1–25 kg) या थोक मात्रा दोनों सीधे ग्राहकों को बेचें। बिना प्रमाण '100% केमिकल-मुक्त' या '10 गुना शुद्ध' जैसे दावे न लिखें।"
+                setTextColor(Color.parseColor("#4A5A4A"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                setPadding(0, 0, 0, dp(10))
+            }
+        )
+
+        inputProductName = addLabeledInput(
+            parent = card,
+            label = "1. फसल या उत्पाद का नाम (Product Name) *",
+            hint = "उदा. शरबती गेहूं, ऊटी लहसुन, देशी चीना, मूंगफली तेल...",
+            inputType = InputType.TYPE_CLASS_TEXT,
+            maxLen = 100
+        )
+
+        card.addView(createLabel("2. श्रेणी चुनें (Category) *"))
+        spinnerCategory = Spinner(ctx).apply {
+            minimumHeight = dp(46)
+            adapter = ArrayAdapter(
+                ctx,
+                android.R.layout.simple_spinner_dropdown_item,
+                categoryOptions.map { it.second }
+            )
+        }
+        card.addView(spinnerCategory)
+
+        inputVariety = addLabeledInput(
+            parent = card,
+            label = "3. किस्म / वैरायटी (Variety)",
+            hint = "उदा. शरबती, देशी, लोकवन, ऊटी, पीली सरसों...",
+            inputType = InputType.TYPE_CLASS_TEXT,
+            maxLen = 80
+        )
+
+        inputPriceRupees = addLabeledInput(
+            parent = card,
+            label = "4. विक्रय मूल्य (₹ प्रति इकाई) *",
+            hint = "उदा. 45",
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL,
+            maxLen = 10
+        )
+
+        if (FeatureManager.isEnabled("fair_price", ctx)) {
+            card.addView(
+                createButton("🧮 उचित दाम कैलकुलेटर (लागत व भाड़े से सही भाव निकालें)", "#0D47A1") {
+                    showFairPriceCalculatorDialog()
+                }
             )
         }
 
-        val content = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(12), dp(12), dp(28))
+        card.addView(createLabel("5. माप की इकाई (Unit) *"))
+        spinnerUnit = Spinner(ctx).apply {
+            minimumHeight = dp(46)
+            adapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item, unitOptions)
+        }
+        card.addView(spinnerUnit)
+
+        inputStockQty = addLabeledInput(
+            parent = card,
+            label = "6. कुल उपलब्ध मात्रा (Available Stock) *",
+            hint = "उदा. 25 (छोटी मात्रा भी डाल सकते हैं)",
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL,
+            maxLen = 10
+        )
+
+        inputMinOrderQty = addLabeledInput(
+            parent = card,
+            label = "7. ग्राहक के लिए न्यूनतम ऑर्डर मात्रा (Minimum Order) *",
+            hint = "उदा. 2 (1 से 25 रखने पर 'छोटी मात्रा' बैज मिलेगा)",
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL,
+            maxLen = 10
+        ).apply {
+            setText("1")
         }
 
-        val mediaCard = CardView(ctx).apply {
-            radius = dp(12).toFloat()
-            cardElevation = dp(2).toFloat()
-            setCardBackgroundColor(Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(12) }
-        }
+        inputHarvestDate = addLabeledInput(
+            parent = card,
+            label = "8. कटाई / तुड़ाई तिथि (Harvest Date)",
+            hint = "उदा. आज, कल, या अक्टूबर 2026",
+            inputType = InputType.TYPE_CLASS_TEXT,
+            maxLen = 40
+        )
 
-        val mediaBox = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-        }
-
-        mediaBox.addView(TextView(ctx).apply {
-            text = "📸 कदम 1: उत्पाद की असली फोटो व वीडियो"
+        checkFreshToday = CheckBox(ctx).apply {
+            text = "🥬 यह आज खेत से तोड़ी गई ताज़ा फसल है (Fresh Today)"
             setTextColor(Color.parseColor("#1B5E20"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             setTypeface(typeface, Typeface.BOLD)
-        })
-
-        val mediaBtnRow = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            weightSum = 2f
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(8) }
+            setPadding(0, dp(6), 0, dp(6))
         }
+        card.addView(checkFreshToday)
 
-        mediaBtnRow.addView(Button(ctx).apply {
-            text = "📷 फोटो चुनें (Local Compress)"
-            textSize = 11f
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#1B5E20"))
-            layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply { rightMargin = dp(4) }
-            setOnClickListener {
-                val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
-                try { photoPickerLauncher.launch(intent) } catch (_: Throwable) {}
-            }
-        })
+        inputDescription = addLabeledInput(
+            parent = card,
+            label = "9. उत्पाद विवरण व खेती की जानकारी (Description)",
+            hint = "स्वाद, गुणवत्ता, बुवाई/खाद की वास्तविक जानकारी लिखें...",
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE,
+            maxLen = 500
+        )
 
-        mediaBtnRow.addView(Button(ctx).apply {
-            text = "🎥 15–30s वीडियो जोड़ें"
-            textSize = 11f
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#0D47A1"))
-            layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(4) }
-            setOnClickListener {
-                val intent = Intent(Intent.ACTION_PICK, MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
-                try { videoPickerLauncher.launch(intent) } catch (_: Throwable) {}
-            }
-        })
-        mediaBox.addView(mediaBtnRow)
+        card.addView(createLabel("10. फसल की फोटो व वीडियो (Auto Crop Photo / Google Drive / YouTube Queue)"))
+        val btnAutoPhoto = createButton("🖼️ फसल के नाम से असली फोटो अपने-आप जोड़ें", "#2E7D32") {
+            autoMatchCropPhotoByName()
+        }
+        card.addView(btnAutoPhoto)
 
         tvPhotoStatus = TextView(ctx).apply {
-            text = "ℹ️ फोटो स्थिति: कोई फोटो चयनित नहीं (Firestore में केवल मेटाडेटा जाएगा)"
-            setTextColor(Color.parseColor("#616161"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-            setPadding(0, dp(6), 0, dp(2))
+            text = "फोटो स्थिति: फसल का नाम लिखकर ऊपर बटन दबाएँ (या नीचे लिंक दें)"
+            setTextColor(Color.parseColor("#1B5E20"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setPadding(0, dp(4), 0, dp(4))
         }
-        mediaBox.addView(tvPhotoStatus)
+        card.addView(tvPhotoStatus)
 
-        tvVideoStatus = TextView(ctx).apply {
-            text = "ℹ️ वीडियो स्थिति: वैकल्पिक (6 वीडियो/दिन YouTube पर, अतिरिक्त Firebase क्यू में)"
-            setTextColor(Color.parseColor("#616161"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-        }
-        mediaBox.addView(tvVideoStatus)
-
-        mediaCard.addView(mediaBox)
-        content.addView(mediaCard)
-
-        val formCard = CardView(ctx).apply {
-            radius = dp(12).toFloat()
-            cardElevation = dp(2).toFloat()
-            setCardBackgroundColor(Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(12) }
-        }
-
-        val formBox = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-        }
-
-        formBox.addView(createFieldLabel(ctx, "2. श्रेणी चुनें (Rare / Desi / Local Categories):"))
-        val categories = arrayOf(
-            "देशी अनाज व मिलेट्स (Desi Grains & Millets)",
-            "देशी दाल व तिलहन (Pulses & Oilseeds)",
-            "ताज़ा देशी सब्जियां (Fresh Vegetables)",
-            "देशी फल (Seasonal Fruits)",
-            "कच्ची घानी तेल (Cold Pressed Oil)",
-            "पुरानी / दुर्लभ पारंपरिक किस्म (Rare Varieties)",
-            "घर का गुड़ व मसाले (Jaggery & Spices)"
+        inputCustomImageUrl = addLabeledInput(
+            parent = card,
+            label = "Google Drive / कस्टम फोटो HTTPS लिंक (वैकल्पिक)",
+            hint = "खाली छोड़ने पर फसल के नाम से ऑटो-फोटो जुड़ जाएगी",
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI,
+            maxLen = 400
         )
-        spinnerCategory = Spinner(ctx).apply {
-            adapter = createReadableSpinnerAdapter(ctx, categories)
-        }
-        formBox.addView(spinnerCategory)
 
-        formBox.addView(createFieldLabel(ctx, "3. फसल / उत्पाद का नाम:"))
-        etProductName = EditText(ctx).apply {
-            hint = "उदा. चीना / देशी शरबती गेहूं / सोयाबीन"
-            setTextColor(Color.parseColor("#212121"))
-        }
-        formBox.addView(etProductName)
-
-        formBox.addView(createFieldLabel(ctx, "4. किस्म / वैरायटी (Variety):"))
-        etVariety = EditText(ctx).apply {
-            hint = "उदा. Poso Millet / मालवा शरबती / JS 9560"
-            setTextColor(Color.parseColor("#212121"))
-        }
-        formBox.addView(etVariety)
-
-        formBox.addView(createFieldLabel(ctx, "5. विक्रय मूल्य (₹ प्रति इकाई) व इकाई:"))
-        val priceRow = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            weightSum = 2f
-        }
-        etPricePerUnit = EditText(ctx).apply {
-            hint = "दर ₹ (उदा. 60)"
-            setTextColor(Color.parseColor("#212121"))
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        val units = arrayOf("kg", "quintal", "litre", "box")
-        spinnerUnit = Spinner(ctx).apply {
-            adapter = createReadableSpinnerAdapter(ctx, units)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        priceRow.addView(etPricePerUnit)
-        priceRow.addView(spinnerUnit)
-        formBox.addView(priceRow)
-
-        formBox.addView(createFieldLabel(ctx, "6. कुल उपलब्ध मात्रा व न्यूनतम ऑर्डर (1–25 kg छोटी मात्रा समर्थित):"))
-        val qtyRow = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            weightSum = 2f
-        }
-        etTotalQuantity = EditText(ctx).apply {
-            hint = "कुल स्टॉक (उदा. 600)"
-            setTextColor(Color.parseColor("#212121"))
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        etMinOrderQty = EditText(ctx).apply {
-            hint = "न्यूनतम ऑर्डर (उदा. 5)"
-            setText("5")
-            setTextColor(Color.parseColor("#212121"))
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        qtyRow.addView(etTotalQuantity)
-        qtyRow.addView(etMinOrderQty)
-        formBox.addView(qtyRow)
-
-        formBox.addView(createFieldLabel(ctx, "7. कटाई / ताज़ा पैकिंग तिथि (Harvest Date):"))
-        etHarvestDate = EditText(ctx).apply {
-            hint = "YYYY-MM-DD"
-            setText(todayStr)
-            setTextColor(Color.parseColor("#212121"))
-        }
-        formBox.addView(etHarvestDate)
-
-        formBox.addView(createFieldLabel(ctx, "8. ग्राम, ज़िला व संपर्क मोबाइल नंबर (ग्राहक कॉल हेतु):"))
-        val locRow = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            weightSum = 2f
-        }
-        etVillage = EditText(ctx).apply {
-            hint = "ग्राम"
-            setText(defaultVillage)
-            setTextColor(Color.parseColor("#212121"))
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        etDistrict = EditText(ctx).apply {
-            hint = "ज़िला"
-            setText(defaultDistrict)
-            setTextColor(Color.parseColor("#212121"))
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        locRow.addView(etVillage)
-        locRow.addView(etDistrict)
-        formBox.addView(locRow)
-
-        etSellerPhone = EditText(ctx).apply {
-            hint = "किसान का 10-अंकीय मोबाइल नंबर (ग्राहक संपर्क हेतु)"
-            setText(defaultPhone)
-            setTextColor(Color.parseColor("#212121"))
-            inputType = InputType.TYPE_CLASS_PHONE
-        }
-        formBox.addView(etSellerPhone)
-
-        formBox.addView(createFieldLabel(ctx, "9. पिकअप व डिलीवरी विकल्प:"))
-        val deliveryModes = arrayOf(
-            "खेत से पिकअप व लोकल डिलीवरी दोनों",
-            "केवल खेत / ग्राम से पिकअप (Buyer Pickup)",
-            "किसान द्वारा शहर में डिलीवरी (Farmer Delivery)",
-            "ग्राम कलेक्शन सेंटर (Collection Point)"
+        inputVideoTempPath = addLabeledInput(
+            parent = card,
+            label = "15–30 सेकंड फसल वीडियो संदर्भ (YouTube 6/दिन कोटा कतार - वैकल्पिक)",
+            hint = "वीडियो पाथ या संदर्भ (वैकल्पिक)",
+            inputType = InputType.TYPE_CLASS_TEXT,
+            maxLen = 250
         )
-        spinnerDelivery = Spinner(ctx).apply {
-            adapter = createReadableSpinnerAdapter(ctx, deliveryModes)
+
+        inputVillage = addLabeledInput(
+            parent = card,
+            label = "गाँव का नाम",
+            hint = "गाँव",
+            inputType = InputType.TYPE_CLASS_TEXT,
+            maxLen = 80
+        ).apply {
+            setText(SessionManager.getUserVillage(ctx))
         }
-        formBox.addView(spinnerDelivery)
 
-        formBox.addView(createFieldLabel(ctx, "10. खेती विधि व उत्पाद विवरण (बिना प्रमाण '100% केमिकल-फ्री' न लिखें):"))
-        etDescription = EditText(ctx).apply {
-            hint = "उदा. पारंपरिक देशी खाद से उगाया गया साफ अनाज।"
-            setTextColor(Color.parseColor("#212121"))
-            minLines = 2
+        inputDistrict = addLabeledInput(
+            parent = card,
+            label = "ज़िला (District) *",
+            hint = "ज़िला",
+            inputType = InputType.TYPE_CLASS_TEXT,
+            maxLen = 80
+        ).apply {
+            setText(SessionManager.getUserDistrict(ctx))
         }
-        formBox.addView(etDescription)
 
-        btnPublish = Button(ctx).apply {
-            text = "✅ उत्पाद प्रकाशित करें (Publish to Marketplace)"
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#1B5E20"))
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(48)
-            ).apply { topMargin = dp(14) }
-            setOnClickListener { validateAndPublishProduct(ctx) }
+        inputState = addLabeledInput(
+            parent = card,
+            label = "राज्य (State)",
+            hint = "राज्य",
+            inputType = InputType.TYPE_CLASS_TEXT,
+            maxLen = 80
+        ).apply {
+            setText(SessionManager.getUserState(ctx))
         }
-        formBox.addView(btnPublish)
 
-        formCard.addView(formBox)
-        content.addView(formCard)
+        progressBar = ProgressBar(ctx).apply {
+            visibility = View.GONE
+            setPadding(0, dp(10), 0, dp(10))
+        }
+        card.addView(progressBar)
 
-        scroll.addView(content)
-        root.addView(scroll)
-        return root
+        btnPublishProduct = createButton(
+            if (editProductId.isNullOrBlank()) "✅ फसल प्रकाशित करें और पोस्टर बनाएँ" else "💾 बदलाव सुरक्षित करें",
+            "#1B5E20"
+        ) {
+            submitProductListing()
+        }.apply {
+            minHeight = dp(52)
+            val lp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            lp.topMargin = dp(12)
+            layoutParams = lp
+        }
+        card.addView(btnPublishProduct)
+
+        root.addView(card)
+        scroll.addView(root)
+        return scroll
     }
 
-    private fun createReadableSpinnerAdapter(ctx: Context, items: Array<String>): ArrayAdapter<String> {
-        return object : ArrayAdapter<String>(ctx, android.R.layout.simple_spinner_item, items) {
-            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-                val tv = super.getView(position, convertView, parent) as TextView
-                tv.setTextColor(Color.parseColor("#1B5E20"))
-                tv.setTypeface(tv.typeface, Typeface.BOLD)
-                return tv
-            }
-
-            override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup): View {
-                val tv = super.getDropDownView(position, convertView, parent) as TextView
-                tv.setBackgroundColor(Color.WHITE)
-                tv.setTextColor(Color.parseColor("#212121"))
-                tv.setPadding(dp(12), dp(10), dp(12), dp(10))
-                return tv
-            }
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        if (!editProductId.isNullOrBlank()) {
+            loadExistingProductForEdit(editProductId!!)
         }
     }
 
-    private fun compressImageLocally(uri: Uri) {
+    private fun loadExistingProductForEdit(productId: String) {
         val ctx = context ?: return
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val inputStream = ctx.contentResolver.openInputStream(uri)
-                val originalBitmap = BitmapFactory.decodeStream(inputStream)
-                inputStream?.close()
+        progressBar.visibility = View.VISIBLE
+        viewLifecycleOwner.lifecycleScope.launch {
+            val res = ApiClient.getProductById(ctx, productId)
+            if (!isAdded) return@launch
+            progressBar.visibility = View.GONE
 
-                if (originalBitmap != null) {
-                    val maxDim = 1080
-                    val ratio = minOf(
-                        maxDim.toFloat() / originalBitmap.width.coerceAtLeast(1),
-                        maxDim.toFloat() / originalBitmap.height.coerceAtLeast(1),
-                        1.0f
-                    )
-                    val targetW = (originalBitmap.width * ratio).toInt().coerceAtLeast(1)
-                    val targetH = (originalBitmap.height * ratio).toInt().coerceAtLeast(1)
-                    val scaled = Bitmap.createScaledBitmap(originalBitmap, targetW, targetH, true)
+            val d = res.dataObject ?: return@launch
+            inputProductName.setText(d.optString("name", ""))
+            inputVariety.setText(d.optString("variety", ""))
+            inputPriceRupees.setText(d.optDouble("price_rupees", d.optDouble("price", 0.0)).toString())
+            inputStockQty.setText(d.optDouble("stock_quantity", 0.0).toString())
+            inputMinOrderQty.setText(d.optDouble("min_order_quantity", 1.0).toString())
+            inputHarvestDate.setText(d.optString("harvest_date", "").takeIf { it != "null" } ?: "")
+            checkFreshToday.isChecked = d.optBoolean("is_fresh_today", false)
+            inputDescription.setText(d.optString("description", ""))
+            inputVillage.setText(d.optString("village", "").takeIf { it != "null" } ?: "")
+            inputDistrict.setText(d.optString("district", "").takeIf { it != "null" } ?: "")
+            inputState.setText(d.optString("state", "").takeIf { it != "null" } ?: "")
 
-                    val bos = ByteArrayOutputStream()
-                    scaled.compress(Bitmap.CompressFormat.JPEG, 78, bos)
-                    compressedPhotoBytesSizeKb = (bos.size() / 1024).coerceAtLeast(12)
-                    selectedPhotoUriString = "https://drive.google.com/uc?id=mk_photo_${System.currentTimeMillis()}"
+            val existingImg = d.optString("image_url", "").takeIf { it != "null" } ?: ""
+            if (existingImg.isNotBlank()) {
+                resolvedCropImageUrl = existingImg
+                inputCustomImageUrl.setText(existingImg)
+                tvPhotoStatus.text = "✅ फोटो पहले से जुड़ी हुई है"
+            }
 
-                    withContext(Dispatchers.Main) {
-                        if (!isAdded) return@withContext
-                        tvPhotoStatus.text = "✔ फोटो लोकल रूप से कम्प्रेस हो गई (${compressedPhotoBytesSizeKb} KB) — Google Drive मेटाडेटा तैयार"
-                        tvPhotoStatus.setTextColor(Color.parseColor("#1B5E20"))
+            val catCode = d.optString("category", "grains")
+            val catIdx = categoryOptions.indexOfFirst { it.first == catCode }
+            if (catIdx >= 0) spinnerCategory.setSelection(catIdx)
+
+            val unitVal = d.optString("unit", "kg")
+            val uIdx = unitOptions.indexOf(unitVal)
+            if (uIdx >= 0) spinnerUnit.setSelection(uIdx)
+        }
+    }
+
+    private fun autoMatchCropPhotoByName() {
+        val ctx = context ?: return
+        val name = inputProductName.text?.toString()?.trim() ?: ""
+        if (name.length < 2) {
+            Toast.makeText(ctx, "कृपया पहले फसल का नाम लिखें।", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val catCode = categoryOptions.getOrNull(spinnerCategory.selectedItemPosition)?.first ?: "grains"
+
+        progressBar.visibility = View.VISIBLE
+        viewLifecycleOwner.lifecycleScope.launch {
+            val res = ApiClient.getCropImageByName(ctx, name, catCode)
+            if (!isAdded) return@launch
+            progressBar.visibility = View.GONE
+
+            val imgUrl = res.dataObject?.optString("image_url", "") ?: ""
+            val titleHi = res.dataObject?.optString("title_hi", name) ?: name
+            if (imgUrl.isNotBlank()) {
+                resolvedCropImageUrl = imgUrl
+                inputCustomImageUrl.setText(imgUrl)
+                tvPhotoStatus.text = "✅ '$titleHi' की उच्च-गुणवत्ता वाली असली फसल फोटो जुड़ गई!"
+            } else {
+                tvPhotoStatus.text = "⚠️ फोटो स्वतः नहीं मिली, प्रकाशन पर डिफ़ॉल्ट कृषि फोटो जुड़ जाएगी।"
+            }
+        }
+    }
+
+    private fun showFairPriceCalculatorDialog() {
+        val ctx = context ?: return
+        val layout = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(12), dp(20), dp(8))
+        }
+
+        val qtyInput = EditText(ctx).apply {
+            hint = "कुल मात्रा (kg में)"
+            setText(inputStockQty.text?.toString()?.ifBlank { "100" } ?: "100")
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+        }
+        val prodCostInput = EditText(ctx).apply {
+            hint = "कुल उत्पादन लागत (₹)"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+        }
+        val transportInput = EditText(ctx).apply {
+            hint = "परिवहन / भाड़ा खर्च (₹)"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+        }
+        val packInput = EditText(ctx).apply {
+            hint = "पैकेजिंग खर्च (₹)"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+        }
+        val marginInput = EditText(ctx).apply {
+            hint = "अपेक्षित मुनाफा % (उदा. 15)"
+            setText("15")
+            inputType = InputType.TYPE_CLASS_NUMBER
+        }
+
+        layout.addView(qtyInput)
+        layout.addView(prodCostInput)
+        layout.addView(transportInput)
+        layout.addView(packInput)
+        layout.addView(marginInput)
+
+        AlertDialog.Builder(ctx)
+            .setTitle("🧮 उचित दाम कैलकुलेटर (Fair Price)")
+            .setView(layout)
+            .setPositiveButton("भाव निकालें") { _, _ ->
+                val body = JSONObject().apply {
+                    put("quantity_kg", qtyInput.text?.toString()?.toDoubleOrNull() ?: 100.0)
+                    put("production_cost_rupees", prodCostInput.text?.toString()?.toDoubleOrNull() ?: 0.0)
+                    put("transport_cost_rupees", transportInput.text?.toString()?.toDoubleOrNull() ?: 0.0)
+                    put("packaging_cost_rupees", packInput.text?.toString()?.toDoubleOrNull() ?: 0.0)
+                    put("desired_margin_percent", marginInput.text?.toString()?.toDoubleOrNull() ?: 15.0)
+                }
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val res = ApiClient.request(ctx, "/modules/fair-price", method = "POST", bodyJson = body)
+                    val d = res.dataObject
+                    if (res.isSuccess && d != null) {
+                        val suggestedKg = d.optDouble("suggested_direct_price_kg_rupees", 0.0)
+                        val minSustKg = d.optDouble("minimum_sustainable_price_kg_rupees", 0.0)
+                        if (suggestedKg > 0) {
+                            inputPriceRupees.setText(suggestedKg.toString())
+                        }
+                        Toast.makeText(
+                            ctx,
+                            "न्यूनतम लागत मूल्य: ₹$minSustKg/kg • सुझाया गया प्रत्यक्ष भाव: ₹$suggestedKg/kg",
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
                 }
-            } catch (_: Throwable) {}
-        }
-    }
-
-    private fun sanitizeDescriptionClaims(raw: String): String {
-        return raw
-            .replace(Regex("100%\\s*(chemical[\\s-]*free|pure|organic)", RegexOption.IGNORE_CASE), "Farmer Declared")
-            .replace(Regex("केमिकल[\\s-]*फ्री|रसायन[\\s-]*मुक्त"), "पारंपरिक खेती")
-            .replace(Regex("10\\s*गुना\\s*शुद्ध|10x\\s*pure", RegexOption.IGNORE_CASE), "खेत से सीधा")
-            .trim()
-    }
-
-    private fun validateAndPublishProduct(ctx: Context) {
-        val name = etProductName.text.toString().trim()
-        val variety = etVariety.text.toString().trim().ifEmpty { "पारंपरिक देशी" }
-        val priceRupees = etPricePerUnit.text.toString().trim().toDoubleOrNull() ?: 0.0
-        val totalQty = etTotalQuantity.text.toString().trim().toDoubleOrNull() ?: 0.0
-        val minOrder = etMinOrderQty.text.toString().trim().toDoubleOrNull() ?: 1.0
-        val sellerPhone = etSellerPhone.text.toString().trim()
-
-        if (name.length < 2) {
-            Toast.makeText(ctx, "कृपया फसल / उत्पाद का सही नाम लिखें।", Toast.LENGTH_SHORT).show()
-            return
-        }
-        if (priceRupees <= 0.0 || totalQty <= 0.0) {
-            Toast.makeText(ctx, "मूल्य और मात्रा शून्य से अधिक होने चाहिए।", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val pricePaise = Math.round(priceRupees * 100.0)
-        val category = spinnerCategory.selectedItem?.toString() ?: "देशी अनाज"
-        val unit = spinnerUnit.selectedItem?.toString() ?: "kg"
-        val harvestDate = etHarvestDate.text.toString().trim().ifEmpty { "आज" }
-        val village = etVillage.text.toString().trim().ifEmpty { "गरोठ" }
-        val district = etDistrict.text.toString().trim().ifEmpty { "मंदसौर" }
-        val delivery = spinnerDelivery.selectedItem?.toString() ?: "खेत से पिकअप व लोकल डिलीवरी"
-        val cleanDesc = sanitizeDescriptionClaims(
-            etDescription.text.toString().trim().ifEmpty { "खेत से सीधा ताज़ा उत्पाद।" }
-        )
-
-        val userPrefs = ctx.getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
-        if (sellerPhone.length >= 10) {
-            userPrefs.edit().putString("phone", sellerPhone).apply()
-        }
-        val farmerName = userPrefs.getString("name", "किसान साथी") ?: "किसान साथी"
-        val farmerUid = userPrefs.getString("uid", "usr_farmer") ?: "usr_farmer"
-        val productId = "mk_prod_${System.currentTimeMillis()}"
-
-        btnPublish.isEnabled = false
-        btnPublish.text = "⏳ सर्वर पर प्रकाशित हो रहा है..."
-
-        val productJson = JSONObject().apply {
-            put("id", productId)
-            put("name", name)
-            put("category", category)
-            put("variety", variety)
-            put("price", priceRupees)
-            put("price_paise", pricePaise)
-            put("unit", unit)
-            put("stock_quantity", totalQty)
-            put("minimum_order_quantity", minOrder)
-            put("harvest_date", harvestDate)
-            put("village", village)
-            put("district", district)
-            put("seller_phone", sellerPhone)
-            put("delivery_options", delivery)
-            put("description", cleanDesc)
-            put("seller_name", farmerName)
-            put("farmer_uid", farmerUid)
-            put("verification_status", "किसान द्वारा घोषित (Farmer Declared)")
-            put("rating_count", 0)
-            put("farmer_rating", 0.0)
-        }
-
-        CoroutineScope(Dispatchers.IO).launch {
-            var serverSaved = false
-            try {
-                val url = URL("https://mera-kisan-backend.vercel.app/api/v1/products")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.setRequestProperty("x-user-uid", farmerUid)
-                conn.doOutput = true
-                conn.connectTimeout = 6000
-                conn.readTimeout = 6000
-                OutputStreamWriter(conn.outputStream).use { it.write(productJson.toString()) }
-                serverSaved = conn.responseCode in 200..299
-            } catch (_: Throwable) {}
-
-            try {
-                val cachePrefs = ctx.getSharedPreferences("mera_kisan_local_cache", Context.MODE_PRIVATE)
-                val existingArr = JSONArray(cachePrefs.getString("cached_products", "[]") ?: "[]")
-                existingArr.put(productJson)
-                cachePrefs.edit()
-                    .putString("cached_products", existingArr.toString())
-                    .putString("selected_product_json", productJson.toString())
-                    .apply()
-            } catch (_: Throwable) {}
-
-            withContext(Dispatchers.Main) {
-                if (!isAdded) return@withContext
-                btnPublish.isEnabled = true
-                btnPublish.text = "✅ उत्पाद प्रकाशित करें (Publish to Marketplace)"
-
-                if (serverSaved) {
-                    Toast.makeText(ctx, "✅ सर्वर पुष्टि: '$name' सफलतापूर्वक प्रकाशित हो गया!", Toast.LENGTH_LONG).show()
-                } else {
-                    Toast.makeText(ctx, "📥 '$name' आपके मोबाइल कैश में सुरक्षित हो गया!", Toast.LENGTH_LONG).show()
-                }
-                navigateSafe("marketplaceFragment", "homeFragment")
             }
-        }
+            .setNegativeButton("बंद करें", null)
+            .show()
     }
 
-    private fun createFieldLabel(ctx: Context, textLabel: String): TextView {
-        return TextView(ctx).apply {
-            text = textLabel
-            setTextColor(Color.parseColor("#212121"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, dp(8), 0, dp(2))
-        }
-    }
-
-    private fun navigateSafe(vararg names: String) {
+    private fun submitProductListing() {
         val ctx = context ?: return
-        val pkg = ctx.packageName
-        for (n in names) {
-            val id = ctx.resources.getIdentifier(n, "id", pkg)
-            if (id != 0) {
-                try {
-                    findNavController().navigate(id)
-                    return
-                } catch (_: Throwable) {}
+        val name = inputProductName.text?.toString()?.trim() ?: ""
+        if (name.length < 2) {
+            inputProductName.error = "फसल का नाम लिखें"
+            Toast.makeText(ctx, "कृपया फसल या उत्पाद का नाम दर्ज करें।", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val priceRupees = inputPriceRupees.text?.toString()?.toDoubleOrNull() ?: 0.0
+        if (priceRupees < 1.0) {
+            inputPriceRupees.error = "मान्य कीमत लिखें"
+            Toast.makeText(ctx, "कृपया कम से कम ₹1 या अधिक कीमत दर्ज करें।", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val stockQty = inputStockQty.text?.toString()?.toDoubleOrNull() ?: 0.0
+        if (stockQty <= 0.0) {
+            inputStockQty.error = "उपलब्ध मात्रा लिखें"
+            Toast.makeText(ctx, "कृपया उपलब्ध स्टॉक मात्रा दर्ज करें।", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val minOrderQty = inputMinOrderQty.text?.toString()?.toDoubleOrNull() ?: 1.0
+        if (minOrderQty <= 0.0 || minOrderQty > stockQty) {
+            inputMinOrderQty.error = "न्यूनतम ऑर्डर कुल स्टॉक से अधिक नहीं हो सकता"
+            Toast.makeText(ctx, "न्यूनतम ऑर्डर मात्रा कुल स्टॉक के बराबर या कम होनी चाहिए।", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val district = inputDistrict.text?.toString()?.trim() ?: ""
+        if (district.length < 2) {
+            inputDistrict.error = "ज़िला अनिवार्य है"
+            Toast.makeText(ctx, "कृपया अपना ज़िला दर्ज करें।", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val catCode = categoryOptions.getOrNull(spinnerCategory.selectedItemPosition)?.first ?: "grains"
+        val unitVal = unitOptions.getOrNull(spinnerUnit.selectedItemPosition) ?: "kg"
+        val pricePaise = Math.round(priceRupees * 100)
+
+        progressBar.visibility = View.VISIBLE
+        btnPublishProduct.isEnabled = false
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            var finalImageUrl = inputCustomImageUrl.text?.toString()?.trim().takeIf { !it.isNullOrBlank() }
+                ?: resolvedCropImageUrl
+
+            if (finalImageUrl.isNullOrBlank()) {
+                val imgRes = ApiClient.getCropImageByName(ctx, name, catCode)
+                finalImageUrl = imgRes.dataObject?.optString("image_url", null)
+            }
+
+            val payload = JSONObject().apply {
+                put("name", name)
+                put("category", catCode)
+                put("variety", inputVariety.text?.toString()?.trim() ?: "")
+                put("price_paise", pricePaise)
+                put("price", priceRupees)
+                put("unit", unitVal)
+                put("stock_quantity", stockQty)
+                put("min_order_quantity", minOrderQty)
+                put("harvest_date", inputHarvestDate.text?.toString()?.trim() ?: "")
+                put("is_fresh_today", checkFreshToday.isChecked)
+                put("description", inputDescription.text?.toString()?.trim() ?: "")
+                put("village", inputVillage.text?.toString()?.trim() ?: "")
+                put("district", district)
+                put("state", inputState.text?.toString()?.trim() ?: "")
+                if (!finalImageUrl.isNullOrBlank()) {
+                    put("image_url", finalImageUrl)
+                }
+            }
+
+            val res = if (editProductId.isNullOrBlank()) {
+                ApiClient.createProduct(ctx, payload)
+            } else {
+                ApiClient.updateProduct(ctx, editProductId!!, payload)
+            }
+
+            if (!isAdded) return@launch
+
+            if (res.isSuccess && res.dataObject != null) {
+                val savedId = res.dataObject.optString("id", editProductId ?: "")
+
+                val videoPath = inputVideoTempPath.text?.toString()?.trim() ?: ""
+                if (videoPath.isNotBlank() && savedId.isNotBlank()) {
+                    val vidBody = JSONObject().apply {
+                        put("product_id", savedId)
+                        put("firebase_path", videoPath)
+                    }
+                    ApiClient.request(ctx, "/media/videos/enqueue", method = "POST", bodyJson = vidBody)
+                }
+
+                progressBar.visibility = View.GONE
+                btnPublishProduct.isEnabled = true
+
+                Toast.makeText(
+                    ctx,
+                    "आपकी फसल सफलतापूर्वक बाज़ार में प्रकाशित हो गई! अब आप इसका .JPG पोस्टर शेयर कर सकते हैं।",
+                    Toast.LENGTH_LONG
+                ).show()
+
+                if (savedId.isNotBlank()) {
+                    (activity as? MainActivity)?.openProductDetailScreen(savedId)
+                }
+            } else {
+                progressBar.visibility = View.GONE
+                btnPublishProduct.isEnabled = true
+                Toast.makeText(
+                    ctx,
+                    res.errorMessage ?: "फसल सेव करने में त्रुटि हुई। कृपया पुनः प्रयास करें।",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
     }
 
-    private fun dp(value: Int): Int {
-        return TypedValue.applyDimension(
+    private fun createLabel(textStr: String): TextView =
+        TextView(requireContext()).apply {
+            text = textStr
+            setTextColor(Color.parseColor("#1A241A"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(0, dp(10), 0, dp(4))
+        }
+
+    private fun addLabeledInput(
+        parent: LinearLayout,
+        label: String,
+        hint: String,
+        inputType: Int,
+        maxLen: Int
+    ): EditText {
+        val ctx = requireContext()
+        parent.addView(createLabel(label))
+        val edit = EditText(ctx).apply {
+            this.hint = hint
+            this.inputType = inputType
+            filters = arrayOf(InputFilter.LengthFilter(maxLen))
+            background = roundedBg("#FAFAFA", "#B8CBB8", dp(8))
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            minHeight = dp(46)
+        }
+        parent.addView(edit)
+        return edit
+    }
+
+    private fun createButton(label: String, bgHex: String, onClick: () -> Unit): Button =
+        Button(requireContext()).apply {
+            text = label
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, Typeface.BOLD)
+            background = roundedBg(bgHex, bgHex, dp(10))
+            minHeight = dp(44)
+            val lp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            lp.topMargin = dp(6)
+            layoutParams = lp
+            setOnClickListener { onClick() }
+        }
+
+    private fun roundedBg(fillHex: String, strokeHex: String, radiusPx: Int): GradientDrawable =
+        GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = radiusPx.toFloat()
+            setColor(Color.parseColor(fillHex))
+            setStroke(dp(1), Color.parseColor(strokeHex))
+        }
+
+    private fun dp(value: Int): Int =
+        TypedValue.applyDimension(
             TypedValue.COMPLEX_UNIT_DIP,
             value.toFloat(),
             resources.displayMetrics
         ).toInt()
-    }
 }
