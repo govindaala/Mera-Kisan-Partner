@@ -1,11 +1,11 @@
 // app/src/main/java/in/merakisan/app/ui/home/HomeFragment.kt
 package `in`.merakisan.app.ui.home
 
-import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Bundle
 import android.util.TypedValue
 import android.view.Gravity
@@ -13,32 +13,37 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.EditText
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
-import androidx.cardview.widget.CardView
 import androidx.fragment.app.Fragment
-import androidx.navigation.fragment.findNavController
+import androidx.lifecycle.lifecycleScope
 import `in`.merakisan.app.core.config.FeatureManager
-import `in`.merakisan.app.core.state.RoleStateManager
+import `in`.merakisan.app.core.network.ApiClient
+import `in`.merakisan.app.core.security.SessionManager
 import `in`.merakisan.app.ui.main.MainActivity
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
-import java.util.Locale
 
+/**
+ * MERA KISAN — UNIFIED ROLE-SEPARATED HOME SCREEN
+ *
+ * Strict Role Separation (Master Spec Sec 5 & merged.txt Final Spec Sec 11, 63, 64):
+ * - When FARMER mode is active: Renders ONLY the Farmer Seller Dashboard (Active products count,
+ *   Orders count, Buyer Requests matching farmer, Add Crop, Crop Boost, Mandi AI Advisor, Share).
+ * - When BUYER mode is active: Renders ONLY the Buyer Direct-from-Farm Marketplace (Search,
+ *   Small Quantity 1-25kg, Fresh Today, Desi/Traditional categories, Nearby products, Buyer Request).
+ * - Uses ONLY ApiClient (Single Point of Server Connection) and 0% Dummy Data.
+ */
 class HomeFragment : Fragment() {
 
-    private lateinit var tvRoleIndicator: TextView
-    private lateinit var farmerDashboardSection: LinearLayout
-    private lateinit var liveProductsContainer: LinearLayout
+    private lateinit var rootContentLayout: LinearLayout
+    private lateinit var loadingBar: ProgressBar
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -46,617 +51,754 @@ class HomeFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         val ctx = requireContext()
-        val activeRole = getActiveRoleSafe(ctx)
-
-        val root = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#F4F6F8"))
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        }
-
-        val header = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(Color.parseColor("#1B5E20"))
-            setPadding(dp(14), dp(10), dp(14), dp(10))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(60))
-        }
-
-        val titleCol = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-
-        titleCol.addView(TextView(ctx).apply {
-            text = "🌾 मेरा किसान (MERA KISAN)"
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
-            setTypeface(typeface, Typeface.BOLD)
-        })
-
-        tvRoleIndicator = TextView(ctx).apply {
-            text = "सक्रिय मोड: ${getRoleDisplayNameSafe(activeRole)} • किसान से सीधे आपकी जरूरत तक"
-            setTextColor(Color.parseColor("#C8E6C9"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-        }
-        titleCol.addView(tvRoleIndicator)
-        header.addView(titleCol)
-
-        header.addView(TextView(ctx).apply {
-            text = "🔔"
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
-            setPadding(dp(10), dp(6), dp(10), dp(6))
-            setOnClickListener { navigateSafe("notificationsFavoritesFragment", "favoritesFragment") }
-        })
-
-        header.addView(TextView(ctx).apply {
-            text = "🔄 मोड बदलें"
-            setTextColor(Color.parseColor("#1B5E20"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-            setTypeface(typeface, Typeface.BOLD)
-            setPadding(dp(10), dp(6), dp(10), dp(6))
-            background = GradientDrawable().apply {
-                setColor(Color.WHITE)
-                cornerRadius = dp(14).toFloat()
-            }
-            setOnClickListener {
-                val nextRole = cycleNextRoleSafe(ctx)
-                tvRoleIndicator.text = "सक्रिय मोड: ${getRoleDisplayNameSafe(nextRole)} • किसान से सीधे आपकी जरूरत तक"
-                updateRoleVisibility(nextRole)
-                (activity as? MainActivity)?.syncBottomNavigationLabelsWithRole()
-            }
-        })
-        root.addView(header)
-
-        if (FeatureManager.isMaintenanceMode(ctx)) {
-            root.addView(TextView(ctx).apply {
-                text = "⚠️ ${FeatureManager.getMaintenanceMessage(ctx)}"
-                setTextColor(Color.parseColor("#B71C1C"))
-                setBackgroundColor(Color.parseColor("#FFEBEE"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-                setTypeface(typeface, Typeface.BOLD)
-                setPadding(dp(12), dp(8), dp(12), dp(8))
-            })
-        }
-
         val scroll = ScrollView(ctx).apply {
             isFillViewport = true
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.MATCH_PARENT
+            setBackgroundColor(Color.parseColor("#F2F6F2"))
+        }
+
+        val wrapper = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(28))
+        }
+
+        loadingBar = ProgressBar(ctx).apply {
+            visibility = View.GONE
+        }
+
+        rootContentLayout = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        wrapper.addView(loadingBar)
+        wrapper.addView(rootContentLayout)
+        scroll.addView(wrapper)
+        return scroll
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        renderRoleSpecificHome()
+    }
+
+    private fun renderRoleSpecificHome() {
+        val ctx = context ?: return
+        rootContentLayout.removeAllViews()
+
+        // 1. Remote Config Announcement / Home Banner
+        val bannerText = FeatureManager.getHomeBannerText()
+        val announcement = FeatureManager.getAnnouncementText()
+
+        val bannerCard = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBg("#1B5E20", dp(14))
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+        }
+        bannerCard.addView(
+            TextView(ctx).apply {
+                text = "🌾 $bannerText"
+                setTextColor(Color.WHITE)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                setTypeface(typeface, Typeface.BOLD)
+            }
+        )
+        if (announcement.isNotBlank()) {
+            bannerCard.addView(
+                TextView(ctx).apply {
+                    text = "📢 $announcement"
+                    setTextColor(Color.parseColor("#FFF59D"))
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                    setPadding(0, dp(4), 0, 0)
+                }
+            )
+        }
+        rootContentLayout.addView(bannerCard)
+
+        // 2. Strict Mode Routing: Farmer vs Buyer
+        if (SessionManager.isFarmerModeActive(ctx)) {
+            buildFarmerModeDashboard()
+        } else {
+            buildBuyerModeHome()
+        }
+    }
+
+    // ========================================================================
+    // A. FARMER MODE HOME (merged.txt Sec 64 — केवल किसान विक्रेता के विकल्प)
+    // ========================================================================
+    private fun buildFarmerModeDashboard() {
+        val ctx = context ?: return
+        val farmerUid = SessionManager.getUserUid(ctx) ?: ""
+        val farmerName = SessionManager.getUserName(ctx).ifBlank { "किसान" }
+        val district = SessionManager.getUserDistrict(ctx)
+        val verifBadge = formatVerificationBadgeHi(SessionManager.getVerificationStatus(ctx))
+
+        // Farmer Identity & Verification Summary Card
+        val welcomeCard = createCard().apply {
+            addView(
+                TextView(ctx).apply {
+                    text = "👨‍🌾 नमस्ते, $farmerName"
+                    setTextColor(Color.parseColor("#124116"))
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+                    setTypeface(typeface, Typeface.BOLD)
+                }
+            )
+            addView(
+                TextView(ctx).apply {
+                    text = "स्थान: ${district.ifBlank { "अपना ज़िला प्रोफ़ाइल में जोड़ें" }} • $verifBadge"
+                    setTextColor(Color.parseColor("#2E7D32"))
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                    setPadding(0, dp(4), 0, dp(10))
+                }
             )
         }
 
-        val content = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(12), dp(12), dp(28))
-        }
-
-        val searchCard = CardView(ctx).apply {
-            radius = dp(12).toFloat()
-            cardElevation = dp(2).toFloat()
-            setCardBackgroundColor(Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(12) }
-            setOnClickListener { navigateSafe("smartSearchFilterSheet", "marketplaceFragment") }
-        }
-
-        searchCard.addView(TextView(ctx).apply {
-            text = "🔍 आप क्या खरीदना चाहते हैं? (उदा. '10 किलो देशी गेहूं मंदसौर') — यहाँ टैप करें"
-            setTextColor(Color.parseColor("#424242"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-        })
-        content.addView(searchCard)
-
-        farmerDashboardSection = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-
-        val farmerCard = CardView(ctx).apply {
-            radius = dp(12).toFloat()
-            cardElevation = dp(2).toFloat()
-            setCardBackgroundColor(Color.parseColor("#E8F5E9"))
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(12) }
-        }
-
-        val fBox = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-        }
-
-        fBox.addView(TextView(ctx).apply {
-            text = "👨‍🌾 किसान विक्रेता केंद्र (Farmer Quick Tools)"
-            setTextColor(Color.parseColor("#1B5E20"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-            setTypeface(typeface, Typeface.BOLD)
-        })
-
-        val fRow1 = LinearLayout(ctx).apply {
+        // Live Stats Row (Active Products | Orders | Buyer Demands)
+        val statsRow = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             weightSum = 3f
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(8) }
+        }
+        val statActiveCropsVal = TextView(ctx)
+        val statOrdersVal = TextView(ctx)
+        val statDemandsVal = TextView(ctx)
+
+        statsRow.addView(createStatBox("सक्रिय फसलें", statActiveCropsVal))
+        statsRow.addView(createStatBox("प्राप्त ऑर्डर्स", statOrdersVal))
+        statsRow.addView(createStatBox("ग्राहक मांगें", statDemandsVal))
+        welcomeCard.addView(statsRow)
+        rootContentLayout.addView(welcomeCard)
+
+        // Farmer Primary Action Buttons
+        val actionsCard = createCard()
+        actionsCard.addView(sectionTitle("⚡ त्वरित किसान कार्य (Quick Seller Actions)"))
+
+        val btnAddCrop = createActionButton("➕ नई फसल / बीज / उत्पाद बेचने के लिए डालें", "#1B5E20") {
+            (activity as? MainActivity)?.openAddProductScreen(null)
+        }
+        actionsCard.addView(btnAddCrop)
+
+        if (FeatureManager.isEnabled("mandi_price", ctx)) {
+            actionsCard.addView(space(dp(8)))
+            actionsCard.addView(
+                createActionButton("📈 लाइव सरकारी मंडी भाव, 1-2 साल ग्राफ व AI विक्रय सलाह", "#0D47A1") {
+                    (activity as? MainActivity)?.openMandiPricesScreen()
+                }
+            )
         }
 
-        fRow1.addView(createToolButton(ctx, "➕ फसल बेचें", "#1B5E20", "#FFFFFF") {
-            navigateSafe("addProductFragment")
-        })
-        fRow1.addView(createToolButton(ctx, "🌿 मेरी फसलें", "#2E7D32", "#FFFFFF") {
-            navigateSafe("myCropsFragment")
-        })
-        fRow1.addView(createToolButton(ctx, "🎨 AI पोस्टर", "#E65100", "#FFFFFF") {
-            navigateSafe("aiPosterStudioFragment")
-        })
-        fBox.addView(fRow1)
+        if (FeatureManager.isEnabled("agri_inputs_marketplace", ctx) || FeatureManager.isEnabled("seeds_marketplace", ctx)) {
+            actionsCard.addView(space(dp(8)))
+            actionsCard.addView(
+                createActionButton("🧪 प्रमाणित बीज, खाद व कृषि दवाइयां (शहर पिकअप पॉइंट)", "#3E2723") {
+                    (activity as? MainActivity)?.openAgriInputsAndSeedsScreen()
+                }
+            )
+        }
 
-        val fRow2 = LinearLayout(ctx).apply {
+        if (FeatureManager.isEnabled("buyer_request", ctx)) {
+            actionsCard.addView(space(dp(8)))
+            actionsCard.addView(
+                createActionButton("📢 ग्राहकों की 'मुझे यह चाहिए' मांग देखें और भाव भेजें", "#BF360C") {
+                    (activity as? MainActivity)?.openBuyerRequestsScreen()
+                }
+            )
+        }
+
+        rootContentLayout.addView(actionsCard)
+
+        // Container for Farmer's Active Products & Nearby Buyer Demands
+        val myProductsContainer = createCard().apply {
+            addView(sectionTitle("🌾 मेरी हालिया सूचीबद्ध फसलें"))
+        }
+        val buyerDemandsContainer = createCard().apply {
+            addView(sectionTitle("📢 ग्राहकों की ताज़ा मांगें (सीधे भाव प्रस्ताव दें)"))
+        }
+
+        rootContentLayout.addView(myProductsContainer)
+        rootContentLayout.addView(buyerDemandsContainer)
+
+        // Load Live Farmer Data via ApiClient (Single Connection Point)
+        loadingBar.visibility = View.VISIBLE
+        viewLifecycleOwner.lifecycleScope.launch {
+            val myCropsRes = ApiClient.getProducts(ctx, farmerUid = farmerUid)
+            val ordersRes = ApiClient.getOrders(ctx, viewRole = "farmer")
+            val demandsRes = ApiClient.getBuyerRequests(ctx)
+
+            if (!isAdded) return@launch
+            loadingBar.visibility = View.GONE
+
+            val myCropsArr = myCropsRes.dataArray ?: JSONArray()
+            val ordersArr = ordersRes.dataArray ?: JSONArray()
+            val demandsArr = demandsRes.dataArray ?: JSONArray()
+
+            statActiveCropsVal.text = myCropsArr.length().toString()
+            statOrdersVal.text = ordersArr.length().toString()
+            statDemandsVal.text = demandsArr.length().toString()
+
+            // Render Farmer's Own Crops
+            if (myCropsArr.length() == 0) {
+                myProductsContainer.addView(
+                    emptyNotice("आपने अभी कोई फसल सूचीबद्ध नहीं की है। ऊपर 'नई फसल डालें' दबाकर शुरुआत करें।")
+                )
+            } else {
+                val count = minOf(myCropsArr.length(), 5)
+                for (i in 0 until count) {
+                    val item = myCropsArr.optJSONObject(i) ?: continue
+                    myProductsContainer.addView(buildFarmerProductRow(item))
+                }
+            }
+
+            // Render Open Buyer Requests for Farmer to Respond
+            if (demandsArr.length() == 0) {
+                buyerDemandsContainer.addView(
+                    emptyNotice("अभी किसी ग्राहक की खुली मांग लंबित नहीं है।")
+                )
+            } else {
+                val count = minOf(demandsArr.length(), 5)
+                for (i in 0 until count) {
+                    val reqObj = demandsArr.optJSONObject(i) ?: continue
+                    buyerDemandsContainer.addView(buildBuyerDemandRowForFarmer(reqObj))
+                }
+            }
+        }
+    }
+
+    // ========================================================================
+    // B. BUYER MODE HOME (merged.txt Sec 11 & 63 — केवल खरीदार के विकल्प)
+    // ========================================================================
+    private fun buildBuyerModeHome() {
+        val ctx = context ?: return
+
+        // 1. Search & Discovery Card
+        val searchCard = createCard()
+        searchCard.addView(sectionTitle("🔍 आप क्या खरीदना चाहते हैं?"))
+
+        val searchRow = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
-            weightSum = 3f
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(6) }
+            gravity = Gravity.CENTER_VERTICAL
         }
+        val searchInput = EditText(ctx).apply {
+            hint = "उदा. देशी गेहूं, लहसुन, कच्ची घानी तेल, गुड़..."
+            background = roundedBorder("#FAFAFA", "#B8CBB8", dp(8))
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f)
+        }
+        val btnSearch = Button(ctx).apply {
+            text = "खोजें"
+            background = roundedBg("#1B5E20", dp(8))
+            setTextColor(Color.WHITE)
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                dp(46)
+            )
+            lp.leftMargin = dp(8)
+            layoutParams = lp
+        }
+        searchRow.addView(searchInput)
+        searchRow.addView(btnSearch)
+        searchCard.addView(searchRow)
 
-        fRow2.addView(createToolButton(ctx, "🧮 उचित दाम", "#0D47A1", "#FFFFFF") {
-            navigateSafe("fairPriceCalculatorFragment")
-        })
-        fRow2.addView(createToolButton(ctx, "📈 मंडी भाव", "#1B5E20", "#FFFFFF") {
-            navigateSafe("mandiPricesFragment")
-        })
-        fRow2.addView(createToolButton(ctx, "🤝 भाव प्रस्ताव", "#4A148C", "#FFFFFF") {
-            navigateSafe("negotiationHistoryFragment")
-        })
-        fBox.addView(fRow2)
-
-        farmerCard.addView(fBox)
-        farmerDashboardSection.addView(farmerCard)
-        content.addView(farmerDashboardSection)
-
-        content.addView(TextView(ctx).apply {
-            text = "🌾 मुख्य सुविधाएँ व श्रेणियाँ (Direct Farm Categories)"
-            setTextColor(Color.parseColor("#1B5E20"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-            setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, dp(2), 0, dp(6))
-        })
-
-        val catScroll = HorizontalScrollView(ctx).apply {
+        // Quick Discovery Filter Chips (Master Spec Sec 6, 9, 11, 12)
+        val filterScroll = HorizontalScrollView(ctx).apply {
             isHorizontalScrollBarEnabled = false
-            setPadding(0, 0, 0, dp(10))
+            setPadding(0, dp(10), 0, 0)
         }
-        val catRow = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
+        val filterRow = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
 
-        val categories = listOf(
-            "🧺 1–25 kg छोटी मात्रा" to "marketplaceFragment",
-            "🥬 आज खेत से (Fresh Today)" to "marketplaceFragment",
-            "📍 मेरे आसपास (5–25 km)" to "marketplaceFragment",
-            "📢 मुझे यह चाहिए (Demand)" to "buyerRequestsFragment",
-            "🌾 देशी अनाज व दालें" to "marketplaceFragment",
-            "🫙 कच्ची घानी तेल" to "oilMillMarketplaceFragment",
-            "🧺 ग्राम फार्म बॉक्स" to "farmBoxGroupBuyFragment",
-            "🔍 बैच QR ट्रेसबिलिटी" to "batchQrTraceabilityFragment"
+        val dynamicProductsContainer = createCard()
+        val productsSectionHeader = sectionTitle("🌾 किसानों के खेत से सीधे उपलब्ध उत्पाद")
+        dynamicProductsContainer.addView(productsSectionHeader)
+
+        fun loadBuyerProducts(
+            category: String? = null,
+            smallQty: Boolean = false,
+            freshToday: Boolean = false,
+            districtOnly: String? = null,
+            query: String? = null,
+            titleLabel: String = "🌾 किसानों के खेत से सीधे उपलब्ध उत्पाद"
+        ) {
+            productsSectionHeader.text = titleLabel
+            // Keep header at index 0, clear old rows
+            while (dynamicProductsContainer.childCount > 1) {
+                dynamicProductsContainer.removeViewAt(1)
+            }
+            loadingBar.visibility = View.VISIBLE
+
+            viewLifecycleOwner.lifecycleScope.launch {
+                val res = ApiClient.getProducts(
+                    context = ctx,
+                    category = category,
+                    district = districtOnly,
+                    smallQuantityOnly = smallQty,
+                    freshTodayOnly = freshToday,
+                    searchQuery = query
+                )
+                if (!isAdded) return@launch
+                loadingBar.visibility = View.GONE
+
+                val arr = res.dataArray ?: JSONArray()
+                if (!res.isSuccess) {
+                    dynamicProductsContainer.addView(
+                        emptyNotice(res.errorMessage ?: "उत्पाद सूची लोड करने में समस्या आई।")
+                    )
+                    return@launch
+                }
+                if (arr.length() == 0) {
+                    dynamicProductsContainer.addView(
+                        emptyNotice("इस श्रेणी में अभी कोई उत्पाद उपलब्ध नहीं है। आप 'मुझे यह चाहिए' में अपनी मांग पोस्ट कर सकते हैं!")
+                    )
+                    return@launch
+                }
+
+                for (i in 0 until arr.length()) {
+                    val prod = arr.optJSONObject(i) ?: continue
+                    dynamicProductsContainer.addView(buildBuyerProductCard(prod))
+                }
+            }
+        }
+
+        btnSearch.setOnClickListener {
+            val q = searchInput.text?.toString()?.trim() ?: ""
+            loadBuyerProducts(query = q, titleLabel = "🔍 खोज परिणाम: ${q.ifBlank { "सभी उत्पाद" }}")
+        }
+
+        val buyerDistrict = SessionManager.getUserDistrict(ctx)
+        val quickFilters = listOf(
+            Triple("🌟 सभी उत्पाद", { loadBuyerProducts(titleLabel = "🌟 सभी उपलब्ध उत्पाद") }, true),
+            Triple("📍 मेरे आसपास (${buyerDistrict.ifBlank { "ज़िला" }})", {
+                loadBuyerProducts(
+                    districtOnly = buyerDistrict.ifBlank { null },
+                    titleLabel = "📍 मेरे आसपास के किसानों के उत्पाद"
+                )
+            }, FeatureManager.isEnabled("nearby_products", ctx)),
+            Triple("🥬 आज खेत से ताज़ा", {
+                loadBuyerProducts(freshToday = true, titleLabel = "🥬 आज की ताज़ा फसल (Fresh Today)")
+            }, FeatureManager.isEnabled("fresh_today", ctx)),
+            Triple("⚖️ छोटी मात्रा (1–25 kg)", {
+                loadBuyerProducts(smallQty = true, titleLabel = "⚖️ छोटी मात्रा (1–25 kg) बाज़ार")
+            }, FeatureManager.isEnabled("small_quantity", ctx)),
+            Triple("🌾 देशी अनाज", {
+                loadBuyerProducts(category = "grains", titleLabel = "🌾 देशी अनाज")
+            }, true),
+            Triple("🥬 ताज़ा सब्जियां", {
+                loadBuyerProducts(category = "vegetables", titleLabel = "🥬 ताज़ा सब्जियां")
+            }, true),
+            Triple("🍎 देशी फल", {
+                loadBuyerProducts(category = "fruits", titleLabel = "🍎 देशी फल")
+            }, true),
+            Triple("🥜 दाल व तिलहन", {
+                loadBuyerProducts(category = "pulses_oilseeds", titleLabel = "🥜 देशी दाल व तिलहन")
+            }, true),
+            Triple("🫙 कच्ची घानी तेल", {
+                loadBuyerProducts(category = "cold_pressed_oil", titleLabel = "🫙 पारंपरिक कच्ची घानी तेल")
+            }, true),
+            Triple("🍯 गुड़ व मसाले", {
+                loadBuyerProducts(category = "spices_jaggery", titleLabel = "🍯 देशी गुड़ व मसाले")
+            }, true),
+            Triple("🌱 देशी व उन्नत बीज", {
+                loadBuyerProducts(category = "seeds", titleLabel = "🌱 देशी व प्रमाणित बीज")
+            }, FeatureManager.isEnabled("seeds_marketplace", ctx)),
+            Triple("🏺 दुर्लभ/पारंपरिक किस्में", {
+                loadBuyerProducts(category = "traditional", titleLabel = "🏺 दुर्लभ व पारंपरिक किस्में")
+            }, true)
         )
 
-        for ((label, dest) in categories) {
-            catRow.addView(TextView(ctx).apply {
+        for ((label, action, enabled) in quickFilters) {
+            if (!enabled) continue
+            val chip = Button(ctx).apply {
                 text = label
-                setTextColor(Color.parseColor("#1B5E20"))
+                isAllCaps = false
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-                setTypeface(typeface, Typeface.BOLD)
-                setPadding(dp(12), dp(8), dp(12), dp(8))
-                background = GradientDrawable().apply {
-                    setColor(Color.WHITE)
-                    cornerRadius = dp(18).toFloat()
-                    setStroke(dp(1), Color.parseColor("#A5D6A7"))
-                }
-                layoutParams = LinearLayout.LayoutParams(
+                setTextColor(Color.parseColor("#1B5E20"))
+                background = roundedBorder("#E8F5E9", "#81C784", dp(18))
+                setPadding(dp(12), dp(6), dp(12), dp(6))
+                minHeight = dp(36)
+                val lp = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { rightMargin = dp(8) }
-                setOnClickListener { navigateSafe(dest) }
-            })
+                )
+                lp.rightMargin = dp(8)
+                layoutParams = lp
+                setOnClickListener { action() }
+            }
+            filterRow.addView(chip)
         }
-        catScroll.addView(catRow)
-        content.addView(catScroll)
+        filterScroll.addView(filterRow)
+        searchCard.addView(filterScroll)
+        rootContentLayout.addView(searchCard)
 
-        if (FeatureManager.isFeatureEnabled(ctx, "mandi_price")) {
-            content.addView(createFeatureNavigationCard(
-                ctx = ctx,
-                badge = "📈 APMC Live Rates (data.gov.in)",
-                title = "आज के मंडी भाव व सीधा विक्रय तुलना",
-                subtitle = "ऑन-डिमांड सरकारी मंडी भाव देखें; सर्वाधिक सर्च की गई मंडी आपके मोबाइल कैश में सेव रहती है।",
-                accentHex = "#1B5E20",
-                targetFragment = "mandiPricesFragment"
-            ))
+        // 2. Buyer Reverse Marketplace ("मुझे यह चाहिए") & Live Mandi Shortcut
+        val buyerToolsCard = createCard()
+        if (FeatureManager.isEnabled("buyer_request", ctx)) {
+            buyerToolsCard.addView(
+                createActionButton("📢 मनचाही फसल नहीं मिली? 'मुझे यह चाहिए' में मांग पोस्ट करें", "#BF360C") {
+                    (activity as? MainActivity)?.openBuyerRequestsScreen()
+                }
+            )
         }
+        if (FeatureManager.isEnabled("mandi_price", ctx)) {
+            buyerToolsCard.addView(space(dp(8)))
+            buyerToolsCard.addView(
+                createActionButton("📈 आज के सरकारी मंडी भाव व 1-2 साल का भाव ट्रेंड देखें", "#0D47A1") {
+                    (activity as? MainActivity)?.openMandiPricesScreen()
+                }
+            )
+        }
+        if (FeatureManager.isEnabled("farm_box", ctx)) {
+            buyerToolsCard.addView(space(dp(8)))
+            buyerToolsCard.addView(
+                createActionButton("🧺 ग्राम ताज़ा फार्म बॉक्स (Village Fresh Box)", "#2E7D32") {
+                    Toast.makeText(ctx, "फार्म बॉक्स सूची लोड हो रही है...", Toast.LENGTH_SHORT).show()
+                }
+            )
+        }
+        rootContentLayout.addView(buyerToolsCard)
 
-        content.addView(TextView(ctx).apply {
-            text = "🥬 आज खेत से ताज़ा उपलब्ध फसलें (Tap for Full Detail)"
-            setTextColor(Color.parseColor("#1B5E20"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-            setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, dp(6), 0, dp(8))
-        })
+        // 3. Live Products Container
+        rootContentLayout.addView(dynamicProductsContainer)
+        loadBuyerProducts()
+    }
 
-        liveProductsContainer = LinearLayout(ctx).apply {
+    private fun buildFarmerProductRow(prod: JSONObject): View {
+        val ctx = requireContext()
+        val id = prod.optString("id", "")
+        val name = prod.optString("name", "फसल")
+        val variety = prod.optString("variety", "")
+        val priceRupees = prod.optDouble("price_rupees", prod.optDouble("price", 0.0))
+        val unit = prod.optString("unit", "kg")
+        val stock = prod.optDouble("stock_quantity", 0.0)
+        val status = prod.optString("status", "ACTIVE")
+
+        return LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-        }
-        content.addView(liveProductsContainer)
+            background = roundedBorder("#FAFDF9", "#D4E2D4", dp(10))
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            lp.topMargin = dp(8)
+            layoutParams = lp
 
-        scroll.addView(content)
-        root.addView(scroll)
-
-        updateRoleVisibility(activeRole)
-        renderProductCards(ctx, getRealMobileCachedProducts(ctx))
-        loadHomeProductsFeed(ctx)
-        return root
-    }
-
-    private fun getRealMobileCachedProducts(ctx: Context): List<JSONObject> {
-        val list = mutableListOf<JSONObject>()
-        val seenIds = mutableSetOf<String>()
-        try {
-            val smartArr = FeatureManager.getLiveProductsCache(ctx)
-            for (i in 0 until smartArr.length()) {
-                val obj = smartArr.getJSONObject(i)
-                val id = obj.optString("id", "")
-                if (!id.startsWith("prod_10") && seenIds.add(id)) {
-                    list.add(obj)
+            addView(
+                TextView(ctx).apply {
+                    text = "$name ${if (variety.isNotBlank()) "($variety)" else ""} • ₹$priceRupees/$unit"
+                    setTextColor(Color.parseColor("#124116"))
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                    setTypeface(typeface, Typeface.BOLD)
                 }
-            }
-            val prefs = ctx.getSharedPreferences("mera_kisan_local_cache", Context.MODE_PRIVATE)
-            val arr = JSONArray(prefs.getString("cached_products", "[]") ?: "[]")
-            for (i in 0 until arr.length()) {
-                val obj = arr.getJSONObject(i)
-                val id = obj.optString("id", "loc_$i")
-                if (!id.startsWith("prod_10") && seenIds.add(id)) {
-                    list.add(obj)
+            )
+            addView(
+                TextView(ctx).apply {
+                    text = "उपलब्ध स्टॉक: $stock $unit • स्थिति: $status"
+                    setTextColor(Color.parseColor("#4A5A4A"))
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                    setPadding(0, dp(2), 0, dp(6))
                 }
-            }
-        } catch (_: Throwable) {}
-        return list
-    }
-
-    private fun getActiveRoleSafe(ctx: Context): String {
-        val prefs = ctx.getSharedPreferences("mera_kisan_role_prefs", Context.MODE_PRIVATE)
-        val saved = prefs.getString("active_role", null)
-            ?: ctx.getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE).getString("role", null)
-            ?: "BOTH"
-        return saved.trim().uppercase(Locale.ROOT)
-    }
-
-    private fun setActiveRoleSafe(ctx: Context, roleCode: String) {
-        val clean = roleCode.trim().uppercase(Locale.ROOT)
-        ctx.getSharedPreferences("mera_kisan_role_prefs", Context.MODE_PRIVATE)
-            .edit().putString("active_role", clean).apply()
-        ctx.getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
-            .edit().putString("role", clean.lowercase(Locale.ROOT)).apply()
-
-        try {
-            val cls = RoleStateManager::class.java
-            for (m in cls.methods) {
-                if (m.name.contains("set", ignoreCase = true) && m.parameterTypes.size == 1 && m.parameterTypes[0] == String::class.java) {
-                    m.invoke(RoleStateManager, clean)
-                }
-            }
-        } catch (_: Throwable) {}
-    }
-
-    private fun cycleNextRoleSafe(ctx: Context): String {
-        val next = when (getActiveRoleSafe(ctx)) {
-            "FARMER" -> "BUYER"
-            "BUYER" -> "BOTH"
-            else -> "FARMER"
-        }
-        setActiveRoleSafe(ctx, next)
-        return next
-    }
-
-    private fun getRoleDisplayNameSafe(roleCode: String): String {
-        return when (roleCode.trim().uppercase(Locale.ROOT)) {
-            "FARMER", "SELLER", "FARMER_SELLER" -> "किसान-विक्रेता (Farmer)"
-            "BUYER", "CONSUMER" -> "खरीदार (Buyer)"
-            else -> "किसान + खरीदार (Both)"
-        }
-    }
-
-    private fun updateRoleVisibility(role: String) {
-        if (!::farmerDashboardSection.isInitialized) return
-        val isFarmerVisible = role.equals("FARMER", true) || role.equals("BOTH", true)
-        farmerDashboardSection.visibility = if (isFarmerVisible) View.VISIBLE else View.GONE
-    }
-
-    private fun loadHomeProductsFeed(ctx: Context) {
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                FeatureManager.syncRemoteConfig(ctx)
-            } catch (_: Throwable) {}
-
-            val serverItems = mutableListOf<JSONObject>()
-            try {
-                val url = URL("https://mera-kisan-backend.vercel.app/api/v1/products?limit=20")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 6000
-                conn.readTimeout = 6000
-                if (conn.responseCode in 200..299) {
-                    val body = conn.inputStream.bufferedReader().use { it.readText() }
-                    val arr = JSONObject(body).optJSONArray("data")
-                    if (arr != null && arr.length() > 0) {
-                        FeatureManager.saveLiveProductsCache(ctx, arr)
-                        for (i in 0 until arr.length()) {
-                            val obj = arr.getJSONObject(i)
-                            if (!obj.optString("id", "").startsWith("prod_10")) {
-                                serverItems.add(obj)
-                            }
-                        }
-                    }
-                }
-            } catch (_: Throwable) {}
-
-            if (serverItems.isNotEmpty()) {
-                withContext(Dispatchers.Main) {
-                    if (!isAdded) return@withContext
-                    renderProductCards(ctx, serverItems)
-                }
-            }
-        }
-    }
-
-    private fun renderProductCards(ctx: Context, items: List<JSONObject>) {
-        liveProductsContainer.removeAllViews()
-        if (items.isEmpty()) {
-            liveProductsContainer.addView(TextView(ctx).apply {
-                text = "📭 अभी कोई लाइव उत्पाद सूचीबद्ध नहीं है।\nकिसान भाई ऊपर '➕ फसल बेचें' दबाकर अपनी फसल प्रकाशित करें।"
-                gravity = Gravity.CENTER
-                setTextColor(Color.parseColor("#616161"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                setPadding(dp(16), dp(28), dp(16), dp(28))
-            })
-            return
-        }
-
-        for (obj in items) {
-            val id = obj.optString("id", "")
-            val name = obj.optString("name", "ताज़ा फसल")
-            val variety = obj.optString("variety", "देशी")
-            val price = obj.optInt("price", 0)
-            val unit = obj.optString("unit", "kg")
-            val stock = obj.optInt("stock_quantity", 0)
-            val minOrd = obj.optInt("minimum_order_quantity", 1)
-            val harvest = obj.optString("harvest_date", "ताज़ा")
-            val farmer = obj.optString("seller_name", "किसान")
-            val village = obj.optString("village", "")
-            val district = obj.optString("district", "")
-            val badge = obj.optString("verification_status", "✔ किसान द्वारा घोषित")
-            val ratingCount = obj.optInt("rating_count", 0)
-            val ratingVal = obj.optDouble("farmer_rating", 0.0)
-            val ratingText = if (ratingCount > 0 && ratingVal > 0.0) " • ⭐ $ratingVal ($ratingCount)" else ""
-
-            val openDetailAction = {
-                ctx.getSharedPreferences("mera_kisan_local_cache", Context.MODE_PRIVATE)
-                    .edit()
-                    .putString("selected_product_json", obj.toString())
-                    .apply()
-                navigateSafe("productDetailFragment")
-            }
-
-            val card = CardView(ctx).apply {
-                radius = dp(12).toFloat()
-                cardElevation = dp(2).toFloat()
-                setCardBackgroundColor(Color.WHITE)
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = dp(12) }
-                setOnClickListener { openDetailAction() }
-            }
-
-            val outerBox = LinearLayout(ctx).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(12), dp(12), dp(12), dp(12))
-            }
-
-            val mainRow = LinearLayout(ctx).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-            }
-
-            val thumbBox = TextView(ctx).apply {
-                text = if (name.contains("तेल")) "🫙\nघाणी" else "🌾\nताज़ा"
-                gravity = Gravity.CENTER
-                setTextColor(Color.parseColor("#1B5E20"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-                setTypeface(typeface, Typeface.BOLD)
-                background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#E8F5E9"))
-                    cornerRadius = dp(10).toFloat()
-                    setStroke(dp(1), Color.parseColor("#A5D6A7"))
-                }
-                layoutParams = LinearLayout.LayoutParams(dp(64), dp(64)).apply {
-                    rightMargin = dp(12)
-                }
-            }
-            mainRow.addView(thumbBox)
-
-            val infoCol = LinearLayout(ctx).apply {
-                orientation = LinearLayout.VERTICAL
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            }
-
-            infoCol.addView(TextView(ctx).apply {
-                text = "$badge$ratingText  •  🧺 न्यूनतम: $minOrd $unit"
-                setTextColor(Color.parseColor("#1B5E20"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-                setTypeface(typeface, Typeface.BOLD)
-            })
-
-            infoCol.addView(TextView(ctx).apply {
-                text = "$name ($variety) — ₹$price / $unit"
-                setTextColor(Color.parseColor("#212121"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-                setTypeface(typeface, Typeface.BOLD)
-                setPadding(0, dp(2), 0, dp(2))
-            })
-
-            infoCol.addView(TextView(ctx).apply {
-                text = "📦 $stock $unit उपलब्ध • 📍 $village, $district • 🗓️ कटाई: $harvest\n👨‍🌾 किसान: $farmer"
-                setTextColor(Color.parseColor("#616161"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            })
-
-            mainRow.addView(infoCol)
-            outerBox.addView(mainRow)
+            )
 
             val btnRow = LinearLayout(ctx).apply {
                 orientation = LinearLayout.HORIZONTAL
-                weightSum = 3f
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { topMargin = dp(10) }
             }
-
-            btnRow.addView(Button(ctx).apply {
-                text = "❤️ पसंदीदा"
-                textSize = 10f
-                setTextColor(Color.parseColor("#C62828"))
-                setBackgroundColor(Color.parseColor("#FFEBEE"))
-                layoutParams = LinearLayout.LayoutParams(0, dp(36), 1f).apply { rightMargin = dp(4) }
-                setOnClickListener {
-                    Toast.makeText(ctx, "❤️ '$name' पसंदीदा सूची में सेव किया गया!", Toast.LENGTH_SHORT).show()
-                }
-            })
-
-            btnRow.addView(Button(ctx).apply {
-                text = "🛒 अभी खरीदें (Buy)"
-                textSize = 10f
-                setTextColor(Color.WHITE)
-                setBackgroundColor(Color.parseColor("#1B5E20"))
-                layoutParams = LinearLayout.LayoutParams(0, dp(36), 1f).apply { leftMargin = dp(2); rightMargin = dp(2) }
-                setOnClickListener { openDetailAction() }
-            })
-
-            btnRow.addView(Button(ctx).apply {
-                text = "📤 शेयर (Share)"
-                textSize = 10f
-                setTextColor(Color.parseColor("#0D47A1"))
-                setBackgroundColor(Color.parseColor("#E3F2FD"))
-                layoutParams = LinearLayout.LayoutParams(0, dp(36), 1f).apply { leftMargin = dp(4) }
-                setOnClickListener {
-                    val shareText = "🌾 Mera Kisan\n$name ($variety)\n💰 ₹$price/$unit • 📦 $stock $unit उपलब्ध\n👨‍🌾 किसान: $farmer ($village, $district)\n$badge\n🔗 देखें: https://merakisan.in/product/$id"
-                    val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_TEXT, shareText)
+            btnRow.addView(
+                Button(ctx).apply {
+                    text = "✏️ एडिट / पोस्टर"
+                    isAllCaps = false
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                    setOnClickListener {
+                        (activity as? MainActivity)?.openProductDetailScreen(id)
                     }
-                    startActivity(Intent.createChooser(sendIntent, "उत्पाद शेयर करें"))
                 }
-            })
-
-            outerBox.addView(btnRow)
-            card.addView(outerBox)
-            liveProductsContainer.addView(card)
+            )
+            addView(btnRow)
         }
     }
 
-    private fun createToolButton(
-        ctx: Context,
-        title: String,
-        bgHex: String,
-        textHex: String,
-        onClick: () -> Unit
-    ): Button {
-        return Button(ctx).apply {
-            text = title
-            setTextColor(Color.parseColor(textHex))
-            setBackgroundColor(Color.parseColor(bgHex))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-            layoutParams = LinearLayout.LayoutParams(0, dp(40), 1f).apply {
-                leftMargin = dp(3)
-                rightMargin = dp(3)
-            }
-            setOnClickListener { onClick() }
-        }
-    }
+    private fun buildBuyerDemandRowForFarmer(reqObj: JSONObject): View {
+        val ctx = requireContext()
+        val prodName = reqObj.optString("product_name", "कृषि उत्पाद")
+        val qty = reqObj.optDouble("quantity", 0.0)
+        val unit = reqObj.optString("unit", "kg")
+        val targetRupees = reqObj.optDouble("target_price_rupees", 0.0)
+        val dist = reqObj.optString("district", "")
+        val buyerName = reqObj.optString("buyer_name", "खरीदार")
 
-    private fun createFeatureNavigationCard(
-        ctx: Context,
-        badge: String,
-        title: String,
-        subtitle: String,
-        accentHex: String,
-        targetFragment: String
-    ): CardView {
-        return CardView(ctx).apply {
-            radius = dp(12).toFloat()
-            cardElevation = dp(2).toFloat()
-            setCardBackgroundColor(Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(
+        return LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBorder("#FFF8E1", "#FFE082", dp(10))
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            val lp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(10) }
-            setOnClickListener { navigateSafe(targetFragment) }
+            )
+            lp.topMargin = dp(8)
+            layoutParams = lp
 
-            val box = LinearLayout(ctx).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(14), dp(12), dp(14), dp(12))
-            }
-
-            box.addView(TextView(ctx).apply {
-                text = badge
-                setTextColor(Color.parseColor(accentHex))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-                setTypeface(typeface, Typeface.BOLD)
-            })
-
-            box.addView(TextView(ctx).apply {
-                text = "$title  →"
-                setTextColor(Color.parseColor("#212121"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-                setTypeface(typeface, Typeface.BOLD)
-                setPadding(0, dp(2), 0, dp(2))
-            })
-
-            box.addView(TextView(ctx).apply {
-                text = subtitle
-                setTextColor(Color.parseColor("#616161"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            })
-
-            addView(box)
+            addView(
+                TextView(ctx).apply {
+                    text = "📢 मांग: $prodName ($qty $unit) • बजट: ₹$targetRupees/$unit"
+                    setTextColor(Color.parseColor("#BF360C"))
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                    setTypeface(typeface, Typeface.BOLD)
+                }
+            )
+            addView(
+                TextView(ctx).apply {
+                    text = "ग्राहक: $buyerName ($dist)"
+                    setTextColor(Color.parseColor("#4A5A4A"))
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                    setPadding(0, dp(2), 0, dp(6))
+                }
+            )
+            addView(
+                Button(ctx).apply {
+                    text = "✋ मेरे पास उपलब्ध है — भाव प्रस्ताव भेजें"
+                    isAllCaps = false
+                    background = roundedBg("#1B5E20", dp(8))
+                    setTextColor(Color.WHITE)
+                    minHeight = dp(38)
+                    setOnClickListener {
+                        (activity as? MainActivity)?.openBuyerRequestsScreen()
+                    }
+                }
+            )
         }
     }
 
-    private fun navigateSafe(vararg names: String) {
-        val ctx = context ?: return
-        val pkg = ctx.packageName
-        for (n in names) {
-            val id = ctx.resources.getIdentifier(n, "id", pkg)
-            if (id != 0) {
-                try {
-                    findNavController().navigate(id)
-                    return
-                } catch (_: Throwable) {}
+    private fun buildBuyerProductCard(prod: JSONObject): View {
+        val ctx = requireContext()
+        val id = prod.optString("id", "")
+        val name = prod.optString("name", "कृषि उत्पाद")
+        val variety = prod.optString("variety", "")
+        val priceRupees = prod.optDouble("price_rupees", prod.optDouble("price", 0.0))
+        val unit = prod.optString("unit", "kg")
+        val stock = prod.optDouble("stock_quantity", 0.0)
+        val minOrder = prod.optDouble("min_order_quantity", 1.0)
+        val farmerName = prod.optString("farmer_name", "किसान")
+        val farmerPhone = prod.optString("farmer_phone", "")
+        val village = prod.optString("village", "")
+        val district = prod.optString("district", "")
+        val harvestDate = prod.optString("harvest_date", "")
+        val isFreshToday = prod.optBoolean("is_fresh_today", false)
+        val verifBadge = formatVerificationBadgeHi(prod.optString("verification_status", "farmer_declared"))
+        val shareUrl = prod.optString("share_url", "${ApiClient.SERVER_ORIGIN}/product/$id")
+
+        return LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBorder("#FFFFFF", "#C8E6C9", dp(12))
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            lp.topMargin = dp(10)
+            layoutParams = lp
+
+            // Verification & Freshness Badges Row
+            addView(
+                TextView(ctx).apply {
+                    text = "$verifBadge ${if (isFreshToday) "• 🥬 आज खेत से ताज़ा" else ""} ${if (minOrder <= 25) "• ⚖️ छोटी मात्रा उपलब्ध" else ""}"
+                    setTextColor(Color.parseColor("#1B5E20"))
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                    setTypeface(typeface, Typeface.BOLD)
+                }
+            )
+
+            addView(
+                TextView(ctx).apply {
+                    text = "$name ${if (variety.isNotBlank()) "($variety)" else ""}"
+                    setTextColor(Color.parseColor("#1A241A"))
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+                    setTypeface(typeface, Typeface.BOLD)
+                    setPadding(0, dp(4), 0, dp(2))
+                }
+            )
+
+            addView(
+                TextView(ctx).apply {
+                    text = "₹$priceRupees / $unit  •  उपलब्ध: $stock $unit (न्यूनतम: $minOrder $unit)"
+                    setTextColor(Color.parseColor("#BF360C"))
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                    setTypeface(typeface, Typeface.BOLD)
+                }
+            )
+
+            addView(
+                TextView(ctx).apply {
+                    val locText = listOf(village, district).filter { it.isNotBlank() && it != "null" }.joinToString(", ")
+                    text = "👨‍🌾 किसान: $farmerName ${if (locText.isNotBlank()) "($locText)" else ""}" +
+                        if (harvestDate.isNotBlank() && harvestDate != "null") " • कटाई: $harvestDate" else ""
+                    setTextColor(Color.parseColor("#4A5A4A"))
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                    setPadding(0, dp(4), 0, dp(10))
+                }
+            )
+
+            // Action Buttons: [विवरण व खरीदें] [WhatsApp] [Share]
+            val actions = LinearLayout(ctx).apply {
+                orientation = LinearLayout.HORIZONTAL
             }
+
+            val btnBuy = Button(ctx).apply {
+                text = "🛒 खरीदें / भाव प्रस्ताव"
+                isAllCaps = false
+                background = roundedBg("#1B5E20", dp(8))
+                setTextColor(Color.WHITE)
+                minHeight = dp(40)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.3f)
+                setOnClickListener {
+                    (activity as? MainActivity)?.openProductDetailScreen(id)
+                }
+            }
+            actions.addView(btnBuy)
+
+            if (FeatureManager.isEnabled("whatsapp", ctx) && farmerPhone.length >= 10) {
+                val btnWa = Button(ctx).apply {
+                    text = "🟢 WhatsApp"
+                    isAllCaps = false
+                    background = roundedBorder("#E8F5E9", "#2E7D32", dp(8))
+                    setTextColor(Color.parseColor("#1B5E20"))
+                    minHeight = dp(40)
+                    val blp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.9f)
+                    blp.leftMargin = dp(6)
+                    layoutParams = blp
+                    setOnClickListener {
+                        val waMsg = "नमस्ते $farmerName जी, मैंने 'मेरा किसान' ऐप पर आपकी फसल *$name* (₹$priceRupees/$unit) देखी। मुझे यह खरीदनी है।\n$shareUrl"
+                        val url = "https://wa.me/91${farmerPhone.takeLast(10)}?text=${Uri.encode(waMsg)}"
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                    }
+                }
+                actions.addView(btnWa)
+            }
+
+            if (FeatureManager.isEnabled("share", ctx)) {
+                val btnShare = Button(ctx).apply {
+                    text = "📤 शेयर"
+                    isAllCaps = false
+                    background = roundedBorder("#FFF8E1", "#FFB300", dp(8))
+                    setTextColor(Color.parseColor("#BF360C"))
+                    minHeight = dp(40)
+                    val slp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.7f)
+                    slp.leftMargin = dp(6)
+                    layoutParams = slp
+                    setOnClickListener {
+                        val msg = "🌾 *मेरा किसान*\n*$name* — ₹$priceRupees/$unit\n📦 $stock $unit उपलब्ध\n👨‍🌾 किसान: $farmerName ($district)\n$verifBadge\n\nदेखें व खरीदें:\n$shareUrl"
+                        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, msg)
+                        }
+                        startActivity(Intent.createChooser(sendIntent, "फसल शेयर करें"))
+                    }
+                }
+                actions.addView(btnShare)
+            }
+
+            addView(actions)
         }
     }
 
-    private fun dp(value: Int): Int {
-        return TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_DIP,
-            value.toFloat(),
-            resources.displayMetrics
-        ).toInt()
+    private fun formatVerificationBadgeHi(status: String): String {
+        return when (status.trim().lowercase()) {
+            "verified_farmer", "document_verified" -> "✔ मेरा किसान सत्यापित"
+            "organic_certified" -> "🌿 प्रमाणित जैविक (Certified Organic)"
+            "lab_tested" -> "🧪 लैब परीक्षित (Lab Tested)"
+            else -> "👨‍🌾 किसान स्व-घोषित"
+        }
     }
+
+    private fun createStatBox(label: String, valueView: TextView): LinearLayout {
+        val ctx = requireContext()
+        return LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            background = roundedBorder("#F8FBF8", "#C8E6C9", dp(10))
+            setPadding(dp(8), dp(10), dp(8), dp(10))
+            val lp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            lp.rightMargin = dp(6)
+            layoutParams = lp
+
+            valueView.apply {
+                text = "..."
+                setTextColor(Color.parseColor("#1B5E20"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+                setTypeface(typeface, Typeface.BOLD)
+                gravity = Gravity.CENTER
+            }
+            addView(valueView)
+            addView(
+                TextView(ctx).apply {
+                    text = label
+                    setTextColor(Color.parseColor("#4A5A4A"))
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                    gravity = Gravity.CENTER
+                }
+            )
+        }
+    }
+
+    private fun createCard(): LinearLayout {
+        val ctx = requireContext()
+        return LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBg("#FFFFFF", dp(14))
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            lp.topMargin = dp(12)
+            layoutParams = lp
+        }
+    }
+
+    private fun sectionTitle(textStr: String): TextView =
+        TextView(requireContext()).apply {
+            text = textStr
+            setTextColor(Color.parseColor("#124116"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(0, 0, 0, dp(8))
+        }
+
+    private fun createActionButton(title: String, colorHex: String, onClick: () -> Unit): Button =
+        Button(requireContext()).apply {
+            text = title
+            isAllCaps = false
+            background = roundedBg(colorHex, dp(10))
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, Typeface.BOLD)
+            minHeight = dp(46)
+            setOnClickListener { onClick() }
+        }
+
+    private fun emptyNotice(msg: String): TextView =
+        TextView(requireContext()).apply {
+            text = msg
+            setTextColor(Color.parseColor("#667766"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            setPadding(0, dp(8), 0, dp(4))
+        }
+
+    private fun roundedBg(hex: String, radiusPx: Int): GradientDrawable =
+        GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = radiusPx.toFloat()
+            setColor(Color.parseColor(hex))
+        }
+
+    private fun roundedBorder(fillHex: String, borderHex: String, radiusPx: Int): GradientDrawable =
+        GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = radiusPx.toFloat()
+            setColor(Color.parseColor(fillHex))
+            setStroke(dp(1), Color.parseColor(borderHex))
+        }
+
+    private fun space(h: Int): View =
+        View(requireContext()).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, h)
+        }
+
+    private fun dp(v: Int): Int =
+        TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), resources.displayMetrics).toInt()
 }
