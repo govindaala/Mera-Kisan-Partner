@@ -10,17 +10,8 @@ import kotlin.math.abs
 
 /**
  * MERA KISAN — COMPLETE CENTRAL FEATURE CONTROL & REMOTE CONFIG ENGINE
- *
- * References:
- * - MERA_KISAN_MASTER_SPEC_v1.1_FRESH.txt (Sections 2, 16, 17, 18, 20, 27, 28, 29)
- * - merged.txt (Sections 31-45, 66-71, 79-81, 101-102, Final Spec Sections 3-9, 67-75)
- *
- * Golden Rule:
- * - Kisi bhi future ya hold feature ko code se hatana nahi hai.
- * - Core P0/P1 features default ON rahenge; P2/P3/HOLD features (aur AdMob) default OFF rahenge.
- * - Admin Panel se bina APK update kiye kisi bhi feature ko OFF -> BETA -> ON, Rollout %,
- *   Emergency Kill Switch, aur Remote Parameters ke saath control kiya ja sakta hai.
- * - Server connection keval ApiClient (Single Point of Server Connection) se hi hoga.
+ * Supports both `isEnabled(featureKey, context)` and `isEnabled(context, featureKey)`,
+ * plus `syncRemoteConfig(context)` and `isCoreFeatureDefaultOn(featureKey)`.
  */
 object FeatureManager {
 
@@ -39,17 +30,11 @@ object FeatureManager {
         OFF
     }
 
-    // ========================================================================
-    // 1. MASTER FEATURE REGISTRY (All 78 Canonical + Legacy Alias Flags)
-    // ========================================================================
-
     // Core P0 & P1 Features — Default ON
     private val DEFAULT_ON_FEATURES = setOf(
-        // Auth & Role Modes
         "authentication",
         "farmer_mode",
         "buyer_mode",
-        // Core Marketplace & Discovery
         "product_listing",
         "product_search",
         "product_filter",
@@ -60,19 +45,16 @@ object FeatureManager {
         "location_search",
         "village_filter",
         "district_filter",
-        // Seeds, Agri-Inputs & Pickup Points
         "seeds_marketplace",
         "agri_inputs_marketplace",
         "agri_dealer_portal",
         "pickup_points",
         "pickup",
-        // Buyer Request ("Mujhe Yeh Chahiye") & Negotiation
         "buyer_request",
         "make_offer",
         "counter_offer",
         "negotiation",
         "offers",
-        // Social & Engagement
         "favorites",
         "wishlist",
         "follow_farmer",
@@ -80,7 +62,6 @@ object FeatureManager {
         "farmer_rating",
         "buyer_rating",
         "reviews",
-        // 6-Level Verification Badges
         "farmer_verification",
         "verified_farmer",
         "buyer_verification",
@@ -88,11 +69,9 @@ object FeatureManager {
         "organic_verified",
         "organic",
         "lab_verification",
-        // Orders & Direct/COD Flow
         "orders",
         "online_order",
         "cod",
-        // Communication & Sharing
         "notifications",
         "whatsapp",
         "call",
@@ -103,7 +82,6 @@ object FeatureManager {
         "sms_share",
         "qr_share",
         "ai_poster",
-        // Mandi & Pricing Tools
         "mandi_price",
         "mandi",
         "price_history",
@@ -114,7 +92,6 @@ object FeatureManager {
 
     // P2 / P3 / HOLD / Monetization Features — Infrastructure Ready, Default OFF
     private val DEFAULT_OFF_HOLD_FEATURES = setOf(
-        // Online Payments & Escrow (Admin ON hone par dikhenge)
         "payment",
         "payments",
         "online_payment",
@@ -122,21 +99,18 @@ object FeatureManager {
         "escrow",
         "refund",
         "payout",
-        // Promotions & Ads (AdMob strictly OFF by default)
         "crop_boost",
         "boost",
         "featured_product",
         "sponsored_product",
         "advertisement",
         "admob",
-        // Advanced Communication & Maps
         "chat",
         "sms",
         "email",
         "map_view",
         "maps",
         "location",
-        // Collective & Processed Food Modules
         "farm_box",
         "group_buying",
         "pre_order",
@@ -146,13 +120,11 @@ object FeatureManager {
         "oil_mill",
         "oil_batch",
         "traceability",
-        // Alerts & Saved Searches
         "price_alert",
         "price_recommendation",
         "demand_analytics",
         "saved_search",
         "trust_score",
-        // Subscriptions, Loyalty, Wallet & Auction (HOLD)
         "subscription",
         "premium_farmer",
         "premium",
@@ -161,7 +133,6 @@ object FeatureManager {
         "coupon",
         "wallet",
         "auction",
-        // Advanced AI Jobs
         "ai",
         "ai_search",
         "ai_recommendation",
@@ -171,16 +142,13 @@ object FeatureManager {
         "ai_description",
         "ai_moderation",
         "ai_assistant",
-        // Media Hosting Flags
         "video",
         "youtube",
-        // System Governance Flags
         "maintenance",
         "force_update",
         "demo_fallback_mode"
     )
 
-    // Legacy key aliases mapping taaki purana ya naya koi bhi naam call hone par sahi flag mile
     private val FEATURE_KEY_ALIASES = mapOf(
         "boost" to "crop_boost",
         "boost_feature" to "crop_boost",
@@ -208,10 +176,6 @@ object FeatureManager {
     @Volatile
     private var isInitialized: Boolean = false
 
-    // ========================================================================
-    // 2. INITIALIZATION & SINGLE-CONNECTION SERVER SYNC
-    // ========================================================================
-
     fun initFromLocalCache(context: Context) {
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         try {
@@ -232,9 +196,6 @@ object FeatureManager {
         }
     }
 
-    /**
-     * ApiClient (Single Point of Server Connection) ke madhyam se `/config` sync karta hai.
-     */
     suspend fun syncFromServer(context: Context): Boolean {
         if (!isInitialized) {
             initFromLocalCache(context)
@@ -250,7 +211,6 @@ object FeatureManager {
         val serverParams = data.optJSONObject("parameters") ?: JSONObject()
         val serverServices = data.optJSONObject("services_status") ?: JSONObject()
 
-        // Non-negotiable Rule: Dummy fallback mode hamesha OFF rahega
         serverParams.put("demo_fallback_mode", "OFF")
 
         memoryFlags = serverFeatures
@@ -270,9 +230,21 @@ object FeatureManager {
         return true
     }
 
-    // ========================================================================
-    // 3. ADVANCED FEATURE EVALUATION (Kill-Switch, Rollout %, Role, District, Version)
-    // ========================================================================
+    /**
+     * Compatibility alias for RemoteConfigRepository.kt
+     */
+    suspend fun syncRemoteConfig(context: Context): Boolean =
+        syncFromServer(context)
+
+    /**
+     * Compatibility helper for RemoteConfigRepository.kt
+     */
+    @JvmStatic
+    fun isCoreFeatureDefaultOn(rawKey: String): Boolean {
+        val key = resolveCanonicalKey(rawKey)
+        if (key == "demo_fallback_mode" || key == "admob") return false
+        return DEFAULT_ON_FEATURES.contains(key)
+    }
 
     data class EvaluatedFeatureRule(
         val key: String,
@@ -370,8 +342,10 @@ object FeatureManager {
     }
 
     /**
-     * Check karta hai ki feature chalu hai ya nahi (Context dene par user role, district, UID rollout % bhi janchta hai).
+     * Overload 1: (featureKey: String, context: Context? = null)
      */
+    @JvmStatic
+    @JvmOverloads
     fun isEnabled(featureKey: String, context: Context? = null): Boolean {
         if (context != null && !isInitialized) {
             initFromLocalCache(context)
@@ -382,7 +356,6 @@ object FeatureManager {
             return false
         }
 
-        // 1. App Version Check (min_app_version / max_app_version)
         if (!rule.minAppVersion.isNullOrBlank() && compareVersions(CURRENT_APP_VERSION, rule.minAppVersion) < 0) {
             return false
         }
@@ -395,26 +368,26 @@ object FeatureManager {
             val activeRole = SessionManager.getActiveMode(context).lowercase()
             val userDistrict = SessionManager.getUserDistrict(context).lowercase()
 
-            // 2. Role Check
             if (rule.allowedRoles.isNotEmpty()) {
-                val roleAllowed = rule.allowedRoles.any { it.lowercase() == activeRole || it.lowercase() == "both" || it.lowercase() == "all" }
+                val roleAllowed = rule.allowedRoles.any {
+                    it.lowercase() == activeRole || it.lowercase() == "both" || it.lowercase() == "all"
+                }
                 if (!roleAllowed) return false
             }
 
-            // 3. District Segment Check
             if (rule.allowedDistricts.isNotEmpty() && userDistrict.isNotBlank()) {
-                val distAllowed = rule.allowedDistricts.any { it.lowercase() == userDistrict || it.lowercase() == "all" }
+                val distAllowed = rule.allowedDistricts.any {
+                    it.lowercase() == userDistrict || it.lowercase() == "all"
+                }
                 if (!distAllowed) return false
             }
 
-            // 4. BETA User Check
             if (rule.status == FeatureStatus.BETA && rule.betaUsers.isNotEmpty()) {
                 if (uid.isBlank() || !rule.betaUsers.contains(uid)) {
                     return false
                 }
             }
 
-            // 5. Rollout % Check (0% to 100%)
             if (rule.rolloutPercent in 0..99) {
                 if (rule.rolloutPercent <= 0) return false
                 val seed = if (uid.isNotBlank()) "${rule.key}_$uid" else "${rule.key}_device"
@@ -428,6 +401,14 @@ object FeatureManager {
         return true
     }
 
+    /**
+     * Overload 2: (context: Context?, featureKey: String)
+     * Fixes MeraKisanFirebaseMessagingService, MediaUploadWorker & FollowedFarmerAdapter calls.
+     */
+    @JvmStatic
+    fun isEnabled(context: Context?, featureKey: String): Boolean =
+        isEnabled(featureKey = featureKey, context = context)
+
     fun isComingSoon(featureKey: String): Boolean =
         getEvaluatedFeatureRule(featureKey).status == FeatureStatus.COMING_SOON
 
@@ -438,7 +419,7 @@ object FeatureManager {
         DEFAULT_ON_FEATURES + DEFAULT_OFF_HOLD_FEATURES
 
     // ========================================================================
-    // 4. CORE REMOTE PARAMETERS (Payment, Commission, Boost, Buyer Request, Quotas)
+    // 4. CORE REMOTE PARAMETERS
     // ========================================================================
 
     fun getTokenPercent(): Int =
@@ -472,7 +453,7 @@ object FeatureManager {
         memoryParams.optInt("youtube_daily_quota_limit", 6).coerceIn(1, 50)
 
     // ========================================================================
-    // 5. ADMOB & MONETIZATION CONTROLS (Default OFF — Master Spec Sec 17)
+    // 5. ADMOB & MONETIZATION CONTROLS (Default OFF)
     // ========================================================================
 
     data class AdMobRemoteConfig(
@@ -502,7 +483,7 @@ object FeatureManager {
     }
 
     // ========================================================================
-    // 6. FUTURE BLANK SETTINGS INFRASTRUCTURE (Master Spec Sec 20 & merged.txt Sec 67-75)
+    // 6. FUTURE BLANK SETTINGS INFRASTRUCTURE
     // ========================================================================
 
     data class AuctionSettings(
@@ -647,7 +628,7 @@ object FeatureManager {
         )
 
     // ========================================================================
-    // 7. APP VERSION, MAINTENANCE MODE & REMOTE UI CONTENT (Sec 35-38, 69-71)
+    // 7. APP VERSION, MAINTENANCE MODE & REMOTE UI CONTENT
     // ========================================================================
 
     fun isMaintenanceMode(): Boolean =
@@ -698,10 +679,6 @@ object FeatureManager {
         val item = memoryServicesStatus.optJSONObject(serviceKey.trim().lowercase()) ?: return false
         return item.optBoolean("enabled", false) && item.optBoolean("configured", false)
     }
-
-    // ========================================================================
-    // 8. INTERNAL HELPERS
-    // ========================================================================
 
     private fun jsonArrayToStringList(arr: JSONArray?): List<String> {
         if (arr == null) return emptyList()
