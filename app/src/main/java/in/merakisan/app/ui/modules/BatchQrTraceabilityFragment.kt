@@ -1,40 +1,52 @@
 // app/src/main/java/in/merakisan/app/ui/modules/BatchQrTraceabilityFragment.kt
 package `in`.merakisan.app.ui.modules
 
+import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.util.TypedValue
-import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
-import androidx.cardview.widget.CardView
+import android.widget.Toast
 import androidx.fragment.app.Fragment
-import androidx.navigation.fragment.findNavController
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import androidx.lifecycle.lifecycleScope
+import `in`.merakisan.app.core.network.ApiClient
+import `in`.merakisan.app.core.security.SessionManager
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 
 /**
- * merged.txt Sec 3, 13, 33, 34, 43, 44, 49:
- * Graphical Farm-to-Home Product & Oil Batch QR Traceability Timeline:
- * Farm -> Harvest -> Collection/Processing -> Testing/Verification -> Packing -> Customer.
+ * MERA KISAN — FARM-TO-HOME BATCH QR TRACEABILITY TIMELINE
+ * Exact Repository Path: app/src/main/java/in/merakisan/app/ui/modules/BatchQrTraceabilityFragment.kt
+ *
+ * Implements (Master Spec Sec 5 & merged.txt Sec 3, 10, 13, 34, 43, 44, 49):
+ * - Graphical Traceability Timeline:
+ *   🌱 Farm / Farmer -> 🌾 Raw Material & Harvest -> ⚙️ Processing Mill -> 🧪 Testing/Verification -> 📦 Packing -> 🏠 Customer
+ * - Allows buyers to search/verify any Batch ID (e.g., Cold-Pressed Oil, Jaggery, Desi Grain batch).
+ * - Allows farmers/mills to register a new traceable batch via `/modules/oil-batches`.
  */
 class BatchQrTraceabilityFragment : Fragment() {
 
-    private lateinit var etBatchCode: EditText
-    private lateinit var containerTimeline: LinearLayout
+    private var initialBatchId: String? = null
+
+    private lateinit var inputBatchIdSearch: EditText
+    private lateinit var progressBar: ProgressBar
+    private lateinit var timelineContainer: LinearLayout
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        initialBatchId = arguments?.getString("batch_id")
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -42,217 +54,287 @@ class BatchQrTraceabilityFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         val ctx = requireContext()
+        val scroll = ScrollView(ctx).apply {
+            isFillViewport = true
+            setBackgroundColor(Color.parseColor("#F2F6F2"))
+        }
 
         val root = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#F4F6F8"))
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
+            setPadding(dp(14), dp(14), dp(14), dp(28))
         }
 
-        // 1. HEADER
-        val header = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(Color.parseColor("#1B5E20"))
-            setPadding(dp(12), dp(10), dp(14), dp(10))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(58))
-        }
-
-        header.addView(TextView(ctx).apply {
-            text = "←"
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
-            setTypeface(typeface, Typeface.BOLD)
-            setPadding(dp(6), dp(2), dp(14), dp(2))
-            setOnClickListener {
-                try { findNavController().popBackStack() } catch (_: Throwable) {}
-            }
-        })
-
-        header.addView(TextView(ctx).apply {
-            text = "🔍 बैच QR व Farm-to-Home ट्रेसबिलिटी"
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-            setTypeface(typeface, Typeface.BOLD)
-        })
-        root.addView(header)
-
-        // 2. BATCH ID SEARCH BAR
-        val searchBox = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(Color.WHITE)
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-        }
-
-        etBatchCode = EditText(ctx).apply {
-            hint = "Batch ID दर्ज करें (उदा. MK-MDS-2026-089)"
-            setText("MK-MDS-2026-089")
-            textSize = 13f
-            layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(8) }
-        }
-
-        val btnVerify = Button(ctx).apply {
-            text = "🔍 बैच जांचें"
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#1B5E20"))
-            textSize = 12f
-            setOnClickListener {
-                fetchAndRenderBatchTimeline(etBatchCode.text.toString().trim())
-            }
-        }
-
-        searchBox.addView(etBatchCode)
-        searchBox.addView(btnVerify)
-        root.addView(searchBox)
-
-        val scroll = ScrollView(ctx).apply {
-            isFillViewport = true
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.MATCH_PARENT
-            )
-        }
-
-        containerTimeline = LinearLayout(ctx).apply {
+        val topCard = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(14), dp(14), dp(24))
+            background = roundedBg("#FFFFFF", "#D4E2D4", dp(14))
+            setPadding(dp(16), dp(14), dp(16), dp(14))
         }
 
-        scroll.addView(containerTimeline)
-        root.addView(scroll)
-
-        fetchAndRenderBatchTimeline("MK-MDS-2026-089")
-        return root
-    }
-
-    private fun fetchAndRenderBatchTimeline(batchId: String) {
-        val cleanId = batchId.ifEmpty { "MK-MDS-2026-089" }
-
-        CoroutineScope(Dispatchers.IO).launch {
-            var productTitle = "कच्ची घानी मूंगफली तेल / देशी कृषि लॉट"
-            var farmerInfo = "रामलाल पाटीदार (ग्राम गरोठ, मंदसौर)"
-            var harvestDate = "12 अक्टूबर 2026"
-            var millOrUnit = "गरोठ पारंपरिक लकड़ी घाणी केंद्र"
-            var packDate = "17 अक्टूबर 2026"
-            var verification = "✔ Farmer Declared & Batch QR Verified"
-
-            try {
-                val url = URL("https://mera-kisan-backend.vercel.app/api/v1/modules/oil-batches/$cleanId")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 4000
-                conn.readTimeout = 4000
-                if (conn.responseCode in 200..299) {
-                    val raw = conn.inputStream.bufferedReader().use { it.readText() }
-                    val data = JSONObject(raw).optJSONObject("data")
-                    if (data != null) {
-                        productTitle = data.optString("product_name", productTitle)
-                        farmerInfo = "${data.optString("seed_source_farmer", "रामलाल पाटीदार")} (${data.optString("village", "गरोठ")})"
-                        harvestDate = data.optString("harvest_date", harvestDate)
-                        millOrUnit = data.optString("oil_mill_name", millOrUnit)
-                        packDate = data.optString("packaging_date", packDate)
-                        verification = data.optString("verification_status", verification)
-                    }
-                }
-            } catch (_: Throwable) {
-            } finally {
-                withContext(Dispatchers.Main) {
-                    if (!isAdded) return@withContext
-                    renderGraphicalSteps(cleanId, productTitle, farmerInfo, harvestDate, millOrUnit, packDate, verification)
-                }
+        topCard.addView(
+            TextView(ctx).apply {
+                text = "🔍 बैच QR ट्रेसबिलिटी (Farm-to-Home Traceability)"
+                setTextColor(Color.parseColor("#124116"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+                setTypeface(typeface, Typeface.BOLD)
             }
-        }
-    }
-
-    private fun renderGraphicalSteps(
-        batchId: String,
-        productTitle: String,
-        farmerInfo: String,
-        harvestDate: String,
-        millOrUnit: String,
-        packDate: String,
-        verification: String
-    ) {
-        val ctx = context ?: return
-        containerTimeline.removeAllViews()
-
-        // Summary Header Card
-        val topCard = CardView(ctx).apply {
-            radius = dp(12).toFloat()
-            setCardBackgroundColor(Color.parseColor("#E8F5E9"))
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(14) }
-        }
-
-        topCard.addView(TextView(ctx).apply {
-            text = "▣ सत्यापित बैच: #$batchId\n🌾 उत्पाद: $productTitle\n🏅 प्रमाण स्थिति: $verification\n(नियम: बिना प्रमाण कोई झूठा 100% केमिकल-फ्री दावा नहीं)"
-            setTextColor(Color.parseColor("#1B5E20"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            setTypeface(typeface, Typeface.BOLD)
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-        })
-        containerTimeline.addView(topCard)
-
-        val steps = listOf(
-            Triple("1. 🌱 खेत व किसान (Farm & Farmer)", farmerInfo, "सटीक GPS गोपनीय रखकर ग्राम व तहसील सत्यापित"),
-            Triple("2. 🌾 कटाई व कच्चा माल (Harvest)", "कटाई तिथि: $harvestDate", "देशी G-20 मूंगफली / शरबती अनाज लॉट"),
-            Triple("3. 🏛️ संग्रहण व प्रोसेसिंग (Processing Unit)", millOrUnit, "पारंपरिक धीमी गति से बिना रसायन निष्कर्षण"),
-            Triple("4. 🧪 जांच व पारदर्शिता (Verification)", verification, "नमी (Moisture) व साफ-सफाई मानक जांच पूर्ण"),
-            Triple("5. 📦 पैकिंग व क्यूआर सील (Packing & QR)", "पैकिंग तिथि: $packDate", "ग्राहक तक सीधे डिलीवरी / पिकअप हेतु तैयार")
+        )
+        topCard.addView(
+            TextView(ctx).apply {
+                text = "जानें कि आपका तेल, गुड़ या अनाज किस किसान के खेत से आया, कब कटा और किस मिल में तैयार हुआ:"
+                setTextColor(Color.parseColor("#4A5A4A"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                setPadding(0, dp(4), 0, dp(10))
+            }
         )
 
-        for ((title, subtitle, desc) in steps) {
-            val stepCard = CardView(ctx).apply {
-                radius = dp(10).toFloat()
-                cardElevation = dp(2).toFloat()
-                setCardBackgroundColor(Color.WHITE)
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = dp(10) }
+        inputBatchIdSearch = EditText(ctx).apply {
+            hint = "बैच नंबर (Batch ID) लिखें (खाली छोड़ने पर सभी हालिया बैच दिखेंगे)"
+            setText(initialBatchId ?: "")
+            background = roundedBg("#FAFAFA", "#B8CBB8", dp(8))
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            minHeight = dp(44)
+        }
+        topCard.addView(inputBatchIdSearch)
+
+        val btnRow = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(8), 0, 0)
+        }
+
+        val btnSearchBatch = Button(ctx).apply {
+            text = "🔍 बैच इतिहास खोजें"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, Typeface.BOLD)
+            background = roundedBg("#1B5E20", "#1B5E20", dp(10))
+            minHeight = dp(44)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                rightMargin = dp(6)
+            }
+            setOnClickListener { loadTraceableBatches() }
+        }
+        btnRow.addView(btnSearchBatch)
+
+        if (SessionManager.isFarmerModeActive(ctx)) {
+            val btnNewBatch = Button(ctx).apply {
+                text = "➕ नया बैच दर्ज करें"
+                isAllCaps = false
+                setTextColor(Color.WHITE)
+                setTypeface(typeface, Typeface.BOLD)
+                background = roundedBg("#BF360C", "#BF360C", dp(10))
+                minHeight = dp(44)
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    leftMargin = dp(6)
+                }
+                setOnClickListener { showCreateBatchDialog() }
+            }
+            btnRow.addView(btnNewBatch)
+        }
+
+        topCard.addView(btnRow)
+        root.addView(topCard)
+
+        progressBar = ProgressBar(ctx).apply {
+            visibility = View.GONE
+            setPadding(0, dp(12), 0, dp(12))
+        }
+        root.addView(progressBar)
+
+        timelineContainer = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(8), 0, 0)
+        }
+        root.addView(timelineContainer)
+
+        scroll.addView(root)
+        return scroll
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        loadTraceableBatches()
+    }
+
+    private fun loadTraceableBatches() {
+        val ctx = context ?: return
+        val batchQuery = inputBatchIdSearch.text?.toString()?.trim()
+        progressBar.visibility = View.VISIBLE
+        timelineContainer.removeAllViews()
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            val res = ApiClient.request(
+                context = ctx,
+                endpointPath = "/modules/oil-batches",
+                method = "GET",
+                queryParams = mapOf("batch_id" to batchQuery?.ifBlank { null })
+            )
+            if (!isAdded) return@launch
+            progressBar.visibility = View.GONE
+
+            val arr = res.dataArray ?: JSONArray()
+            if (arr.length() == 0) {
+                timelineContainer.addView(
+                    TextView(ctx).apply {
+                        text = "कोई बैच रिकॉर्ड नहीं मिला।"
+                        setTextColor(Color.parseColor("#555555"))
+                        setPadding(dp(8), dp(18), dp(8), dp(18))
+                    }
+                )
+                return@launch
             }
 
-            val box = LinearLayout(ctx).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(14), dp(10), dp(14), dp(10))
+            for (i in 0 until arr.length()) {
+                val batchObj = arr.optJSONObject(i) ?: continue
+                timelineContainer.addView(buildBatchTimelineCard(batchObj))
             }
-
-            box.addView(TextView(ctx).apply {
-                text = title
-                setTextColor(Color.parseColor("#1B5E20"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-                setTypeface(typeface, Typeface.BOLD)
-            })
-
-            box.addView(TextView(ctx).apply {
-                text = subtitle
-                setTextColor(Color.parseColor("#212121"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                setTypeface(typeface, Typeface.BOLD)
-                setPadding(0, dp(2), 0, dp(2))
-            })
-
-            box.addView(TextView(ctx).apply {
-                text = desc
-                setTextColor(Color.parseColor("#616161"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            })
-
-            stepCard.addView(box)
-            containerTimeline.addView(stepCard)
         }
     }
 
-    private fun dp(value: Int): Int {
-        return TypedValue.applyDimension(
+    private fun buildBatchTimelineCard(batch: JSONObject): View {
+        val ctx = requireContext()
+        val batchId = batch.optString("id", batch.optString("batch_number", "BATCH"))
+        val productName = batch.optString("product_name", "कच्ची घानी तेल / देशी उत्पाद")
+        val seedSource = batch.optString("seed_source", "देशी मूंगफली / तिलहन")
+        val sourceFarmer = batch.optString("source_farmer_name", "स्थानीय किसान")
+        val village = batch.optString("village", "")
+        val district = batch.optString("district", "")
+        val rawQtyKg = batch.optDouble("raw_material_kg", 100.0)
+        val outputLitres = batch.optDouble("output_quantity", 40.0)
+        val millName = batch.optString("mill_name", "स्थानीय पारंपरिक घाणी")
+        val processingDate = batch.optString("processing_date", batch.optString("created_at", "").take(10))
+        val packingDate = batch.optString("packaging_date", processingDate)
+        val verifStatus = batch.optString("verification_status", "farmer_declared")
+
+        val card = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBg("#FFFFFF", "#C8E6C9", dp(14))
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            val lp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            lp.topMargin = dp(10)
+            layoutParams = lp
+        }
+
+        card.addView(
+            TextView(ctx).apply {
+                text = "🏷️ बैच ID: #$batchId — $productName"
+                setTextColor(Color.parseColor("#1B5E20"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+                setTypeface(typeface, Typeface.BOLD)
+            }
+        )
+
+        val steps = listOf(
+            "1. 🌱 खेत व किसान (Farm & Farmer)" to "$sourceFarmer (${if (village.isNotBlank()) "$village, " else ""}$district)",
+            "2. 🌾 कच्चा माल (Raw Material)" to "$seedSource — $rawQtyKg kg",
+            "3. ⚙️ प्रसंस्करण इकाई (Processing Unit)" to "$millName (तारीख: $processingDate)",
+            "4. 🧪 शुद्धता व सत्यापन स्तर (Verification)" to verifStatus,
+            "5. 📦 पैकिंग व तैयार उत्पाद (Output)" to "$outputLitres इकाई तैयार (पैकिंग: $packingDate)",
+            "6. 🔗 स्थायी QR सत्यापन लिंक" to "${ApiClient.SERVER_ORIGIN}/api/v1/modules/oil-batches?batch_id=$batchId"
+        )
+
+        for ((stepTitle, stepDetail) in steps) {
+            val stepBox = LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+                background = roundedBg("#F9FBE7", "#DCEDC8", dp(8))
+                setPadding(dp(10), dp(8), dp(10), dp(8))
+                val lp = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                lp.topMargin = dp(6)
+                layoutParams = lp
+            }
+            stepBox.addView(
+                TextView(ctx).apply {
+                    text = stepTitle
+                    setTextColor(Color.parseColor("#124116"))
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                }
+            )
+            stepBox.addView(
+                TextView(ctx).apply {
+                    text = "↳ $stepDetail"
+                    setTextColor(Color.parseColor("#333333"))
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                }
+            )
+            card.addView(stepBox)
+        }
+
+        return card
+    }
+
+    private fun showCreateBatchDialog() {
+        val ctx = context ?: return
+        val scroll = ScrollView(ctx)
+        val form = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(12), dp(20), dp(8))
+        }
+
+        val prodInput = EditText(ctx).apply { hint = "उत्पाद का नाम (उदा. कच्ची घानी मूंगफली तेल) *" }
+        val seedInput = EditText(ctx).apply { hint = "कच्चा माल / बीज स्रोत (उदा. देशी मूंगफली) *" }
+        val rawKgInput = EditText(ctx).apply { hint = "कच्चा माल मात्रा (kg में - उदा. 100) *" }
+        val outQtyInput = EditText(ctx).apply { hint = "तैयार तेल/उत्पाद मात्रा (Litre/kg में - उदा. 42) *" }
+        val millInput = EditText(ctx).apply { hint = "तेल मिल / प्रसंस्करण केंद्र का नाम *" }
+
+        form.addView(prodInput)
+        form.addView(seedInput)
+        form.addView(rawKgInput)
+        form.addView(outQtyInput)
+        form.addView(millInput)
+        scroll.addView(form)
+
+        AlertDialog.Builder(ctx)
+            .setTitle("➕ नया ट्रेस करने योग्य बैच दर्ज करें")
+            .setView(scroll)
+            .setPositiveButton("बैच सेव करें") { _, _ ->
+                val pName = prodInput.text?.toString()?.trim() ?: ""
+                val sName = seedInput.text?.toString()?.trim() ?: ""
+                val mill = millInput.text?.toString()?.trim() ?: ""
+                if (pName.isBlank() || sName.isBlank() || mill.isBlank()) {
+                    Toast.makeText(ctx, "कृपया सभी आवश्यक विवरण भरें।", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val body = JSONObject().apply {
+                        put("product_name", pName)
+                        put("seed_source", sName)
+                        put("raw_material_kg", rawKgInput.text?.toString()?.toDoubleOrNull() ?: 100.0)
+                        put("output_quantity", outQtyInput.text?.toString()?.toDoubleOrNull() ?: 40.0)
+                        put("mill_name", mill)
+                        put("village", SessionManager.getUserVillage(ctx))
+                        put("district", SessionManager.getUserDistrict(ctx))
+                    }
+                    val res = ApiClient.request(ctx, "/modules/oil-batches", method = "POST", bodyJson = body)
+                    if (res.isSuccess) {
+                        Toast.makeText(ctx, "✅ नया बैच सफलतापूर्वक पंजीकृत हो गया!", Toast.LENGTH_LONG).show()
+                        loadTraceableBatches()
+                    } else {
+                        Toast.makeText(ctx, res.errorMessage ?: "बैच सेव करने में त्रुटि।", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+            .setNegativeButton("रद्द करें", null)
+            .show()
+    }
+
+    private fun roundedBg(fillHex: String, strokeHex: String, radiusPx: Int): GradientDrawable =
+        GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = radiusPx.toFloat()
+            setColor(Color.parseColor(fillHex))
+            setStroke(dp(1), Color.parseColor(strokeHex))
+        }
+
+    private fun dp(value: Int): Int =
+        TypedValue.applyDimension(
             TypedValue.COMPLEX_UNIT_DIP,
             value.toFloat(),
             resources.displayMetrics
         ).toInt()
-    }
 }
