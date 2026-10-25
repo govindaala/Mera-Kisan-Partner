@@ -10,8 +10,7 @@ import kotlin.math.abs
 
 /**
  * MERA KISAN — COMPLETE CENTRAL FEATURE CONTROL & REMOTE CONFIG ENGINE
- * Supports both `isEnabled(featureKey, context)` and `isEnabled(context, featureKey)`,
- * plus `syncRemoteConfig(context)` and `isCoreFeatureDefaultOn(featureKey)`.
+ * Fixes line 410 overload ambiguity and adds `isFeatureEnabled` compatibility.
  */
 object FeatureManager {
 
@@ -30,7 +29,6 @@ object FeatureManager {
         OFF
     }
 
-    // Core P0 & P1 Features — Default ON
     private val DEFAULT_ON_FEATURES = setOf(
         "authentication",
         "farmer_mode",
@@ -90,7 +88,6 @@ object FeatureManager {
         "analytics"
     )
 
-    // P2 / P3 / HOLD / Monetization Features — Infrastructure Ready, Default OFF
     private val DEFAULT_OFF_HOLD_FEATURES = setOf(
         "payment",
         "payments",
@@ -230,15 +227,9 @@ object FeatureManager {
         return true
     }
 
-    /**
-     * Compatibility alias for RemoteConfigRepository.kt
-     */
     suspend fun syncRemoteConfig(context: Context): Boolean =
         syncFromServer(context)
 
-    /**
-     * Compatibility helper for RemoteConfigRepository.kt
-     */
     @JvmStatic
     fun isCoreFeatureDefaultOn(rawKey: String): Boolean {
         val key = resolveCanonicalKey(rawKey)
@@ -342,7 +333,7 @@ object FeatureManager {
     }
 
     /**
-     * Overload 1: (featureKey: String, context: Context? = null)
+     * Primary evaluation method: (featureKey: String, context: Context? = null)
      */
     @JvmStatic
     @JvmOverloads
@@ -402,12 +393,24 @@ object FeatureManager {
     }
 
     /**
-     * Overload 2: (context: Context?, featureKey: String)
-     * Fixes MeraKisanFirebaseMessagingService, MediaUploadWorker & FollowedFarmerAdapter calls.
+     * Reversed parameter order overload: (context: Context?, featureKey: String)
+     * Uses positional arguments to avoid named-argument overload ambiguity.
      */
     @JvmStatic
-    fun isEnabled(context: Context?, featureKey: String): Boolean =
-        isEnabled(featureKey = featureKey, context = context)
+    fun isEnabled(appContext: Context?, flagKey: String): Boolean =
+        isEnabled(flagKey, appContext)
+
+    /**
+     * Compatibility alias for `ui/product/ProductDetailFragment.kt`
+     */
+    @JvmStatic
+    @JvmOverloads
+    fun isFeatureEnabled(featureKey: String, context: Context? = null): Boolean =
+        isEnabled(featureKey, context)
+
+    @JvmStatic
+    fun isFeatureEnabled(appContext: Context?, flagKey: String): Boolean =
+        isEnabled(flagKey, appContext)
 
     fun isComingSoon(featureKey: String): Boolean =
         getEvaluatedFeatureRule(featureKey).status == FeatureStatus.COMING_SOON
@@ -419,7 +422,7 @@ object FeatureManager {
         DEFAULT_ON_FEATURES + DEFAULT_OFF_HOLD_FEATURES
 
     // ========================================================================
-    // 4. CORE REMOTE PARAMETERS
+    // CORE REMOTE PARAMETERS
     // ========================================================================
 
     fun getTokenPercent(): Int =
@@ -453,7 +456,7 @@ object FeatureManager {
         memoryParams.optInt("youtube_daily_quota_limit", 6).coerceIn(1, 50)
 
     // ========================================================================
-    // 5. ADMOB & MONETIZATION CONTROLS (Default OFF)
+    // ADMOB & MONETIZATION CONTROLS (Default OFF)
     // ========================================================================
 
     data class AdMobRemoteConfig(
@@ -483,7 +486,7 @@ object FeatureManager {
     }
 
     // ========================================================================
-    // 6. FUTURE BLANK SETTINGS INFRASTRUCTURE
+    // FUTURE BLANK SETTINGS INFRASTRUCTURE
     // ========================================================================
 
     data class AuctionSettings(
@@ -627,13 +630,9 @@ object FeatureManager {
             maxPreOrderDays = memoryParams.optInt("pre_order_max_days", 30)
         )
 
-    // ========================================================================
-    // 7. APP VERSION, MAINTENANCE MODE & REMOTE UI CONTENT
-    // ========================================================================
-
     fun isMaintenanceMode(): Boolean =
         memoryParams.optString("maintenance_mode", "OFF").uppercase() == "ON" ||
-            isEnabled("maintenance")
+            isEnabled("maintenance", null)
 
     fun getMaintenanceMessageHi(): String {
         val custom = memoryParams.optString("maintenance_message_hi", "").trim()
