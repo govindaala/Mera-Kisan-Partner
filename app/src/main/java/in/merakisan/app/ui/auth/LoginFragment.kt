@@ -1,56 +1,110 @@
 // app/src/main/java/in/merakisan/app/ui/auth/LoginFragment.kt
 package `in`.merakisan.app.ui.auth
 
+import android.app.Activity
 import android.app.AlertDialog
-import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.text.InputFilter
 import android.text.InputType
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
+import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
-import androidx.cardview.widget.CardView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
-import androidx.navigation.NavOptions
-import androidx.navigation.fragment.findNavController
-import `in`.merakisan.app.R
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.GoogleAuthProvider
+import `in`.merakisan.app.core.config.FeatureManager
+import `in`.merakisan.app.core.network.ApiClient
 import `in`.merakisan.app.core.security.SessionManager
 import `in`.merakisan.app.ui.main.MainActivity
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import java.io.OutputStreamWriter
-import java.net.HttpURLConnection
-import java.net.URL
-import java.util.Locale
 
 /**
- * Resolves LoginFragment.kt compiler errors at lines 313, 433, and 437:
- * - Zero unresolved method calls on GoogleAuthManager or SessionManager.
- * - Full support for Google Sign-In, Mobile OTP, Role Selection (Farmer / Buyer / Both), and Guest Mode.
+ * MERA KISAN — ONE-TIME ONBOARDING & ROLE SELECTION SCREEN
+ *
+ * Rules Enforced:
+ * 1. Single Server Connection: Uses only ApiClient.
+ * 2. Zero Plaintext PIN: Uses Firebase Auth + Server Token verification (merged.txt Sec 4-5).
+ * 3. Zero Dummy Defaults: No hardcoded 'Mandsaur'/'Garoth' defaults; states & districts load live
+ *    from government source via ApiClient, with clean manual entry support.
+ * 4. Separate Tables Sync: Saves to `users`, `farmers`, and `buyers` collections via `/auth/onboarding`.
+ * 5. No False Success: Navigates to Home ONLY after verified HTTP 200/201 from backend (merged.txt Sec 37).
  */
 class LoginFragment : Fragment() {
 
-    private var selectedRoleCode: String = "BOTH"
-    private lateinit var btnRoleFarmer: Button
-    private lateinit var btnRoleBuyer: Button
-    private lateinit var btnRoleBoth: Button
-    private lateinit var etMobileNumber: EditText
-    private lateinit var etUserName: EditText
-    private lateinit var etVillageDistrict: EditText
+    private var selectedRoleOption: String = "" // "farmer", "buyer", or "both"
+
+    private lateinit var authStatusBanner: TextView
     private lateinit var btnGoogleSignIn: Button
-    private lateinit var btnMobileOtpLogin: Button
+    private lateinit var roleFarmerBtn: Button
+    private lateinit var roleBuyerBtn: Button
+    private lateinit var roleBothBtn: Button
+
+    private lateinit var inputFullName: EditText
+    private lateinit var inputMobileNumber: EditText
+    private lateinit var spinnerState: Spinner
+    private lateinit var spinnerDistrict: Spinner
+    private lateinit var inputManualState: EditText
+    private lateinit var inputManualDistrict: EditText
+    private lateinit var inputVillage: EditText
+    private lateinit var inputTehsil: EditText
+    private lateinit var inputPincode: EditText
+
+    private lateinit var farmerExtraContainer: LinearLayout
+    private lateinit var spinnerFarmingMethod: Spinner
+    private lateinit var inputFarmStory: EditText
+
+    private lateinit var progressBar: ProgressBar
+    private lateinit var btnCompleteOnboarding: Button
+    private lateinit var btnDealerPortalLogin: Button
+
+    private val liveStatesList = mutableListOf<String>()
+    private val liveDistrictsList = mutableListOf<String>()
+
+    private val farmingMethods = listOf(
+        "पारंपरिक / देशी खेती (Traditional / Desi)",
+        "प्राकृतिक खेती (Natural Farming)",
+        "जैविक विधि (Organic Practice - Farmer Declared)",
+        "सामान्य मानक खेती (Standard Farming)"
+    )
+
+    private val googleSignInLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            try {
+                val account = task.getResult(ApiException::class.java)
+                val idToken = account?.idToken
+                if (!idToken.isNullOrBlank()) {
+                    authenticateWithFirebaseGoogle(idToken)
+                } else {
+                    showMessage("Google आईडी टोकन प्राप्त नहीं हुआ। कृपया पुनः प्रयास करें।", true)
+                }
+            } catch (e: ApiException) {
+                showMessage("Google साइन-इन रद्द या विफल रहा (Code: ${e.statusCode})।", true)
+            }
+        }
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -58,420 +112,717 @@ class LoginFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         val ctx = requireContext()
-
-        val scroll = ScrollView(ctx).apply {
+        val scrollView = ScrollView(ctx).apply {
             isFillViewport = true
-            setBackgroundColor(Color.parseColor("#F4F8F4"))
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
+            setBackgroundColor(Color.parseColor("#F2F6F2"))
         }
 
         val root = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(18), dp(24), dp(18), dp(28))
+            setPadding(dp(18), dp(20), dp(18), dp(32))
         }
 
-        // 1. BRAND LOGO & TAGLINE
-        root.addView(TextView(ctx).apply {
-            text = "🌾"
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 44f)
-            gravity = Gravity.CENTER
-        })
+        // 1. Header Banner
+        val headerCard = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBg("#1B5E20", dp(16))
+            setPadding(dp(20), dp(20), dp(20), dp(20))
+        }
+        headerCard.addView(
+            TextView(ctx).apply {
+                text = "🌾 मेरा किसान (MERA KISAN)"
+                setTextColor(Color.WHITE)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+                setTypeface(typeface, Typeface.BOLD)
+            }
+        )
+        headerCard.addView(
+            TextView(ctx).apply {
+                text = "किसान से सीधे आपकी जरूरत तक • वन-टाइम खाता सेटअप"
+                setTextColor(Color.parseColor("#E8F5E9"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                setPadding(0, dp(4), 0, 0)
+            }
+        )
+        root.addView(headerCard)
 
-        root.addView(TextView(ctx).apply {
-            text = "Mera Kisan"
+        // 2. Step 1: Google / Firebase Authentication Card
+        val authCard = createSectionCard(
+            title = "1. सुरक्षित खाता प्रमाणीकरण (Login)",
+            subtitle = "कोई पिन या पासवर्ड याद रखने की आवश्यकता नहीं — अपने Google खाते से सुरक्षित जुड़ें:"
+        )
+
+        authStatusBanner = TextView(ctx).apply {
+            text = "स्थिति: कृपया नीचे बटन दबाकर लॉगिन करें"
             setTextColor(Color.parseColor("#1B5E20"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 26f)
-            setTypeface(typeface, Typeface.BOLD)
-            gravity = Gravity.CENTER
-        })
-
-        root.addView(TextView(ctx).apply {
-            text = "किसान से सीधे आपकी जरूरत तक"
-            setTextColor(Color.parseColor("#4E6E52"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             setTypeface(typeface, Typeface.BOLD)
-            gravity = Gravity.CENTER
-            setPadding(0, dp(2), 0, dp(12))
-        })
-
-        // 2. ROLE SELECTION CARD ([किसान-विक्रेता] | [खरीदार] | [दोनों])
-        val roleCard = CardView(ctx).apply {
-            radius = dp(14).toFloat()
-            cardElevation = dp(2).toFloat()
-            setCardBackgroundColor(Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(14) }
+            setPadding(0, 0, 0, dp(10))
         }
-
-        val roleBox = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-        }
-
-        roleBox.addView(TextView(ctx).apply {
-            text = "1. अपनी भूमिका चुनें (बाद में प्रोफ़ाइल से बदल सकते हैं):"
-            setTextColor(Color.parseColor("#1B5E20"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, 0, 0, dp(8))
-        })
-
-        val roleBtnRow = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            weightSum = 3f
-        }
-
-        btnRoleFarmer = Button(ctx).apply {
-            text = "👨‍🌾 किसान"
-            textSize = 11f
-            layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply { rightMargin = dp(4) }
-            setOnClickListener { selectRole("FARMER") }
-        }
-
-        btnRoleBuyer = Button(ctx).apply {
-            text = "🛒 खरीदार"
-            textSize = 11f
-            layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(2); rightMargin = dp(2) }
-            setOnClickListener { selectRole("BUYER") }
-        }
-
-        btnRoleBoth = Button(ctx).apply {
-            text = "🌾 दोनों (Both)"
-            textSize = 11f
-            layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(4) }
-            setOnClickListener { selectRole("BOTH") }
-        }
-
-        roleBtnRow.addView(btnRoleFarmer)
-        roleBtnRow.addView(btnRoleBuyer)
-        roleBtnRow.addView(btnRoleBoth)
-        roleBox.addView(roleBtnRow)
-        roleCard.addView(roleBox)
-        root.addView(roleCard)
-
-        // 3. MAIN LOGIN CARD
-        val loginCard = CardView(ctx).apply {
-            radius = dp(16).toFloat()
-            cardElevation = dp(3).toFloat()
-            setCardBackgroundColor(Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        }
-
-        val loginBox = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(18), dp(18), dp(18))
-        }
-
-        loginBox.addView(TextView(ctx).apply {
-            text = "खाते में प्रवेश करें (Secure Login)"
-            setTextColor(Color.parseColor("#212121"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
-            setTypeface(typeface, Typeface.BOLD)
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, dp(12))
-        })
 
         btnGoogleSignIn = Button(ctx).apply {
-            text = "G   GOOGLE से साइन इन करें"
+            text = "🔐 Google खाते से सुरक्षित लॉगिन करें"
+            background = roundedBg("#0D47A1", dp(10))
             setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#1B5E20"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             setTypeface(typeface, Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(48)
-            )
-            setOnClickListener { showGoogleAccountSelectorDialog(ctx) }
+            minHeight = dp(48)
+            setOnClickListener { startGoogleSignInFlow() }
         }
-        loginBox.addView(btnGoogleSignIn)
 
-        loginBox.addView(TextView(ctx).apply {
-            text = "— या मोबाइल नंबर व नाम से लॉगिन करें —"
-            setTextColor(Color.parseColor("#757575"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            gravity = Gravity.CENTER
-            setPadding(0, dp(12), 0, dp(8))
-        })
+        authCard.addView(authStatusBanner)
+        authCard.addView(btnGoogleSignIn)
+        root.addView(authCard)
 
-        etUserName = EditText(ctx).apply {
-            hint = "आपका नाम (उदा. रामलाल पाटीदार)"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+        // 3. Step 2: First-Run Role Selection ([ किसान-विक्रेता ] [ खरीदार ] [ दोनों ])
+        val roleCard = createSectionCard(
+            title = "2. अपनी भूमिका चुनें (First-Run Role Selection)",
+            subtitle = "आप बाद में भी प्रोफ़ाइल या ऊपर के बार से किसान और खरीदार मोड बदल सकते हैं:"
+        )
+
+        roleFarmerBtn = createRoleOptionButton("👨‍🌾 किसान / विक्रेता (फसल व उत्पाद बेचें)") {
+            selectRoleOption("farmer")
         }
-        loginBox.addView(etUserName)
-
-        etMobileNumber = EditText(ctx).apply {
-            hint = "10 अंकों का मोबाइल नंबर"
-            inputType = InputType.TYPE_CLASS_PHONE
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+        roleBuyerBtn = createRoleOptionButton("🛒 खरीदार (सीधे किसान से ताज़ा खरीदें)") {
+            selectRoleOption("buyer")
         }
-        loginBox.addView(etMobileNumber)
-
-        etVillageDistrict = EditText(ctx).apply {
-            hint = "ग्राम व ज़िला (उदा. गरोठ, मंदसौर)"
-            setText("गरोठ, मंदसौर")
-            inputType = InputType.TYPE_CLASS_TEXT
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+        roleBothBtn = createRoleOptionButton("🤝 दोनों (किसान विक्रेता + खरीदार दोनों)") {
+            selectRoleOption("both")
         }
-        loginBox.addView(etVillageDistrict)
 
-        btnMobileOtpLogin = Button(ctx).apply {
-            text = "📱 मोबाइल OTP से सत्यापित व प्रवेश करें"
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#0D47A1"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            setTypeface(typeface, Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(46)
-            ).apply { topMargin = dp(8); bottomMargin = dp(10) }
-            setOnClickListener { initiateMobileOtpFlow(ctx) }
+        roleCard.addView(roleFarmerBtn)
+        roleCard.addView(spaceView(dp(8)))
+        roleCard.addView(roleBuyerBtn)
+        roleCard.addView(spaceView(dp(8)))
+        roleCard.addView(roleBothBtn)
+        root.addView(roleCard)
+
+        // 4. Step 3: Self-Declared Mobile Number & Location Details (Zero Default Data)
+        val detailsCard = createSectionCard(
+            title = "3. आपका परिचय व सेल्फ-डिक्लेयर्ड मोबाइल नंबर",
+            subtitle = "यह जानकारी केवल एक बार भरनी है और आपके चयन के अनुसार किसानों/खरीदारों की अलग टेबल में सुरक्षित रहेगी:"
+        )
+
+        inputFullName = createLabeledInput(
+            parent = detailsCard,
+            label = "पूरा नाम (Full Name) *",
+            hint = "अपना पूरा नाम लिखें",
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS,
+            maxLength = 80
+        )
+
+        inputMobileNumber = createLabeledInput(
+            parent = detailsCard,
+            label = "10-अंकों का मोबाइल नंबर (Self-Declared Mobile Number) *",
+            hint = "उदा. 98XXXXXXXX (बिना +91 के 10 अंक)",
+            inputType = InputType.TYPE_CLASS_PHONE,
+            maxLength = 10
+        )
+
+        // Live State Dropdown from Government Server
+        detailsCard.addView(createFieldLabel("राज्य चुनें (सरकारी सर्वर से लाइव) *"))
+        spinnerState = Spinner(ctx).apply {
+            minimumHeight = dp(46)
         }
-        loginBox.addView(btnMobileOtpLogin)
+        detailsCard.addView(spinnerState)
 
-        val btnGuest = Button(ctx).apply {
-            text = "अतिथि के रूप में जारी रखें (Guest Mode)"
-            setTextColor(Color.parseColor("#1B5E20"))
-            setBackgroundColor(Color.parseColor("#E8F5E9"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            setTypeface(typeface, Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(44)
-            )
-            setOnClickListener {
-                completeAuthenticatedSession(
-                    ctx = ctx,
-                    uid = "guest_${System.currentTimeMillis() % 10000}",
-                    name = "अतिथि उपयोगकर्ता (Guest)",
-                    email = "",
-                    phone = "",
-                    location = "मंदसौर",
-                    isGuest = true
-                )
-            }
+        inputManualState = createLabeledInput(
+            parent = detailsCard,
+            label = "या राज्य का नाम लिखें (यदि सूची लोड हो रही हो)",
+            hint = "राज्य का नाम",
+            inputType = InputType.TYPE_CLASS_TEXT,
+            maxLength = 60
+        )
+
+        // Live District Dropdown from Government Server
+        detailsCard.addView(createFieldLabel("ज़िला चुनें (राज्य के अनुसार लाइव) *"))
+        spinnerDistrict = Spinner(ctx).apply {
+            minimumHeight = dp(46)
+            isEnabled = false
         }
-        loginBox.addView(btnGuest)
+        detailsCard.addView(spinnerDistrict)
 
-        loginCard.addView(loginBox)
-        root.addView(loginCard)
+        inputManualDistrict = createLabeledInput(
+            parent = detailsCard,
+            label = "या ज़िले का नाम लिखें *",
+            hint = "अपने ज़िले का नाम लिखें",
+            inputType = InputType.TYPE_CLASS_TEXT,
+            maxLength = 60
+        )
 
-        root.addView(TextView(ctx).apply {
-            text = "🔒 सुरक्षित एवं सत्यापित किसान नेटवर्क (कोई प्लेनटेक्स्ट PIN नहीं)"
-            setTextColor(Color.parseColor("#2E7D32"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-            setTypeface(typeface, Typeface.BOLD)
-            gravity = Gravity.CENTER
-            setPadding(0, dp(14), 0, 0)
-        })
+        inputVillage = createLabeledInput(
+            parent = detailsCard,
+            label = "गाँव / वार्ड / कॉलोनी का नाम",
+            hint = "अपने गाँव या मोहल्ले का नाम लिखें",
+            inputType = InputType.TYPE_CLASS_TEXT,
+            maxLength = 80
+        )
 
-        scroll.addView(root)
-        selectRole("BOTH")
-        return scroll
-    }
+        inputTehsil = createLabeledInput(
+            parent = detailsCard,
+            label = "तहसील / ब्लॉक (वैकल्पिक)",
+            hint = "तहसील का नाम लिखें",
+            inputType = InputType.TYPE_CLASS_TEXT,
+            maxLength = 80
+        )
 
-    private fun selectRole(role: String) {
-        selectedRoleCode = role
-        val activeBg = Color.parseColor("#1B5E20")
-        val inactiveBg = Color.parseColor("#E8F5E9")
-        val activeTxt = Color.WHITE
-        val inactiveTxt = Color.parseColor("#1B5E20")
+        inputPincode = createLabeledInput(
+            parent = detailsCard,
+            label = "पिनकोड (6 अंक - वैकल्पिक)",
+            hint = "6 अंकों का पिनकोड",
+            inputType = InputType.TYPE_CLASS_NUMBER,
+            maxLength = 6
+        )
 
-        btnRoleFarmer.setBackgroundColor(if (role == "FARMER") activeBg else inactiveBg)
-        btnRoleFarmer.setTextColor(if (role == "FARMER") activeTxt else inactiveTxt)
-
-        btnRoleBuyer.setBackgroundColor(if (role == "BUYER") activeBg else inactiveBg)
-        btnRoleBuyer.setTextColor(if (role == "BUYER") activeTxt else inactiveTxt)
-
-        btnRoleBoth.setBackgroundColor(if (role == "BOTH") activeBg else inactiveBg)
-        btnRoleBoth.setTextColor(if (role == "BOTH") activeTxt else inactiveTxt)
-    }
-
-    private fun showGoogleAccountSelectorDialog(ctx: Context) {
-        val box = LinearLayout(ctx).apply {
+        // Farmer-specific extra fields (Farming Method & Farm Story)
+        farmerExtraContainer = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(12), dp(20), dp(4))
+            visibility = View.GONE
+            setPadding(0, dp(8), 0, 0)
         }
 
-        val etGoogleName = EditText(ctx).apply {
-            hint = "आपका पूरा नाम"
-            setText(etUserName.text.toString().trim().ifEmpty { "किसान साथी" })
+        farmerExtraContainer.addView(createFieldLabel("खेती का तरीका (Farming Method)"))
+        spinnerFarmingMethod = Spinner(ctx).apply {
+            minimumHeight = dp(46)
+            adapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item, farmingMethods)
         }
-        val etGoogleEmail = EditText(ctx).apply {
-            hint = "आपका Google ईमेल (उदा. kisan@gmail.com)"
-            inputType = InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
-            setText("kisan.partner@gmail.com")
+        farmerExtraContainer.addView(spinnerFarmingMethod)
+
+        inputFarmStory = createLabeledInput(
+            parent = farmerExtraContainer,
+            label = "मेरी खेती की कहानी (Farm Story - वैकल्पिक)",
+            hint = "अपनी खेती और खास फसलों के बारे में 1-2 वाक्य लिखें...",
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE,
+            maxLength = 400
+        )
+
+        detailsCard.addView(farmerExtraContainer)
+        root.addView(detailsCard)
+
+        // 5. Submit Button & Progress
+        progressBar = ProgressBar(ctx).apply {
+            visibility = View.GONE
         }
+        root.addView(progressBar)
 
-        box.addView(etGoogleName)
-        box.addView(etGoogleEmail)
+        btnCompleteOnboarding = Button(ctx).apply {
+            text = "✅ खाता सुरक्षित करें और आगे बढ़ें"
+            background = roundedBg("#1B5E20", dp(12))
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, Typeface.BOLD)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            minHeight = dp(52)
+            setOnClickListener { submitOneTimeOnboarding() }
+        }
+        root.addView(btnCompleteOnboarding)
 
-        AlertDialog.Builder(ctx)
-            .setTitle("G  Google खाता साइन-इन")
-            .setMessage("अपनी चुनी हुई भूमिका ($selectedRoleCode) के साथ प्रवेश करें:")
-            .setView(box)
-            .setPositiveButton("Google से साइन इन करें") { _, _ ->
-                val email = etGoogleEmail.text.toString().trim().ifEmpty { "kisan.partner@gmail.com" }
-                val name = etGoogleName.text.toString().trim().ifEmpty { "किसान साथी" }
-                val cleanUid = "g_${email.substringBefore("@").replace(Regex("[^a-zA-Z0-9]"), "_")}"
-                completeAuthenticatedSession(
-                    ctx = ctx,
-                    uid = cleanUid,
-                    name = name,
-                    email = email,
-                    phone = etMobileNumber.text.toString().trim(),
-                    location = etVillageDistrict.text.toString().trim(),
-                    isGuest = false
-                )
-            }
-            .setNegativeButton("रद्द करें", null)
-            .show()
+        // 6. Authorized Agri-Input Dealer Login Button (Feature Flag Controlled)
+        btnDealerPortalLogin = Button(ctx).apply {
+            text = "🧪 अधिकृत कृषि दवाई विक्रेता (Dealer) लॉगिन"
+            background = roundedBg("#3E2723", dp(10))
+            setTextColor(Color.WHITE)
+            minHeight = dp(46)
+            visibility = if (FeatureManager.isEnabled("agri_dealer_portal", ctx)) View.VISIBLE else View.GONE
+            setOnClickListener { showDealerLoginDialog() }
+        }
+        root.addView(spaceView(dp(12)))
+        root.addView(btnDealerPortalLogin)
+
+        scrollView.addView(root)
+        return scrollView
     }
 
-    private fun initiateMobileOtpFlow(ctx: Context) {
-        val phone = etMobileNumber.text.toString().trim()
-        val name = etUserName.text.toString().trim().ifEmpty { "किसान साथी" }
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        refreshFirebaseUserDisplay()
+        loadLiveStatesFromGovServer()
+    }
 
-        if (phone.length < 10) {
-            Toast.makeText(ctx, "कृपया 10 अंकों का सही मोबाइल नंबर दर्ज करें।", Toast.LENGTH_SHORT).show()
+    private fun refreshFirebaseUserDisplay() {
+        val currentUser = FirebaseAuth.getInstance().currentUser
+        if (currentUser != null) {
+            val emailOrUid = currentUser.email ?: currentUser.phoneNumber ?: currentUser.uid.take(8)
+            authStatusBanner.text = "🟢 प्रमाणित खाता: $emailOrUid"
+            btnGoogleSignIn.text = "🔄 दूसरा Google खाता चुनें"
+            if (inputFullName.text.isNullOrBlank() && !currentUser.displayName.isNullOrBlank()) {
+                inputFullName.setText(currentUser.displayName)
+            }
+        } else {
+            authStatusBanner.text = "🔴 अभी लॉगिन नहीं है — कृपया पहले Google खाते से लॉगिन करें"
+            btnGoogleSignIn.text = "🔐 Google खाते से सुरक्षित लॉगिन करें"
+        }
+    }
+
+    private fun startGoogleSignInFlow() {
+        val ctx = context ?: return
+        try {
+            val webClientIdRes = resources.getIdentifier("default_web_client_id", "string", ctx.packageName)
+            val gsoBuilder = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestEmail()
+
+            if (webClientIdRes != 0) {
+                val webClientId = getString(webClientIdRes)
+                if (webClientId.isNotBlank()) {
+                    gsoBuilder.requestIdToken(webClientId)
+                }
+            }
+
+            val googleSignInClient = GoogleSignIn.getClient(ctx, gsoBuilder.build())
+            googleSignInLauncher.launch(googleSignInClient.signInIntent)
+        } catch (e: Exception) {
+            showMessage("Google साइन-इन शुरू करने में समस्या: ${e.message}", true)
+        }
+    }
+
+    private fun authenticateWithFirebaseGoogle(idToken: String) {
+        val ctx = context ?: return
+        progressBar.visibility = View.VISIBLE
+        val credential = GoogleAuthProvider.getCredential(idToken, null)
+
+        FirebaseAuth.getInstance().signInWithCredential(credential)
+            .addOnCompleteListener { task ->
+                if (!isAdded) return@addOnCompleteListener
+                progressBar.visibility = View.GONE
+
+                if (task.isSuccessful) {
+                    refreshFirebaseUserDisplay()
+                    // जाँचें कि क्या यह यूज़र पहले से सर्वर पर ऑनबोर्डेड है
+                    viewLifecycleOwner.lifecycleScope.launch {
+                        val meRes = ApiClient.getMyProfile(ctx)
+                        if (meRes.isSuccess && meRes.dataObject != null) {
+                            val d = meRes.dataObject
+                            if (d.optBoolean("onboarding_completed", false)) {
+                                val rolesArr = d.optJSONArray("roles")
+                                val roles = mutableListOf<String>()
+                                if (rolesArr != null) {
+                                    for (i in 0 until rolesArr.length()) {
+                                        roles.add(rolesArr.optString(i))
+                                    }
+                                }
+                                SessionManager.saveOnboardedUserSession(
+                                    context = ctx,
+                                    uid = FirebaseAuth.getInstance().currentUser?.uid ?: "",
+                                    name = d.optString("name", ""),
+                                    phone = d.optString("phone", ""),
+                                    roles = roles.ifEmpty { listOf("farmer") },
+                                    activeMode = d.optString("active_role", "farmer"),
+                                    village = d.optString("village", ""),
+                                    district = d.optString("district", ""),
+                                    state = d.optString("state", ""),
+                                    verificationStatus = d.optString("verification_status", "farmer_declared")
+                                )
+                                showMessage("आपका खाता पहले से पंजीकृत है! स्वागत है।", false)
+                                (activity as? MainActivity)?.onUserAuthenticatedAndOnboarded()
+                            }
+                        }
+                    }
+                } else {
+                    showMessage("Firebase प्रमाणीकरण विफल: ${task.exception?.localizedMessage}", true)
+                }
+            }
+    }
+
+    private fun selectRoleOption(role: String) {
+        selectedRoleOption = role
+        val activeBg = "#1B5E20"
+        val inactiveBg = "#FFFFFF"
+
+        listOf(
+            roleFarmerBtn to "farmer",
+            roleBuyerBtn to "buyer",
+            roleBothBtn to "both"
+        ).forEach { (btn, key) ->
+            if (key == role) {
+                btn.background = roundedBg(activeBg, dp(10))
+                btn.setTextColor(Color.WHITE)
+            } else {
+                btn.background = roundedBgWithBorder(inactiveBg, "#1B5E20", dp(10))
+                btn.setTextColor(Color.parseColor("#1B5E20"))
+            }
+        }
+
+        farmerExtraContainer.visibility = if (role == "farmer" || role == "both") {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+    }
+
+    /**
+     * सरकारी मंडी सोर्स से लाइव राज्यों की सूची मंगाता है (0% डिफ़ॉल्ट राज्य नाम)
+     */
+    private fun loadLiveStatesFromGovServer() {
+        val ctx = context ?: return
+        spinnerState.adapter = ArrayAdapter(
+            ctx,
+            android.R.layout.simple_spinner_dropdown_item,
+            listOf("⏳ सरकारी सर्वर से राज्य लोड हो रहे हैं...")
+        )
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            val res = ApiClient.getMandiStates(ctx, forceRefresh = false)
+            if (!isAdded) return@launch
+
+            liveStatesList.clear()
+            val statesArr = res.dataObject?.optJSONArray("states")
+            if (res.isSuccess && statesArr != null && statesArr.length() > 0) {
+                liveStatesList.add("-- अपना राज्य चुनें --")
+                for (i in 0 until statesArr.length()) {
+                    val stName = statesArr.optJSONObject(i)?.optString("state", "")?.trim() ?: ""
+                    if (stName.isNotEmpty()) liveStatesList.add(stName)
+                }
+                spinnerState.adapter = ArrayAdapter(
+                    ctx,
+                    android.R.layout.simple_spinner_dropdown_item,
+                    liveStatesList
+                )
+
+                spinnerState.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                    override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                        if (position > 0 && position < liveStatesList.size) {
+                            val chosenState = liveStatesList[position]
+                            inputManualState.setText(chosenState)
+                            loadLiveDistrictsForState(chosenState)
+                        }
+                    }
+                    override fun onNothingSelected(parent: AdapterView<*>?) {}
+                }
+            } else {
+                spinnerState.adapter = ArrayAdapter(
+                    ctx,
+                    android.R.layout.simple_spinner_dropdown_item,
+                    listOf("नीचे बॉक्स में अपना राज्य लिखें")
+                )
+            }
+        }
+    }
+
+    private fun loadLiveDistrictsForState(stateName: String) {
+        val ctx = context ?: return
+        spinnerDistrict.isEnabled = false
+        spinnerDistrict.adapter = ArrayAdapter(
+            ctx,
+            android.R.layout.simple_spinner_dropdown_item,
+            listOf("⏳ $stateName के ज़िले लोड हो रहे हैं...")
+        )
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            val res = ApiClient.getMandiDistricts(ctx, stateName, forceRefresh = false)
+            if (!isAdded) return@launch
+
+            liveDistrictsList.clear()
+            val distArr = res.dataObject?.optJSONArray("districts")
+            if (res.isSuccess && distArr != null && distArr.length() > 0) {
+                liveDistrictsList.add("-- अपना ज़िला चुनें --")
+                for (i in 0 until distArr.length()) {
+                    val dName = distArr.optJSONObject(i)?.optString("district", "")?.trim() ?: ""
+                    if (dName.isNotEmpty()) liveDistrictsList.add(dName)
+                }
+                spinnerDistrict.adapter = ArrayAdapter(
+                    ctx,
+                    android.R.layout.simple_spinner_dropdown_item,
+                    liveDistrictsList
+                )
+                spinnerDistrict.isEnabled = true
+
+                spinnerDistrict.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                    override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                        if (position > 0 && position < liveDistrictsList.size) {
+                            inputManualDistrict.setText(liveDistrictsList[position])
+                        }
+                    }
+                    override fun onNothingSelected(parent: AdapterView<*>?) {}
+                }
+            } else {
+                spinnerDistrict.adapter = ArrayAdapter(
+                    ctx,
+                    android.R.layout.simple_spinner_dropdown_item,
+                    listOf("नीचे बॉक्स में अपना ज़िला लिखें")
+                )
+            }
+        }
+    }
+
+    private fun submitOneTimeOnboarding() {
+        val ctx = context ?: return
+        val firebaseUser = FirebaseAuth.getInstance().currentUser
+        if (firebaseUser == null) {
+            showMessage("कृपया पहले ऊपर 'Google खाते से सुरक्षित लॉगिन करें' बटन दबाएँ।", true)
             return
         }
 
-        val etOtp = EditText(ctx).apply {
-            hint = "6 अंकों का OTP दर्ज करें"
-            inputType = InputType.TYPE_CLASS_NUMBER
-            setText("123456")
+        if (selectedRoleOption.isBlank()) {
+            showMessage("कृपया अपनी भूमिका चुनें: किसान, खरीदार, या दोनों।", true)
+            return
         }
 
+        val fullName = inputFullName.text?.toString()?.trim() ?: ""
+        if (fullName.length < 2) {
+            inputFullName.error = "कृपया अपना पूरा नाम लिखें"
+            showMessage("कृपया अपना पूरा नाम दर्ज करें।", true)
+            return
+        }
+
+        val rawPhone = inputMobileNumber.text?.toString()?.replace("\\D".toRegex(), "") ?: ""
+        if (!rawPhone.matches(Regex("^[6-9]\\d{9}$"))) {
+            inputMobileNumber.error = "10 अंकों का सही मोबाइल नंबर लिखें"
+            showMessage("कृपया 6, 7, 8 या 9 से शुरू होने वाला 10-अंकों का सही मोबाइल नंबर दर्ज करें।", true)
+            return
+        }
+
+        val stateName = inputManualState.text?.toString()?.trim() ?: ""
+        val districtName = inputManualDistrict.text?.toString()?.trim() ?: ""
+        if (districtName.length < 2) {
+            inputManualDistrict.error = "कृपया अपना ज़िला चुनें या लिखें"
+            showMessage("कृपया अपना ज़िला चुनें या दर्ज करें।", true)
+            return
+        }
+
+        val villageName = inputVillage.text?.toString()?.trim()
+        val tehsilName = inputTehsil.text?.toString()?.trim()
+        val pincodeVal = inputPincode.text?.toString()?.trim()
+        val farmingMethod = if (selectedRoleOption in listOf("farmer", "both")) {
+            spinnerFarmingMethod.selectedItem?.toString()
+        } else {
+            null
+        }
+        val farmStory = if (selectedRoleOption in listOf("farmer", "both")) {
+            inputFarmStory.text?.toString()?.trim()
+        } else {
+            null
+        }
+
+        progressBar.visibility = View.VISIBLE
+        btnCompleteOnboarding.isEnabled = false
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            val result = ApiClient.completeOneTimeOnboarding(
+                context = ctx,
+                name = fullName,
+                phone = rawPhone,
+                roleSelection = selectedRoleOption,
+                village = villageName,
+                district = districtName,
+                state = stateName.ifBlank { null },
+                farmingMethod = farmingMethod
+            )
+
+            if (!isAdded) return@launch
+
+            // यदि किसान की कहानी या अतिरिक्त तहसील/पिनकोड भी भरा गया है तो प्रोफाइल सिंक करें
+            if (result.isSuccess && (!tehsilName.isNullOrBlank() || !pincodeVal.isNullOrBlank() || !farmStory.isNullOrBlank())) {
+                val extraObj = org.json.JSONObject().apply {
+                    if (!tehsilName.isNullOrBlank()) put("tehsil", tehsilName)
+                    if (!pincodeVal.isNullOrBlank()) put("pincode", pincodeVal)
+                    if (!farmStory.isNullOrBlank()) put("farm_story", farmStory)
+                }
+                ApiClient.updateProfile(ctx, extraObj)
+            }
+
+            progressBar.visibility = View.GONE
+            btnCompleteOnboarding.isEnabled = true
+
+            // नियम: केवल वास्तविक सर्वर पुष्टि (isSuccess == true) के बाद ही सफलता दिखाएँ (No False Success)
+            if (result.isSuccess && result.dataObject != null) {
+                val data = result.dataObject
+                val rolesArr = data.optJSONArray("roles")
+                val savedRoles = mutableListOf<String>()
+                if (rolesArr != null) {
+                    for (i in 0 until rolesArr.length()) {
+                        savedRoles.add(rolesArr.optString(i))
+                    }
+                }
+                if (savedRoles.isEmpty()) {
+                    if (selectedRoleOption == "both") savedRoles.addAll(listOf("farmer", "buyer"))
+                    else savedRoles.add(selectedRoleOption)
+                }
+
+                val activeRole = data.optString(
+                    "active_role",
+                    if (savedRoles.contains("farmer")) "farmer" else "buyer"
+                )
+
+                SessionManager.saveOnboardedUserSession(
+                    context = ctx,
+                    uid = firebaseUser.uid,
+                    name = data.optString("name", fullName),
+                    phone = data.optString("phone", rawPhone),
+                    roles = savedRoles,
+                    activeMode = activeRole,
+                    village = villageName,
+                    district = districtName,
+                    state = stateName,
+                    verificationStatus = data.optString("verification_status", "farmer_declared")
+                )
+
+                showMessage("आपका खाता सफलतापूर्वक सुरक्षित हो गया!", false)
+                (activity as? MainActivity)?.onUserAuthenticatedAndOnboarded()
+            } else {
+                showMessage(
+                    result.errorMessage ?: "सर्वर पर खाता सहेजने में समस्या आई। कृपया पुनः प्रयास करें।",
+                    true
+                )
+            }
+        }
+    }
+
+    private fun showDealerLoginDialog() {
+        val ctx = context ?: return
+        val layout = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(14), dp(20), dp(8))
+        }
+
+        val loginIdInput = EditText(ctx).apply {
+            hint = "डीलर लॉगिन आईडी (Admin द्वारा प्रदत्त)"
+            inputType = InputType.TYPE_CLASS_TEXT
+        }
+        val passwordInput = EditText(ctx).apply {
+            hint = "डीलर पासवर्ड"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+
+        layout.addView(loginIdInput)
+        layout.addView(spaceView(dp(8)))
+        layout.addView(passwordInput)
+
         AlertDialog.Builder(ctx)
-            .setTitle("📱 मोबाइल OTP सत्यापन (+91-$phone)")
-            .setMessage("आपके नंबर पर प्राप्त OTP दर्ज करें:")
-            .setView(etOtp)
-            .setPositiveButton("सत्यापित करें") { _, _ ->
-                val otp = etOtp.text.toString().trim()
-                if (otp.length < 4) {
-                    Toast.makeText(ctx, "कृपया मान्य OTP दर्ज करें।", Toast.LENGTH_SHORT).show()
+            .setTitle("🧪 अधिकृत कृषि दवाई विक्रेता लॉगिन")
+            .setMessage("मेरा किसान एडमिन द्वारा जारी अपनी दुकान की लॉगिन आईडी और पासवर्ड दर्ज करें:")
+            .setView(layout)
+            .setPositiveButton("लॉगिन करें") { _, _ ->
+                val lid = loginIdInput.text?.toString()?.trim() ?: ""
+                val pwd = passwordInput.text?.toString() ?: ""
+                if (lid.isBlank() || pwd.isBlank()) {
+                    showMessage("कृपया डीलर आईडी और पासवर्ड दोनों दर्ज करें।", true)
                     return@setPositiveButton
                 }
-                completeAuthenticatedSession(
-                    ctx = ctx,
-                    uid = "mob_$phone",
-                    name = name,
-                    email = "",
-                    phone = phone,
-                    location = etVillageDistrict.text.toString().trim(),
-                    isGuest = false
-                )
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val res = ApiClient.dealerLogin(ctx, lid, pwd)
+                    if (res.isSuccess && res.dataObject != null) {
+                        val token = res.dataObject.optString("dealer_token", "")
+                        val dealerObj = res.dataObject.optJSONObject("dealer")
+                        val shopName = dealerObj?.optString("shop_name", "अधिकृत कृषि केंद्र") ?: "अधिकृत कृषि केंद्र"
+                        SessionManager.saveDealerSession(ctx, token, lid, shopName)
+                        showMessage("स्वागत है, $shopName! अब आप कृषि दवाइयां व बीज प्रबंधित कर सकते हैं।", false)
+                    } else {
+                        showMessage(res.errorMessage ?: "डीलर लॉगिन विफल रहा।", true)
+                    }
+                }
             }
             .setNegativeButton("रद्द करें", null)
             .show()
     }
 
-    private fun completeAuthenticatedSession(
-        ctx: Context,
-        uid: String,
-        name: String,
-        email: String,
-        phone: String,
-        location: String,
-        isGuest: Boolean
-    ) {
-        val parts = location.split(",")
-        val village = parts.getOrNull(0)?.trim()?.ifEmpty { "गरोठ" } ?: "गरोठ"
-        val district = parts.getOrNull(1)?.trim()?.ifEmpty { "मंदसौर" } ?: "मंदसौर"
-        val token = "mk_tok_${System.currentTimeMillis()}"
+    private fun createSectionCard(title: String, subtitle: String): LinearLayout {
+        val ctx = requireContext()
+        return LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBg("#FFFFFF", dp(14))
+            setPadding(dp(16), dp(16), dp(16), dp(16))
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            lp.topMargin = dp(14)
+            layoutParams = lp
 
-        // Safe reflection call to SessionManager.saveSession(context, token, uid, role)
-        try {
-            val methods = SessionManager::class.java.methods
-            for (m in methods) {
-                if (m.name == "saveSession" && m.parameterTypes.size == 4) {
-                    m.invoke(SessionManager, ctx, token, uid, selectedRoleCode)
-                    break
+            addView(
+                TextView(ctx).apply {
+                    text = title
+                    setTextColor(Color.parseColor("#124116"))
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+                    setTypeface(typeface, Typeface.BOLD)
                 }
-            }
-        } catch (_: Throwable) {}
-
-        ctx.getSharedPreferences("mera_kisan_role_prefs", Context.MODE_PRIVATE)
-            .edit()
-            .putString("active_role", selectedRoleCode)
-            .putBoolean("role_selected_once", true)
-            .apply()
-
-        ctx.getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
-            .edit()
-            .putBoolean("is_logged_in", !isGuest)
-            .putBoolean("is_guest", isGuest)
-            .putString("uid", uid)
-            .putString("name", name)
-            .putString("email", email)
-            .putString("phone", phone)
-            .putString("village", village)
-            .putString("district", district)
-            .putString("role", selectedRoleCode.lowercase(Locale.ROOT))
-            .apply()
-
-        (activity as? MainActivity)?.syncBottomNavigationLabelsWithRole()
-
-        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-            if (!isGuest) {
-                try {
-                    val url = URL("https://mera-kisan-backend.vercel.app/api/v1/auth/google-sync")
-                    val conn = url.openConnection() as HttpURLConnection
-                    conn.requestMethod = "POST"
-                    conn.setRequestProperty("Content-Type", "application/json")
-                    conn.doOutput = true
-                    conn.connectTimeout = 5000
-                    conn.readTimeout = 5000
-
-                    val payload = JSONObject().apply {
-                        put("uid", uid)
-                        put("name", name)
-                        put("email", email)
-                        put("phone", phone)
-                        put("role", selectedRoleCode.lowercase(Locale.ROOT))
-                        put("village", village)
-                        put("district", district)
-                    }
-                    OutputStreamWriter(conn.outputStream).use { it.write(payload.toString()) }
-                    conn.responseCode
-                } catch (_: Throwable) {}
-            }
-
-            withContext(Dispatchers.Main) {
-                if (!isAdded) return@withContext
-                Toast.makeText(
-                    ctx,
-                    "✅ स्वागत है, $name! सक्रिय मोड: $selectedRoleCode",
-                    Toast.LENGTH_SHORT
-                ).show()
-
-                val navOptions = NavOptions.Builder()
-                    .setPopUpTo(R.id.nav_graph, true)
-                    .build()
-                try {
-                    findNavController().navigate(R.id.homeFragment, null, navOptions)
-                } catch (_: Throwable) {
-                    findNavController().navigate(R.id.homeFragment)
+            )
+            addView(
+                TextView(ctx).apply {
+                    text = subtitle
+                    setTextColor(Color.parseColor("#4A5A4A"))
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                    setPadding(0, dp(4), 0, dp(12))
                 }
-            }
+            )
         }
     }
 
-    private fun dp(value: Int): Int {
-        return TypedValue.applyDimension(
+    private fun createRoleOptionButton(label: String, onClick: () -> Unit): Button {
+        val ctx = requireContext()
+        return Button(ctx).apply {
+            text = label
+            isAllCaps = false
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            setTypeface(typeface, Typeface.BOLD)
+            background = roundedBgWithBorder("#FFFFFF", "#1B5E20", dp(10))
+            setTextColor(Color.parseColor("#1B5E20"))
+            minHeight = dp(48)
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun createFieldLabel(label: String): TextView {
+        val ctx = requireContext()
+        return TextView(ctx).apply {
+            text = label
+            setTextColor(Color.parseColor("#1A241A"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(0, dp(8), 0, dp(4))
+        }
+    }
+
+    private fun createLabeledInput(
+        parent: LinearLayout,
+        label: String,
+        hint: String,
+        inputType: Int,
+        maxLength: Int
+    ): EditText {
+        val ctx = requireContext()
+        parent.addView(createFieldLabel(label))
+        val edit = EditText(ctx).apply {
+            this.hint = hint
+            this.inputType = inputType
+            filters = arrayOf(InputFilter.LengthFilter(maxLength))
+            background = roundedBgWithBorder("#FAFAFA", "#B8CBB8", dp(8))
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            minHeight = dp(46)
+        }
+        parent.addView(edit)
+        return edit
+    }
+
+    private fun roundedBg(hexColor: String, radiusPx: Int): GradientDrawable =
+        GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = radiusPx.toFloat()
+            setColor(Color.parseColor(hexColor))
+        }
+
+    private fun roundedBgWithBorder(fillHex: String, strokeHex: String, radiusPx: Int): GradientDrawable =
+        GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = radiusPx.toFloat()
+            setColor(Color.parseColor(fillHex))
+            setStroke(dp(2), Color.parseColor(strokeHex))
+        }
+
+    private fun spaceView(heightPx: Int): View =
+        View(requireContext()).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                heightPx
+            )
+        }
+
+    private fun showMessage(msg: String, isError: Boolean) {
+        val ctx = context ?: return
+        Toast.makeText(ctx, msg, if (isError) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show()
+    }
+
+    private fun dp(value: Int): Int =
+        TypedValue.applyDimension(
             TypedValue.COMPLEX_UNIT_DIP,
             value.toFloat(),
             resources.displayMetrics
         ).toInt()
-    }
 }
