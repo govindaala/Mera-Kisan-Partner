@@ -2,48 +2,58 @@
 package `in`.merakisan.app.ui.profile
 
 import android.app.AlertDialog
-import android.content.Context
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Bundle
+import android.text.InputType
 import android.util.TypedValue
-import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
+import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
-import androidx.cardview.widget.CardView
 import androidx.fragment.app.Fragment
-import androidx.navigation.NavOptions
-import androidx.navigation.fragment.findNavController
-import `in`.merakisan.app.R
+import androidx.lifecycle.lifecycleScope
+import com.google.firebase.auth.FirebaseAuth
+import `in`.merakisan.app.core.config.FeatureManager
+import `in`.merakisan.app.core.network.ApiClient
 import `in`.merakisan.app.core.security.SessionManager
-import `in`.merakisan.app.core.state.RoleStateManager
 import `in`.merakisan.app.ui.main.MainActivity
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.json.JSONObject
-import java.io.OutputStreamWriter
-import java.net.HttpURLConnection
-import java.net.URL
-import java.util.Locale
 
 /**
- * Resolves ProfileFragment.kt compiler errors at lines 329 and 330:
- * - Safely clears session state without unresolved SessionManager.init() calls.
- * - Connects all profile actions and role switching to MainActivity and full-screen fragments.
+ * MERA KISAN — UNIFIED PROFILE, 6-LEVEL VERIFICATION, DEALER PORTAL & SETTINGS HUB
+ * Exact Repository Path: app/src/main/java/in/merakisan/app/ui/profile/ProfileFragment.kt
+ *
+ * Implements (Master Spec Sec 5, 10, 20 & merged.txt Sec 7, 35, 77):
+ * - Farmer & Buyer profile view/edit synced with `users`, `farmers`, and `buyers` tables.
+ * - 1-Tap Role Switcher (Farmer Mode <-> Buyer Mode).
+ * - 6-Level Farmer Verification application (`farmer_declared`, `document_verified`, `organic_certified`, `lab_tested`).
+ * - Authorized Agri-Input Dealer Management (add Fungicide/Pesticide/Herbicide/Micronutrient/Fertilizer/Seeds by Company).
+ * - Feature-flag controlled links to Wallet, Subscription, Oil Mill, Farm Box, Batch QR, and Fair Price Calculator.
  */
 class ProfileFragment : Fragment() {
 
-    private lateinit var tvUserName: TextView
-    private lateinit var tvUserRoleBadge: TextView
-    private lateinit var tvUserLocation: TextView
+    private lateinit var tvNameAndRole: TextView
+    private lateinit var tvVerificationBadge: TextView
+    private lateinit var inputName: EditText
+    private lateinit var inputPhone: EditText
+    private lateinit var inputVillage: EditText
+    private lateinit var inputDistrict: EditText
+    private lateinit var inputState: EditText
+    private lateinit var inputFarmStory: EditText
+    private lateinit var progressBar: ProgressBar
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -51,450 +61,558 @@ class ProfileFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         val ctx = requireContext()
-        val userPrefs = ctx.getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
-        val isLoggedIn = userPrefs.getBoolean("is_logged_in", false)
-        val savedName = if (isLoggedIn) {
-            userPrefs.getString("name", "किसान साथी") ?: "किसान साथी"
-        } else {
-            userPrefs.getString("name", "अतिथि उपयोगकर्ता (लॉगिन करें)") ?: "अतिथि उपयोगकर्ता (लॉगिन करें)"
-        }
-        val savedVillage = userPrefs.getString("village", "गरोठ") ?: "गरोठ"
-        val savedDistrict = userPrefs.getString("district", "मंदसौर") ?: "मंदसौर"
-        val currentRole = getActiveRoleSafe(ctx)
-
-        val root = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#F4F6F8"))
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        }
-
-        // 1. HEADER
-        val header = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(Color.parseColor("#1B5E20"))
-            setPadding(dp(16), dp(12), dp(16), dp(12))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(58))
-        }
-
-        header.addView(TextView(ctx).apply {
-            text = "👤 मेरा खाता, भूमिका व सत्यापन (My Profile)"
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-            setTypeface(typeface, Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        })
-
-        if (!isLoggedIn) {
-            header.addView(Button(ctx).apply {
-                text = "🔑 लॉगिन करें"
-                textSize = 11f
-                setTextColor(Color.parseColor("#1B5E20"))
-                setBackgroundColor(Color.WHITE)
-                setOnClickListener { performCleanLogoutAndOpenLogin(ctx) }
-            })
-        }
-        root.addView(header)
+        val isFarmer = SessionManager.isFarmerModeActive(ctx)
 
         val scroll = ScrollView(ctx).apply {
             isFillViewport = true
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.MATCH_PARENT
-            )
+            setBackgroundColor(Color.parseColor("#F2F6F2"))
         }
 
-        val content = LinearLayout(ctx).apply {
+        val root = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(12), dp(12), dp(28))
+            setPadding(dp(14), dp(14), dp(14), dp(32))
         }
 
-        // 2. USER IDENTITY CARD
-        val idCard = CardView(ctx).apply {
-            radius = dp(12).toFloat()
-            cardElevation = dp(2).toFloat()
-            setCardBackgroundColor(Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(12) }
-        }
-
-        val idBox = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(14), dp(16), dp(14))
-        }
-
-        tvUserName = TextView(ctx).apply {
-            text = "👨‍🌾 $savedName"
-            setTextColor(Color.parseColor("#1B5E20"))
+        // 1. Identity & Active Mode Card
+        val idCard = createCard()
+        tvNameAndRole = TextView(ctx).apply {
+            text = "${SessionManager.getUserName(ctx).ifBlank { "मेरा किसान उपयोगकर्ता" }} (${if (isFarmer) "👨‍🌾 किसान मोड" else "🛒 खरीदार मोड"})"
+            setTextColor(Color.parseColor("#124116"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 19f)
             setTypeface(typeface, Typeface.BOLD)
         }
-        idBox.addView(tvUserName)
+        idCard.addView(tvNameAndRole)
 
-        val statusLabel = if (isLoggedIn) "✔ किसान द्वारा घोषित (Farmer Declared)" else "⚠️ अतिथि मोड (पूर्ण सुविधाओं के लिए लॉगिन करें)"
-        tvUserRoleBadge = TextView(ctx).apply {
-            text = "सक्रिय भूमिका: ${getRoleDisplayNameSafe(currentRole)}  •$statusLabel"
-            setTextColor(Color.parseColor("#2E7D32"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, dp(4), 0, dp(4))
-        }
-        idBox.addView(tvUserRoleBadge)
-
-        tvUserLocation = TextView(ctx).apply {
-            text = "📍 ग्राम: $savedVillage, ज़िला: $savedDistrict (मध्य प्रदेश) — सटीक GPS गोपनीय"
-            setTextColor(Color.parseColor("#616161"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-        }
-        idBox.addView(tvUserLocation)
-
-        idCard.addView(idBox)
-        content.addView(idCard)
-
-        // 3. UNIFIED ROLE SWITCHER CARD
-        val roleCard = CardView(ctx).apply {
-            radius = dp(12).toFloat()
-            cardElevation = dp(2).toFloat()
-            setCardBackgroundColor(Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(12) }
-        }
-
-        val roleBox = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-        }
-
-        roleBox.addView(TextView(ctx).apply {
-            text = "🔄 अपनी भूमिका चुनें या बदलें (1-Tap Role Switch):"
-            setTextColor(Color.parseColor("#212121"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-            setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, 0, 0, dp(8))
-        })
-
-        val roleRow = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            weightSum = 3f
-        }
-
-        val roles = listOf(
-            "FARMER" to "👨‍🌾 किसान",
-            "BUYER" to "🛒 खरीदार",
-            "BOTH" to "🌾 दोनों (Both)"
-        )
-
-        for ((code, title) in roles) {
-            roleRow.addView(Button(ctx).apply {
-                text = title
-                textSize = 11f
-                setTextColor(Color.WHITE)
-                setBackgroundColor(Color.parseColor("#1B5E20"))
-                layoutParams = LinearLayout.LayoutParams(0, dp(40), 1f).apply {
-                    leftMargin = dp(3)
-                    rightMargin = dp(3)
-                }
-                setOnClickListener {
-                    setActiveRoleSafe(ctx, code)
-                    val displayRole = getRoleDisplayNameSafe(code)
-                    tvUserRoleBadge.text = "सक्रिय भूमिका: $displayRole  •  $statusLabel"
-                    (activity as? MainActivity)?.syncBottomNavigationLabelsWithRole()
-                    Toast.makeText(ctx, "✅ सक्रिय भूमिका '$displayRole' पर सेट हो गई!", Toast.LENGTH_SHORT).show()
-                }
-            })
-        }
-
-        roleBox.addView(roleRow)
-        roleCard.addView(roleBox)
-        content.addView(roleCard)
-
-        // 4. DIRECT FULL-SCREEN MODULE NAVIGATION HUB
-        val navCard = CardView(ctx).apply {
-            radius = dp(12).toFloat()
-            cardElevation = dp(2).toFloat()
-            setCardBackgroundColor(Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(12) }
-        }
-
-        val navBox = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-        }
-
-        navBox.addView(TextView(ctx).apply {
-            text = "📂 मेरे कृषि व बाज़ार मॉड्यूल्स (Full-Screen Pages):"
+        tvVerificationBadge = TextView(ctx).apply {
+            text = "सत्यापन स्तर: ${SessionManager.getVerificationStatus(ctx)}"
             setTextColor(Color.parseColor("#1B5E20"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
             setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, 0, 0, dp(6))
-        })
-
-        val menuItems = listOf(
-            "🌿 मेरी सूचीबद्ध फसलें (Active / Sold / Boost)" to "myCropsFragment",
-            "📖 मेरी पब्लिक किसान प्रोफ़ाइल व फार्म स्टोरी" to "farmerPublicProfileFragment",
-            "🤝 मेरे भाव प्रस्ताव व काउंटर-ऑफर (Negotiations)" to "negotiationHistoryFragment",
-            "📦 मेरे खरीद व बिक्री ऑर्डर्स (Orders & Escrow)" to "ordersFragment",
-            "⭐ मल्टी-पैरामीटर रेटिंग व विवाद समाधान (Disputes)" to "disputeAndRatingFragment",
-            "❤️ पसंदीदा उत्पाद, फॉलो किए किसान व सूचनाएं" to "notificationsFavoritesFragment",
-            "🎨 8-टेम्पलेट AI पोस्टर व QR स्टूडियो" to "aiPosterStudioFragment",
-            "🧮 उचित मूल्य कैलकुलेटर (Fair Price Engine)" to "fairPriceCalculatorFragment"
-        )
-
-        for ((label, dest) in menuItems) {
-            navBox.addView(Button(ctx).apply {
-                text = label
-                gravity = Gravity.START or Gravity.CENTER_VERTICAL
-                setTextColor(Color.parseColor("#212121"))
-                setBackgroundColor(Color.parseColor("#F1F8E9"))
-                textSize = 12f
-                setPadding(dp(12), dp(8), dp(12), dp(8))
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    dp(44)
-                ).apply { bottomMargin = dp(6) }
-                setOnClickListener { navigateSafe(dest) }
-            })
+            setPadding(0, dp(4), 0, dp(10))
         }
+        idCard.addView(tvVerificationBadge)
 
-        navCard.addView(navBox)
-        content.addView(navCard)
-
-        // 5. VERIFICATION, EDIT PROFILE & REAL SESSION LOGOUT
-        val actionCard = CardView(ctx).apply {
-            radius = dp(12).toFloat()
-            cardElevation = dp(2).toFloat()
-            setCardBackgroundColor(Color.WHITE)
-        }
-
-        val actionBox = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-        }
-
-        actionBox.addView(Button(ctx).apply {
-            text = "🏅 6-स्तरीय प्रमाण सत्यापन (KYC / Organic / Lab) आवेदन करें"
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#0D47A1"))
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(44)
-            ).apply { bottomMargin = dp(8) }
-            setOnClickListener { showVerificationRequestDialog(ctx) }
-        })
-
-        actionBox.addView(Button(ctx).apply {
-            text = "✏️ प्रोफ़ाइल व मेरी खेती (Farm Story) एडिट करें"
-            setTextColor(Color.parseColor("#1B5E20"))
-            setBackgroundColor(Color.parseColor("#E8F5E9"))
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(44)
-            ).apply { bottomMargin = dp(8) }
-            setOnClickListener { showEditProfileDialog(ctx) }
-        })
-
-        actionBox.addView(Button(ctx).apply {
-            text = if (isLoggedIn) "🚪 लॉगआउट / खाता हटाने का अनुरोध" else "🔑 खाते में लॉगिन / पंजीकरण करें"
-            setTextColor(Color.parseColor("#C62828"))
-            setBackgroundColor(Color.parseColor("#FFEBEE"))
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(44)
-            )
-            setOnClickListener {
-                performCleanLogoutAndOpenLogin(ctx)
+        idCard.addView(
+            createButton(
+                if (isFarmer) "🔄 खरीदार मोड (Buyer Mode) में स्विच करें" else "🔄 किसान विक्रेता मोड (Farmer Mode) में स्विच करें",
+                "#BF360C"
+            ) {
+                (activity as? MainActivity)?.toggleFarmerBuyerMode()
             }
-        })
+        )
+        root.addView(idCard)
 
-        actionCard.addView(actionBox)
-        content.addView(actionCard)
+        // 2. Quick Hub Navigation (merged.txt Sec 77)
+        val navCard = createCard()
+        navCard.addView(createSectionHeading("📌 त्वरित नेविगेशन और सुविधाएँ"))
 
-        scroll.addView(content)
-        root.addView(scroll)
-        return root
+        val row1 = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
+        row1.addView(
+            createHalfButton("📦 मेरे ऑर्डर्स", "#1B5E20") {
+                (activity as? MainActivity)?.openOrdersScreen()
+            }
+        )
+        row1.addView(
+            createHalfButton("🤝 मेरे भाव प्रस्ताव (Offers)", "#0D47A1") {
+                (activity as? MainActivity)?.openNegotiationOffersScreen()
+            }
+        )
+        navCard.addView(row1)
+
+        val row2 = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(6), 0, 0)
+        }
+        row2.addView(
+            createHalfButton("🌾 मेरी फसलें", "#2E7D32") {
+                (activity as? MainActivity)?.openMyCropsScreen()
+            }
+        )
+        row2.addView(
+            createHalfButton("📢 मुझे यह चाहिए बोर्ड", "#4E342E") {
+                (activity as? MainActivity)?.openBuyerRequestsScreen()
+            }
+        )
+        navCard.addView(row2)
+
+        val row3 = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(6), 0, 0)
+        }
+        row3.addView(
+            createHalfButton("🎨 AI .JPG पोस्टर स्टूडियो", "#1B5E20") {
+                (activity as? MainActivity)?.openAiPosterStudioScreen(null)
+            }
+        )
+        row3.addView(
+            createHalfButton("🧮 उचित दाम कैलकुलेटर", "#0D47A1") {
+                (activity as? MainActivity)?.openFairPriceCalculatorScreen()
+            }
+        )
+        navCard.addView(row3)
+
+        val row4 = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(6), 0, 0)
+        }
+        row4.addView(
+            createHalfButton("🔍 बैच QR ट्रेसबिलिटी", "#37474F") {
+                (activity as? MainActivity)?.openBatchQrTraceabilityScreen(null)
+            }
+        )
+        row4.addView(
+            createHalfButton("🫙 कच्ची घानी तेल मिल", "#5D4037") {
+                (activity as? MainActivity)?.openOilMillMarketplaceScreen()
+            }
+        )
+        navCard.addView(row4)
+
+        if (FeatureManager.isEnabled("farm_box", ctx) || FeatureManager.isEnabled("group_buying", ctx)) {
+            navCard.addView(
+                createButton("🧺 ग्राम ताज़ा फार्म बॉक्स व सामूहिक खरीदारी", "#2E7D32") {
+                    (activity as? MainActivity)?.openFarmBoxGroupBuyScreen()
+                }
+            )
+        }
+
+        // Future Blank Settings Modules (Visible automatically when Admin sets ON)
+        val walletSettings = FeatureManager.getWalletSettings(ctx)
+        if (walletSettings.enabled) {
+            navCard.addView(
+                createButton("💳 मेरा किसान वॉलेट (दैनिक सीमा: ₹${walletSettings.dailyLimitRupees})", "#00695C") {
+                    Toast.makeText(ctx, "मेरा किसान वॉलेट सक्रिय है।", Toast.LENGTH_SHORT).show()
+                }
+            )
+        }
+
+        val subSettings = FeatureManager.getSubscriptionSettings(ctx)
+        if (subSettings.enabled) {
+            navCard.addView(
+                createButton("⭐ ${subSettings.planName} (₹${subSettings.proPriceRupees}/माह)", "#6A1B9A") {
+                    Toast.makeText(ctx, "${subSettings.planName} सदस्यता विवरण।", Toast.LENGTH_SHORT).show()
+                }
+            )
+        }
+
+        root.addView(navCard)
+
+        // 3. Edit Profile & Farm Story Card
+        val editCard = createCard()
+        editCard.addView(createSectionHeading("✏️ मेरी प्रोफ़ाइल व खेती की जानकारी"))
+
+        inputName = addInput(editCard, "पूरा नाम", SessionManager.getUserName(ctx))
+        inputPhone = addInput(editCard, "सेल्फ-डिक्लेयर्ड 10-अंकों का मोबाइल नंबर", SessionManager.getSelfDeclaredPhone(ctx), isPhone = true)
+        inputVillage = addInput(editCard, "गाँव / मोहल्ला", SessionManager.getUserVillage(ctx))
+        inputDistrict = addInput(editCard, "ज़िला (District)", SessionManager.getUserDistrict(ctx))
+        inputState = addInput(editCard, "राज्य (State)", SessionManager.getUserState(ctx))
+        inputFarmStory = addInput(editCard, "मेरी खेती की कहानी (Farm Story)", "")
+
+        progressBar = ProgressBar(ctx).apply {
+            visibility = View.GONE
+            setPadding(0, dp(8), 0, dp(8))
+        }
+        editCard.addView(progressBar)
+
+        editCard.addView(
+            createButton("💾 प्रोफ़ाइल बदलाव सर्वर पर सेव करें", "#1B5E20") {
+                saveProfileChanges()
+            }
+        )
+        root.addView(editCard)
+
+        // 4. 6-Level Farmer Verification Request Card (Master Spec Sec 10)
+        if (FeatureManager.isEnabled("farmer_verification", ctx)) {
+            val verifCard = createCard()
+            verifCard.addView(createSectionHeading("✔ 6-स्तरीय किसान सत्यापन बैज आवेदन"))
+            verifCard.addView(
+                TextView(ctx).apply {
+                    text = "प्रमाणित बैज (Document Verified / Organic Certified / Lab Tested) के लिए अपना प्रमाण-पत्र लिंक भेजें:"
+                    setTextColor(Color.parseColor("#4A5A4A"))
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                    setPadding(0, 0, 0, dp(8))
+                }
+            )
+            verifCard.addView(
+                createButton("📜 सत्यापन बैज के लिए आवेदन करें", "#0D47A1") {
+                    showVerificationRequestDialog()
+                }
+            )
+            root.addView(verifCard)
+        }
+
+        // 5. Authorized Agri-Input Dealer Management Card
+        if (FeatureManager.isEnabled("agri_dealer_portal", ctx)) {
+            val dealerCard = createCard()
+            dealerCard.addView(createSectionHeading("🧪 अधिकृत कृषि दवाई व बीज विक्रेता पैनल"))
+            val dealerToken = SessionManager.getDealerToken(ctx)
+            val shopName = SessionManager.getDealerShopName(ctx)
+
+            if (!dealerToken.isNullOrBlank()) {
+                dealerCard.addView(
+                    TextView(ctx).apply {
+                        text = "🟢 लॉगिन दुकान: $shopName"
+                        setTextColor(Color.parseColor("#1B5E20"))
+                        setTypeface(typeface, Typeface.BOLD)
+                        setPadding(0, 0, 0, dp(8))
+                    }
+                )
+                dealerCard.addView(
+                    createButton("➕ नई कृषि दवाई / खाद / बीज (कंपनी अनुसार) जोड़ें", "#1B5E20") {
+                        showDealerAddAgriInputDialog()
+                    }
+                )
+            } else {
+                dealerCard.addView(
+                    createButton("🔐 एडमिन द्वारा प्रदत्त डीलर ID/Password से लॉगिन करें", "#3E2723") {
+                        showDealerLoginDialog()
+                    }
+                )
+            }
+            root.addView(dealerCard)
+        }
+
+        // 6. Support & Logout Card
+        val footerCard = createCard()
+        val supportWa = FeatureManager.getSupportWhatsApp()
+        if (supportWa.isNotBlank()) {
+            footerCard.addView(
+                createButton("🟢 मेरा किसान सहायता WhatsApp ($supportWa)", "#2E7D32") {
+                    val clean = supportWa.replace("\\D".toRegex(), "")
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$clean")))
+                }
+            )
+        }
+
+        footerCard.addView(
+            createButton("🚪 सुरक्षित लॉगआउट करें (Logout)", "#B71C1C") {
+                performSecureLogout()
+            }
+        )
+        root.addView(footerCard)
+
+        scroll.addView(root)
+        return scroll
     }
 
-    private fun performCleanLogoutAndOpenLogin(ctx: Context) {
-        // Safe reflection call to SessionManager clear/logout methods (with or without Context parameter)
-        try {
-            for (m in SessionManager::class.java.methods) {
-                if (m.name.contains("clear", ignoreCase = true) || m.name.contains("logout", ignoreCase = true)) {
-                    if (m.parameterTypes.size == 1 && m.parameterTypes[0] == Context::class.java) {
-                        m.invoke(SessionManager, ctx)
-                    } else if (m.parameterTypes.isEmpty()) {
-                        m.invoke(SessionManager)
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        refreshServerProfile()
+    }
+
+    private fun refreshServerProfile() {
+        val ctx = context ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val res = ApiClient.getMyProfile(ctx)
+            if (!isAdded || !res.isSuccess || res.dataObject == null) return@launch
+            val d = res.dataObject
+            val verif = d.optString("verification_status", SessionManager.getVerificationStatus(ctx))
+            tvVerificationBadge.text = "सत्यापन स्तर: $verif"
+            val farmerProf = d.optJSONObject("farmer_profile")
+            val story = farmerProf?.optString("farm_story", "")?.takeIf { it != "null" } ?: ""
+            if (story.isNotBlank() && inputFarmStory.text.isNullOrBlank()) {
+                inputFarmStory.setText(story)
+            }
+        }
+    }
+
+    private fun saveProfileChanges() {
+        val ctx = context ?: return
+        val name = inputName.text?.toString()?.trim() ?: ""
+        val phone = inputPhone.text?.toString()?.replace("\\D".toRegex(), "") ?: ""
+        val village = inputVillage.text?.toString()?.trim() ?: ""
+        val district = inputDistrict.text?.toString()?.trim() ?: ""
+        val state = inputState.text?.toString()?.trim() ?: ""
+        val story = inputFarmStory.text?.toString()?.trim() ?: ""
+
+        if (name.length < 2 || !phone.matches(Regex("^[6-9]\\d{9}$"))) {
+            Toast.makeText(ctx, "कृपया मान्य नाम और 10-अंकों का मोबाइल नंबर दर्ज करें।", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        progressBar.visibility = View.VISIBLE
+        viewLifecycleOwner.lifecycleScope.launch {
+            val body = JSONObject().apply {
+                put("name", name)
+                put("phone", phone)
+                put("village", village)
+                put("district", district)
+                put("state", state)
+                put("farm_story", story)
+            }
+            val res = ApiClient.updateProfile(ctx, body)
+            if (!isAdded) return@launch
+            progressBar.visibility = View.GONE
+
+            if (res.isSuccess) {
+                SessionManager.saveOnboardedUserSession(
+                    context = ctx,
+                    uid = SessionManager.getUserUid(ctx) ?: "",
+                    name = name,
+                    phone = phone,
+                    roles = SessionManager.getAllowedRoles(ctx).ifEmpty { listOf("farmer", "buyer") },
+                    activeMode = SessionManager.getActiveMode(ctx),
+                    village = village,
+                    district = district,
+                    state = state,
+                    verificationStatus = SessionManager.getVerificationStatus(ctx)
+                )
+                Toast.makeText(ctx, "✅ प्रोफ़ाइल सफलतापूर्वक अपडेट हो गई!", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(ctx, res.errorMessage ?: "प्रोफ़ाइल अपडेट विफल रहा।", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun showVerificationRequestDialog() {
+        val ctx = context ?: return
+        val layout = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(12), dp(20), dp(8))
+        }
+
+        val types = listOf(
+            "farmer_declared" to "👨‍🌾 किसान स्व-घोषित (Farmer Declared)",
+            "document_verified" to "📄 दस्तावेज़ सत्यापित (Document Verified)",
+            "organic_certified" to "🌿 प्रमाणित जैविक (Organic Certified)",
+            "lab_tested" to "🧪 लैब परीक्षित (Lab Tested)"
+        )
+
+        val typeSpinner = Spinner(ctx).apply {
+            adapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item, types.map { it.second })
+        }
+        val docUrlInput = EditText(ctx).apply {
+            hint = "प्रमाण-पत्र / रिपोर्ट का Google Drive HTTPS लिंक"
+        }
+        val notesInput = EditText(ctx).apply {
+            hint = "खेती विधि या प्रमाण का विवरण"
+        }
+
+        layout.addView(typeSpinner)
+        layout.addView(docUrlInput)
+        layout.addView(notesInput)
+
+        AlertDialog.Builder(ctx)
+            .setTitle("✔ किसान सत्यापन बैज आवेदन")
+            .setView(layout)
+            .setPositiveButton("आवेदन भेजें") { _, _ ->
+                val chosenCode = types.getOrNull(typeSpinner.selectedItemPosition)?.first ?: "farmer_declared"
+                val docUrl = docUrlInput.text?.toString()?.trim() ?: ""
+                val notes = notesInput.text?.toString()?.trim() ?: ""
+
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val body = JSONObject().apply {
+                        put("verification_type", chosenCode)
+                        if (docUrl.isNotBlank()) put("document_url", docUrl)
+                        put("notes", notes)
+                    }
+                    val res = ApiClient.request(ctx, "/trust/verification/request", method = "POST", bodyJson = body)
+                    if (res.isSuccess) {
+                        Toast.makeText(ctx, "✅ आपका सत्यापन आवेदन दर्ज हो गया!", Toast.LENGTH_LONG).show()
+                    } else {
+                        Toast.makeText(ctx, res.errorMessage ?: "आवेदन भेजने में त्रुटि।", Toast.LENGTH_LONG).show()
                     }
                 }
-            }
-        } catch (_: Throwable) {}
-
-        ctx.getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
-            .edit()
-            .putBoolean("is_logged_in", false)
-            .putBoolean("is_guest", false)
-            .putString("name", "अतिथि उपयोगकर्ता (लॉगिन करें)")
-            .remove("uid")
-            .apply()
-
-        Toast.makeText(ctx, "🔒 सत्र समाप्त किया गया। कृपया साइन इन करें।", Toast.LENGTH_SHORT).show()
-
-        val navOptions = NavOptions.Builder()
-            .setPopUpTo(R.id.nav_graph, true)
-            .build()
-        try {
-            findNavController().navigate(R.id.loginFragment, null, navOptions)
-        } catch (_: Throwable) {
-            navigateSafe("loginFragment")
-        }
-    }
-
-    private fun getActiveRoleSafe(ctx: Context): String {
-        val prefs = ctx.getSharedPreferences("mera_kisan_role_prefs", Context.MODE_PRIVATE)
-        val saved = prefs.getString("active_role", null)
-            ?: ctx.getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE).getString("role", null)
-            ?: "BOTH"
-        return saved.trim().uppercase(Locale.ROOT)
-    }
-
-    private fun setActiveRoleSafe(ctx: Context, roleCode: String) {
-        val clean = roleCode.trim().uppercase(Locale.ROOT)
-        ctx.getSharedPreferences("mera_kisan_role_prefs", Context.MODE_PRIVATE)
-            .edit().putString("active_role", clean).apply()
-        ctx.getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
-            .edit().putString("role", clean.lowercase(Locale.ROOT)).apply()
-
-        try {
-            val cls = RoleStateManager::class.java
-            for (m in cls.methods) {
-                if (m.name.contains("set", ignoreCase = true) && m.parameterTypes.size == 1 && m.parameterTypes[0] == String::class.java) {
-                    m.invoke(RoleStateManager, clean)
-                }
-            }
-        } catch (_: Throwable) {}
-    }
-
-    private fun getRoleDisplayNameSafe(roleCode: String): String {
-        return when (roleCode.trim().uppercase(Locale.ROOT)) {
-            "FARMER", "SELLER", "FARMER_SELLER" -> "किसान-विक्रेता (Farmer)"
-            "BUYER", "CONSUMER" -> "खरीदार (Buyer)"
-            else -> "किसान + खरीदार (Both)"
-        }
-    }
-
-    private fun showVerificationRequestDialog(ctx: Context) {
-        val levels = arrayOf(
-            "1. किसान द्वारा घोषित (Farmer Declared)",
-            "2. मेरा किसान सत्यापित किसान (Verified Farmer - KYC)",
-            "3. दस्तावेज़ सत्यापित (Document Verified)",
-            "4. प्रमाणित जैविक (Organic Certified - Certificate Required)",
-            "5. प्रयोगशाला परीक्षित (Lab Tested - Report Required)"
-        )
-        AlertDialog.Builder(ctx)
-            .setTitle("🏅 प्रमाण-आधारित सत्यापन स्तर चुनें")
-            .setItems(levels) { _, which ->
-                val selected = levels[which]
-                submitVerificationToServerAsync(selected)
-                Toast.makeText(
-                    ctx,
-                    "✅ '$selected' के लिए अनुरोध सर्वर पर भेज दिया गया! एडमिन जांच के बाद बैज सक्रिय होगा।",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-            .setNegativeButton("बंद करें", null)
-            .show()
-    }
-
-    private fun submitVerificationToServerAsync(levelLabel: String) {
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val url = URL("https://mera-kisan-backend.vercel.app/api/v1/trust/verification-request")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.setRequestProperty("x-user-uid", "usr_verified")
-                conn.doOutput = true
-                val body = JSONObject().apply {
-                    put("requested_level", "verified_farmer")
-                    put("notes", levelLabel)
-                }
-                OutputStreamWriter(conn.outputStream).use { it.write(body.toString()) }
-                conn.responseCode
-            } catch (_: Throwable) {}
-        }
-    }
-
-    private fun showEditProfileDialog(ctx: Context) {
-        val prefs = ctx.getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
-        val box = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(12), dp(20), dp(4))
-        }
-        val etName = EditText(ctx).apply {
-            hint = "पूरा नाम"
-            setText(prefs.getString("name", "किसान साथी"))
-        }
-        val etVillage = EditText(ctx).apply {
-            hint = "ग्राम"
-            setText(prefs.getString("village", "गरोठ"))
-        }
-        val etDistrict = EditText(ctx).apply {
-            hint = "ज़िला"
-            setText(prefs.getString("district", "मंदसौर"))
-        }
-        box.addView(etName)
-        box.addView(etVillage)
-        box.addView(etDistrict)
-
-        AlertDialog.Builder(ctx)
-            .setTitle("✏️ प्रोफ़ाइल अपडेट करें")
-            .setView(box)
-            .setPositiveButton("सेव करें") { _, _ ->
-                val n = etName.text.toString().trim().ifEmpty { "किसान साथी" }
-                val v = etVillage.text.toString().trim().ifEmpty { "गरोठ" }
-                val d = etDistrict.text.toString().trim().ifEmpty { "मंदसौर" }
-                prefs.edit()
-                    .putBoolean("is_logged_in", true)
-                    .putString("name", n)
-                    .putString("village", v)
-                    .putString("district", d)
-                    .apply()
-                tvUserName.text = "👨‍🌾 $n"
-                tvUserLocation.text = "📍 ग्राम: $v, ज़िला: $d (मध्य प्रदेश) — सटीक GPS गोपनीय"
-                Toast.makeText(ctx, "✅ प्रोफ़ाइल सफलतापूर्वक अपडेट हो गई!", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("रद्द करें", null)
             .show()
     }
 
-    private fun navigateSafe(vararg names: String) {
+    private fun showDealerLoginDialog() {
         val ctx = context ?: return
-        val pkg = ctx.packageName
-        for (n in names) {
-            val id = ctx.resources.getIdentifier(n, "id", pkg)
-            if (id != 0) {
-                try {
-                    findNavController().navigate(id)
-                    return
-                } catch (_: Throwable) {}
+        val layout = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(12), dp(20), dp(8))
+        }
+        val idInput = EditText(ctx).apply { hint = "डीलर लॉगिन आईडी" }
+        val pwdInput = EditText(ctx).apply {
+            hint = "डीलर पासवर्ड"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        layout.addView(idInput)
+        layout.addView(pwdInput)
+
+        AlertDialog.Builder(ctx)
+            .setTitle("🔐 अधिकृत कृषि दवाई विक्रेता लॉगिन")
+            .setView(layout)
+            .setPositiveButton("लॉगिन करें") { _, _ ->
+                val lid = idInput.text?.toString()?.trim() ?: ""
+                val pwd = pwdInput.text?.toString() ?: ""
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val res = ApiClient.dealerLogin(ctx, lid, pwd)
+                    if (res.isSuccess && res.dataObject != null) {
+                        val token = res.dataObject.optString("dealer_token", "")
+                        val shop = res.dataObject.optJSONObject("dealer")?.optString("shop_name", "कृषि केंद्र") ?: "कृषि केंद्र"
+                        SessionManager.saveDealerSession(ctx, token, lid, shop)
+                        Toast.makeText(ctx, "स्वागत है, $shop!", Toast.LENGTH_LONG).show()
+                    } else {
+                        Toast.makeText(ctx, res.errorMessage ?: "डीलर लॉगिन विफल रहा।", Toast.LENGTH_LONG).show()
+                    }
+                }
             }
+            .setNegativeButton("रद्द करें", null)
+            .show()
+    }
+
+    private fun showDealerAddAgriInputDialog() {
+        val ctx = context ?: return
+        val scroll = ScrollView(ctx)
+        val layout = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(12), dp(20), dp(8))
+        }
+
+        val cats = listOf("FUNGICIDE", "PESTICIDE", "HERBICIDE", "MICRONUTRIENT", "FERTILIZER", "BIO_INPUT", "SEEDS")
+        val catSpinner = Spinner(ctx).apply {
+            adapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item, cats)
+        }
+        val nameInput = EditText(ctx).apply { hint = "दवाई / बीज का नाम *" }
+        val companyInput = EditText(ctx).apply { hint = "निर्माता कंपनी का नाम (Company Name) *" }
+        val packInput = EditText(ctx).apply { hint = "पैक साइज़ (उदा. 1 Litre / 500g)" }
+        val priceInput = EditText(ctx).apply {
+            hint = "विक्रय मूल्य (₹) *"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+        }
+        val stockInput = EditText(ctx).apply {
+            hint = "उपलब्ध पैकेट संख्या *"
+            setText("20")
+            inputType = InputType.TYPE_CLASS_NUMBER
+        }
+
+        layout.addView(catSpinner)
+        layout.addView(nameInput)
+        layout.addView(companyInput)
+        layout.addView(packInput)
+        layout.addView(priceInput)
+        layout.addView(stockInput)
+        scroll.addView(layout)
+
+        AlertDialog.Builder(ctx)
+            .setTitle("🧪 नई कृषि दवाई / बीज जोड़ें")
+            .setView(scroll)
+            .setPositiveButton("जोड़ें") { _, _ ->
+                val priceVal = priceInput.text?.toString()?.toDoubleOrNull() ?: 0.0
+                val payload = JSONObject().apply {
+                    put("category", cats[catSpinner.selectedItemPosition])
+                    put("name", nameInput.text?.toString()?.trim() ?: "")
+                    put("company_name", companyInput.text?.toString()?.trim() ?: "")
+                    put("pack_size", packInput.text?.toString()?.trim()?.ifBlank { "1 Pack" } ?: "1 Pack")
+                    put("price_paise", Math.round(priceVal * 100))
+                    put("stock_quantity", stockInput.text?.toString()?.toIntOrNull() ?: 10)
+                }
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val res = ApiClient.dealerAddProduct(ctx, payload)
+                    if (res.isSuccess) {
+                        Toast.makeText(ctx, "✅ कृषि उत्पाद सफलतापूर्वक जुड़ गया!", Toast.LENGTH_LONG).show()
+                    } else {
+                        Toast.makeText(ctx, res.errorMessage ?: "जोड़ने में त्रुटि।", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+            .setNegativeButton("रद्द करें", null)
+            .show()
+    }
+
+    private fun performSecureLogout() {
+        val ctx = context ?: return
+        try {
+            FirebaseAuth.getInstance().signOut()
+        } catch (_: Exception) {}
+        SessionManager.clearAllSession(ctx)
+        Toast.makeText(ctx, "आप सुरक्षित रूप से लॉगआउट हो गए हैं।", Toast.LENGTH_SHORT).show()
+        (activity as? MainActivity)?.openLoginAndOnboardingScreen()
+    }
+
+    private fun createCard(): LinearLayout {
+        val ctx = requireContext()
+        return LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBg("#FFFFFF", "#D4E2D4", dp(14))
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            val lp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            lp.topMargin = dp(12)
+            layoutParams = lp
         }
     }
 
-    private fun dp(value: Int): Int {
-        return TypedValue.applyDimension(
+    private fun createSectionHeading(title: String): TextView =
+        TextView(requireContext()).apply {
+            text = title
+            setTextColor(Color.parseColor("#124116"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(0, 0, 0, dp(8))
+        }
+
+    private fun addInput(parent: LinearLayout, label: String, initialValue: String, isPhone: Boolean = false): EditText {
+        val ctx = requireContext()
+        parent.addView(
+            TextView(ctx).apply {
+                text = label
+                setTextColor(Color.parseColor("#1A241A"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                setTypeface(typeface, Typeface.BOLD)
+                setPadding(0, dp(8), 0, dp(2))
+            }
+        )
+        val edit = EditText(ctx).apply {
+            setText(initialValue)
+            inputType = if (isPhone) InputType.TYPE_CLASS_PHONE else InputType.TYPE_CLASS_TEXT
+            background = roundedBg("#FAFAFA", "#B8CBB8", dp(8))
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            minHeight = dp(44)
+        }
+        parent.addView(edit)
+        return edit
+    }
+
+    private fun createButton(label: String, bgHex: String, onClick: () -> Unit): Button =
+        Button(requireContext()).apply {
+            text = label
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, Typeface.BOLD)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            background = roundedBg(bgHex, bgHex, dp(10))
+            minHeight = dp(44)
+            val lp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            lp.topMargin = dp(6)
+            layoutParams = lp
+            setOnClickListener { onClick() }
+        }
+
+    private fun createHalfButton(label: String, bgHex: String, onClick: () -> Unit): Button =
+        Button(requireContext()).apply {
+            text = label
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, Typeface.BOLD)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            background = roundedBg(bgHex, bgHex, dp(8))
+            minHeight = dp(42)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginEnd = dp(4)
+            }
+            setOnClickListener { onClick() }
+        }
+
+    private fun roundedBg(fillHex: String, strokeHex: String, radiusPx: Int): GradientDrawable =
+        GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = radiusPx.toFloat()
+            setColor(Color.parseColor(fillHex))
+            setStroke(dp(1), Color.parseColor(strokeHex))
+        }
+
+    private fun dp(value: Int): Int =
+        TypedValue.applyDimension(
             TypedValue.COMPLEX_UNIT_DIP,
             value.toFloat(),
             resources.displayMetrics
         ).toInt()
-    }
 }
