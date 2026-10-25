@@ -7,8 +7,12 @@ import com.google.firebase.auth.FirebaseAuth
 import `in`.merakisan.app.core.security.SessionManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.Interceptor
+import okhttp3.OkHttpClient
 import org.json.JSONArray
 import org.json.JSONObject
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
@@ -21,16 +25,23 @@ import java.util.concurrent.TimeUnit
 /**
  * MERA KISAN — SINGLE POINT OF SERVER CONNECTION
  * नियम: पूरे एंड्रॉइड ऐप में सर्वर से जुड़ने के लिए केवल यही एक फाइल अधिकृत है।
- * भविष्य में सर्वर या डोमेन बदलने पर केवल नीचे दिए गए SERVER_BASE_URL को बदलें।
+ * यह फाइल दोनों पैटर्न (ApiClient.request तथा Retrofit के ApiClient.getApiService) को एक ही सर्वर URL से चलाती है।
  */
 object ApiClient {
 
     // भविष्य में सर्वर बदलने पर केवल यही 1 लाइन बदलनी होगी
     const val SERVER_ORIGIN: String = "https://mera-kisan-backend.vercel.app"
     const val SERVER_BASE_URL: String = "$SERVER_ORIGIN/api/v1"
+    private const val RETROFIT_BASE_URL: String = "$SERVER_BASE_URL/"
 
     private const val CONNECT_TIMEOUT_MS = 15000
     private const val READ_TIMEOUT_MS = 20000
+
+    @Volatile
+    private var cachedApiService: ApiService? = null
+
+    @Volatile
+    private var appContextRef: Context? = null
 
     data class ApiResult(
         val isSuccess: Boolean,
@@ -42,23 +53,76 @@ object ApiClient {
         val requestId: String? = null
     )
 
+    /**
+     * मौजूदा ViewModels, Repositories और WorkManager Workers के लिए एकीकृत Retrofit ApiService इंस्टेंस।
+     */
+    @JvmStatic
+    @JvmOverloads
+    fun getApiService(context: Context? = null): ApiService {
+        if (context != null && appContextRef == null) {
+            appContextRef = context.applicationContext
+        }
+        cachedApiService?.let { return it }
+
+        synchronized(this) {
+            cachedApiService?.let { return it }
+
+            val authInterceptor = Interceptor { chain ->
+                val original = chain.request()
+                val reqBuilder = original.newBuilder()
+                    .header("Accept", "application/json")
+                    .header("x-request-id", "and_${UUID.randomUUID().toString().replace("-", "").take(16)}")
+
+                val token = resolveFreshFirebaseIdToken(appContextRef)
+                if (!token.isNullOrBlank() && original.header("Authorization") == null) {
+                    reqBuilder.header("Authorization", "Bearer $token")
+                }
+
+                val method = original.method.uppercase()
+                if (method in listOf("POST", "PUT", "PATCH") && original.header("Idempotency-Key") == null) {
+                    reqBuilder.header("Idempotency-Key", UUID.randomUUID().toString())
+                }
+
+                chain.proceed(reqBuilder.build())
+            }
+
+            val okHttpClient = OkHttpClient.Builder()
+                .connectTimeout(CONNECT_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
+                .readTimeout(READ_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
+                .writeTimeout(READ_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
+                .addInterceptor(authInterceptor)
+                .build()
+
+            val retrofit = Retrofit.Builder()
+                .baseUrl(RETROFIT_BASE_URL)
+                .client(okHttpClient)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build()
+
+            val created = retrofit.create(ApiService::class.java)
+            cachedApiService = created
+            return created
+        }
+    }
+
     private fun resolveFreshFirebaseIdToken(context: Context?): String? {
+        val ctx = context?.applicationContext ?: appContextRef
         try {
             val currentUser = FirebaseAuth.getInstance().currentUser
             if (currentUser != null) {
                 val tokenResult = Tasks.await(currentUser.getIdToken(false), 6, TimeUnit.SECONDS)
                 val liveToken = tokenResult?.token
                 if (!liveToken.isNullOrBlank()) {
-                    if (context != null) {
-                        SessionManager.saveAuthToken(context, liveToken)
+                    if (ctx != null) {
+                        SessionManager.saveAuthToken(ctx, liveToken)
                     }
                     return liveToken
                 }
             }
         } catch (_: Exception) {
-            // यदि ऑफ़लाइन या टाइमआउट हो तो सेशन मैनेजर से अंतिम सुरक्षित टोकन लें
+            // ऑफ़लाइन या टाइमआउट की स्थिति में सेशन मैनेजर से टोकन लें
         }
-        return if (context != null) SessionManager.getAuthToken(context) else null
+        return if (ctx != null) SessionManager.getAuthToken(ctx) else null
     }
 
     private fun buildQueryString(params: Map<String, String?>): String {
@@ -74,7 +138,7 @@ object ApiClient {
     }
 
     /**
-     * केंद्रीकृत HTTP इंजन: ऐप की सभी स्क्रीन केवल इसी के माध्यम से सर्वर से बात करेंगी।
+     * केंद्रीकृत HTTP इंजन: ऐप की सभी स्क्रीन इसके माध्यम से सर्वर से बात करती हैं।
      */
     suspend fun request(
         context: Context?,
@@ -85,6 +149,9 @@ object ApiClient {
         customIdempotencyKey: String? = null,
         useDealerToken: Boolean = false
     ): ApiResult = withContext(Dispatchers.IO) {
+        if (context != null && appContextRef == null) {
+            appContextRef = context.applicationContext
+        }
         val cleanPath = if (endpointPath.startsWith("/")) endpointPath else "/$endpointPath"
         val fullUrl = "$SERVER_BASE_URL$cleanPath${buildQueryString(queryParams)}"
         val upperMethod = method.uppercase()
@@ -105,17 +172,15 @@ object ApiClient {
                     try {
                         this.requestMethod = "PATCH"
                     } catch (_: Exception) {
-                        // पुराने Android HttpURLConnection पर X-HTTP-Method-Override काम करेगा
+                        // X-HTTP-Method-Override हैंडल करेगा
                     }
                 }
 
-                // 1. प्रमाणित Firebase ID Token जोड़ें
                 val idToken = resolveFreshFirebaseIdToken(context)
                 if (!idToken.isNullOrBlank()) {
                     setRequestProperty("Authorization", "Bearer $idToken")
                 }
 
-                // 2. यदि अधिकृत कृषि दवाई विक्रेता (Dealer) कॉल है तो Dealer Token जोड़ें
                 if (useDealerToken && context != null) {
                     val dealerToken = SessionManager.getDealerToken(context)
                     if (!dealerToken.isNullOrBlank()) {
@@ -123,7 +188,6 @@ object ApiClient {
                     }
                 }
 
-                // 3. डुप्लीकेट ऑर्डर/राइट रोकने के लिए Idempotency-Key जोड़ें
                 if (upperMethod in listOf("POST", "PUT", "PATCH")) {
                     val idemKey = customIdempotencyKey ?: UUID.randomUUID().toString()
                     setRequestProperty("Idempotency-Key", idemKey)
@@ -182,7 +246,7 @@ object ApiClient {
                     requestId = reqId
                 )
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             return@withContext ApiResult(
                 isSuccess = false,
                 statusCode = 0,
@@ -195,7 +259,7 @@ object ApiClient {
     }
 
     // ========================================================================
-    // A. AUTH & ONE-TIME ONBOARDING (`users`, `farmers`, `buyers` अलग टेबल्स)
+    // A. AUTH & ONE-TIME ONBOARDING
     // ========================================================================
 
     suspend fun getMyProfile(context: Context): ApiResult =
@@ -234,10 +298,9 @@ object ApiClient {
         request(context, "/auth/profile", method = "PATCH", bodyJson = updates)
 
     // ========================================================================
-    // B. ZERO-DEFAULT LIVE GOVERNMENT MANDI SYSTEM (Cascading + Graph + AI)
+    // B. ZERO-DEFAULT LIVE GOVERNMENT MANDI SYSTEM
     // ========================================================================
 
-    /** स्टेप 1: सरकारी सोर्स (data.gov.in) से लाइव राज्यों की सूची लाना (0% डिफ़ॉल्ट) */
     suspend fun getMandiStates(context: Context?, forceRefresh: Boolean = false): ApiResult =
         request(
             context = context,
@@ -246,7 +309,6 @@ object ApiClient {
             queryParams = mapOf("refresh" to if (forceRefresh) "true" else null)
         )
 
-    /** स्टेप 2: राज्य चुनने पर उस राज्य के सभी ज़िलों की लाइव सूची लाना */
     suspend fun getMandiDistricts(context: Context?, state: String, forceRefresh: Boolean = false): ApiResult =
         request(
             context = context,
@@ -258,7 +320,6 @@ object ApiClient {
             )
         )
 
-    /** स्टेप 3: ज़िला चुनने पर उस ज़िले की सभी मंडियाँ, उपलब्ध फसलें और ताज़ा भाव लाना */
     suspend fun getMandisAndCommoditiesByDistrict(
         context: Context?,
         state: String?,
@@ -274,7 +335,6 @@ object ApiClient {
             )
         )
 
-    /** स्टेप 4: चयनित राज्य/ज़िला/मंडी/फसल के लाइव भाव (स्पेलिंग ऑटो-करेक्शन सहित) */
     suspend fun getLiveMandiRates(
         context: Context?,
         state: String? = null,
@@ -298,7 +358,6 @@ object ApiClient {
             )
         )
 
-    /** स्टेप 5: 7 दिन से लेकर 1 साल (1y) और 2 साल (2y) तक का भाव उतार-चढ़ाव व ग्राफ डेटा */
     suspend fun getMandiPriceTrends(
         context: Context?,
         state: String? = null,
@@ -320,7 +379,6 @@ object ApiClient {
             )
         )
 
-    /** स्टेप 6: दो मंडियों (Mandi A vs Mandi B) की रेंज अनुसार भाव तुलना */
     suspend fun compareTwoMandis(
         context: Context?,
         state: String? = null,
@@ -342,7 +400,6 @@ object ApiClient {
             )
         )
 
-    /** स्टेप 7: किसान की लोकेशन और भाड़े के अनुसार सर्वोत्तम मंडी का AI सुझाव */
     suspend fun getAiMandiSellingAdvice(
         context: Context?,
         state: String?,
@@ -359,7 +416,6 @@ object ApiClient {
         return request(context, "/mandi-prices/ai-advisor", method = "POST", bodyJson = body)
     }
 
-    /** स्टेप 8: स्पेलिंग मिस्टेक को सरकारी डेटा सेंटर की सही स्पेलिंग से मैच करना */
     suspend fun matchMandiSpelling(
         context: Context?,
         term: String,
@@ -424,7 +480,7 @@ object ApiClient {
         )
 
     // ========================================================================
-    // D. ORDERS, OFFERS (NEGOTIATION), BUYER REQUESTS & DISPUTES
+    // D. ORDERS, OFFERS, BUYER REQUESTS & DISPUTES
     // ========================================================================
 
     suspend fun getOrders(context: Context, viewRole: String? = null): ApiResult =
@@ -490,7 +546,7 @@ object ApiClient {
         request(context, "/trust/reviews", method = "POST", bodyJson = payload)
 
     // ========================================================================
-    // E. AGRI-INPUTS (FUNGICIDE / PESTICIDE / FERTILIZER / SEEDS), DEALER & PICKUP
+    // E. AGRI-INPUTS, DEALER & PICKUP POINTS
     // ========================================================================
 
     suspend fun getAgriInputs(
