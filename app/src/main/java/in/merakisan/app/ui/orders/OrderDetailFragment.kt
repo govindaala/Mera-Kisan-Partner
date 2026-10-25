@@ -9,6 +9,7 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.util.TypedValue
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -26,22 +27,9 @@ import androidx.lifecycle.lifecycleScope
 import `in`.merakisan.app.core.config.FeatureManager
 import `in`.merakisan.app.core.network.ApiClient
 import `in`.merakisan.app.core.security.SessionManager
-import `in`.merakisan.app.ui.main.MainActivity
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
-/**
- * MERA KISAN — DEEP ORDER DETAIL, TIMELINE STEPPER & STATE MACHINE
- * Exact Repository Path: app/src/main/java/in/merakisan/app/ui/orders/OrderDetailFragment.kt
- *
- * Implements (Master Spec Sec 9, 11 & merged.txt Sec 15-20, 41):
- * - Visual status progress timeline (PLACED -> ACCEPTED -> READY -> SHIPPED -> DELIVERED -> COMPLETED).
- * - Detailed price breakdown (Item total, Delivery fee, Farmer net realization in paise/rupees).
- * - Role-enforced transitions: Farmer can accept/ready/ship/deliver; Buyer can confirm delivery / cancel if placed.
- * - Call / WhatsApp counterparty integration.
- * - Multi-parameter Rating trigger ONLY when order is COMPLETED.
- * - Dispute filing trigger with category & evidence notes.
- */
 class OrderDetailFragment : Fragment() {
 
     private var targetOrderId: String = ""
@@ -159,7 +147,6 @@ class OrderDetailFragment : Fragment() {
         val myUid = SessionManager.getUserUid(ctx) ?: ""
         val amIFarmer = myUid == farmerUid
 
-        // 1. Status Progress Header Card
         val statusCard = createCard()
         val statusTitleHi = when (status) {
             "PLACED" -> "🆕 नया ऑर्डर (स्वीकृति बाकी)"
@@ -198,11 +185,9 @@ class OrderDetailFragment : Fragment() {
             }
         )
 
-        // Visual Stepper Dots
         statusCard.addView(renderVisualOrderStepper(status))
         contentContainer.addView(statusCard)
 
-        // 2. Order Items & Price Summary Card
         val itemCard = createCard()
         itemCard.addView(createSectionHeading("🌾 उत्पाद व मूल्य विवरण"))
         itemCard.addView(
@@ -235,7 +220,6 @@ class OrderDetailFragment : Fragment() {
         )
         contentContainer.addView(itemCard)
 
-        // 3. Counterparty & Delivery Details Card
         val contactCard = createCard()
         contactCard.addView(createSectionHeading("📍 संपर्क व डिलीवरी पता"))
 
@@ -295,7 +279,6 @@ class OrderDetailFragment : Fragment() {
         }
         contentContainer.addView(contactCard)
 
-        // 4. Role-Enforced Action Controls
         val actionCard = createCard()
         actionCard.addView(createSectionHeading("⚙️ ऑर्डर कार्रवाई"))
         val actionRow = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
