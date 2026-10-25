@@ -1,57 +1,80 @@
-// app/src/main/java/in/merakisan/app/ui/marketplace/MarketplaceFragment.kt
-package `in`.merakisan.app.ui.marketplace
+// app/src/main/java/in/merakisan/app/ui/crops/MarketplaceFragment.kt
+package `in`.merakisan.app.ui.crops
 
 import android.app.AlertDialog
-import android.content.Context
-import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.net.Uri
 import android.os.Bundle
-import android.text.Editable
-import android.text.InputType
-import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
-import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
+import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
-import androidx.cardview.widget.CardView
 import androidx.fragment.app.Fragment
-import androidx.navigation.fragment.findNavController
+import androidx.lifecycle.lifecycleScope
 import `in`.merakisan.app.core.config.FeatureManager
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import `in`.merakisan.app.core.network.ApiClient
+import `in`.merakisan.app.core.security.SessionManager
+import `in`.merakisan.app.ui.main.MainActivity
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.OutputStreamWriter
-import java.net.HttpURLConnection
-import java.net.URL
-import java.util.UUID
 
 /**
- * Fixes Video Bug #1 (00:57-01:16):
- * - 100% Zero Dummy Products (Removed all 4 hard-coded sample crops).
- * - Removed hard-coded fake phone number '9876543210'. Uses only real seller phone or shows clear notice.
+ * MERA KISAN — UNIFIED MARKETPLACE & FARMER "MY CROPS" MANAGER
+ *
+ * Modes:
+ * - FARMER_MY_CROPS: Farmer manages own listings (Active / Sold, Edit, Mark Sold, Delete, Crop Boost, Poster Share).
+ * - BUYER_DISCOVERY: Buyer searches by natural Hindi query, category (including separate Seeds & Cold Pressed Oil),
+ *   Small Quantity (1-25 kg), Fresh Today, District, and can save search alerts.
  */
 class MarketplaceFragment : Fragment() {
 
-    private lateinit var etSearch: EditText
-    private lateinit var productsContainer: LinearLayout
-    private lateinit var tvCountBanner: TextView
+    private var screenMode: String = "BUYER_DISCOVERY"
 
-    private val allProducts = mutableListOf<JSONObject>()
-    private var activeFilter = "ALL" // ALL | SMALL_QTY | VERIFIED | TODAY
+    private lateinit var headerTitle: TextView
+    private lateinit var searchInput: EditText
+    private lateinit var spinnerCategory: Spinner
+    private lateinit var checkSmallQty: CheckBox
+    private lateinit var checkFreshToday: CheckBox
+    private lateinit var progressBar: ProgressBar
+    private lateinit var listContainer: LinearLayout
+
+    private val categoriesList = listOf(
+        "all" to "सभी श्रेणियाँ (All Categories)",
+        "grains" to "🌾 देशी अनाज (Grains & Millets)",
+        "pulses_oilseeds" to "🥜 दाल व तिलहन (Pulses & Oilseeds)",
+        "vegetables" to "🥬 ताज़ा सब्जियां (Fresh Vegetables)",
+        "fruits" to "🍊 देशी फल (Fruits)",
+        "cold_pressed_oil" to "🫙 कच्ची घानी तेल (Cold Pressed Oil)",
+        "spices_jaggery" to "🍯 गुड़ व मसाले (Jaggery & Spices)",
+        "seeds" to "🌱 देशी व प्रमाणित बीज (Seeds)",
+        "traditional" to "🏺 दुर्लभ / पारंपरिक किस्में (Rare/Desi)"
+    )
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val argMode = arguments?.getString("mode")
+        screenMode = if (!argMode.isNullOrBlank()) {
+            argMode
+        } else if (SessionManager.isFarmerModeActive(requireContext())) {
+            "FARMER_MY_CROPS"
+        } else {
+            "BUYER_DISCOVERY"
+        }
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -59,540 +82,471 @@ class MarketplaceFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         val ctx = requireContext()
+        val scroll = ScrollView(ctx).apply {
+            isFillViewport = true
+            setBackgroundColor(Color.parseColor("#F2F6F2"))
+        }
 
         val root = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#F4F6F8"))
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
+            setPadding(dp(14), dp(14), dp(14), dp(28))
         }
 
-        // 1. TOP HEADER
-        val header = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(Color.parseColor("#1B5E20"))
-            setPadding(dp(14), dp(10), dp(14), dp(10))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(58))
-        }
+        val isFarmerMyCrops = screenMode == "FARMER_MY_CROPS"
 
-        header.addView(TextView(ctx).apply {
-            text = "🌾 एकीकृत किसान बाज़ार (Live Marketplace)"
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-            setTypeface(typeface, Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        })
-
-        header.addView(Button(ctx).apply {
-            text = "+ फसल जोड़ें"
-            textSize = 11f
-            setTextColor(Color.parseColor("#1B5E20"))
-            setBackgroundColor(Color.WHITE)
-            setOnClickListener { navigateSafe("addProductFragment") }
-        })
-        root.addView(header)
-
-        val scroll = ScrollView(ctx).apply {
-            isFillViewport = true
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.MATCH_PARENT
-            )
-        }
-
-        val content = LinearLayout(ctx).apply {
+        // 1. Header & Filter Card
+        val topCard = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(10), dp(12), dp(28))
+            background = roundedBg("#FFFFFF", "#D4E2D4", dp(14))
+            setPadding(dp(16), dp(14), dp(16), dp(14))
         }
 
-        // 2. SEARCH INPUT
-        etSearch = EditText(ctx).apply {
-            hint = "🔍 फसल, किस्म, किसान या ज़िला खोजें (उदा. चीना, गेहूं, मंदसौर)..."
-            textSize = 13f
-            setTextColor(Color.parseColor("#212121"))
-            setHintTextColor(Color.parseColor("#757575"))
-            setPadding(dp(14), dp(10), dp(14), dp(10))
-            background = GradientDrawable().apply {
-                setColor(Color.WHITE)
-                cornerRadius = dp(22).toFloat()
-                setStroke(dp(1), Color.parseColor("#A5D6A7"))
-            }
-            addTextChangedListener(object : TextWatcher {
-                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                    renderFilteredProducts(ctx)
-                }
-                override fun afterTextChanged(s: Editable?) {}
-            })
-        }
-        content.addView(etSearch)
-
-        // 3. FILTER CHIPS
-        val chipScroll = HorizontalScrollView(ctx).apply {
-            isHorizontalScrollBarEnabled = false
-            setPadding(0, dp(8), 0, dp(8))
-        }
-        val chipRow = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
-
-        val filters = listOf(
-            "ALL" to "सभी फसलें (All Live)",
-            "SMALL_QTY" to "🧺 1–25 kg छोटी मात्रा",
-            "VERIFIED" to "✔ सत्यापित किसान",
-            "TODAY" to "🥬 ताज़ा कटाई"
-        )
-
-        for ((code, title) in filters) {
-            chipRow.addView(TextView(ctx).apply {
-                text = title
-                setTextColor(Color.parseColor("#1B5E20"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-                setTypeface(typeface, Typeface.BOLD)
-                setPadding(dp(12), dp(6), dp(12), dp(6))
-                background = GradientDrawable().apply {
-                    setColor(Color.WHITE)
-                    cornerRadius = dp(16).toFloat()
-                    setStroke(dp(1), Color.parseColor("#2E7D32"))
-                }
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { rightMargin = dp(8) }
-                setOnClickListener {
-                    activeFilter = code
-                    renderFilteredProducts(ctx)
-                }
-            })
-        }
-        chipScroll.addView(chipRow)
-        content.addView(chipScroll)
-
-        tvCountBanner = TextView(ctx).apply {
-            text = "⏳ लाइव उत्पाद लोड हो रहे हैं..."
-            setTextColor(Color.parseColor("#1B5E20"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        headerTitle = TextView(ctx).apply {
+            text = if (isFarmerMyCrops) "🌾 मेरी फसलें व उत्पाद प्रबंधन" else "🔍 किसान बाज़ार — खोजें व फ़िल्टर करें"
+            setTextColor(Color.parseColor("#124116"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
             setTypeface(typeface, Typeface.BOLD)
-            setPadding(dp(4), 0, dp(4), dp(8))
+            setPadding(0, 0, 0, dp(8))
         }
-        content.addView(tvCountBanner)
+        topCard.addView(headerTitle)
 
-        productsContainer = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-        content.addView(productsContainer)
-
-        scroll.addView(content)
-        root.addView(scroll)
-
-        // 1. Load real cached products from mobile first (Zero Dummy Data)
-        loadRealCachedProductsFromDevice(ctx)
-        renderFilteredProducts(ctx)
-
-        // 2. Fetch fresh live products from server
-        fetchLiveProductsFromServer(ctx)
-
-        return root
-    }
-
-    private fun loadRealCachedProductsFromDevice(ctx: Context) {
-        allProducts.clear()
-        val seenIds = mutableSetOf<String>()
-
-        try {
-            val smartArr = FeatureManager.getLiveProductsCache(ctx)
-            for (i in 0 until smartArr.length()) {
-                val obj = smartArr.getJSONObject(i)
-                val id = obj.optString("id", "")
-                if (!id.startsWith("prod_10") && seenIds.add(id)) {
-                    allProducts.add(obj)
+        if (isFarmerMyCrops) {
+            topCard.addView(
+                createButton("➕ नई फसल / बीज / उत्पाद जोड़ें", "#1B5E20") {
+                    (activity as? MainActivity)?.openAddProductScreen(null)
                 }
+            )
+        } else {
+            searchInput = EditText(ctx).apply {
+                hint = "खोजें: उदा. देशी गेहूं 10 किलो मंदसौर..."
+                background = roundedBg("#FAFAFA", "#B8CBB8", dp(8))
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                minHeight = dp(44)
             }
-        } catch (_: Throwable) {}
+            topCard.addView(searchInput)
 
-        try {
-            val prefs = ctx.getSharedPreferences("mera_kisan_local_cache", Context.MODE_PRIVATE)
-            val localArr = JSONArray(prefs.getString("cached_products", "[]") ?: "[]")
-            for (i in 0 until localArr.length()) {
-                val obj = localArr.getJSONObject(i)
-                val id = obj.optString("id", "local_$i")
-                if (!id.startsWith("prod_10") && seenIds.add(id)) {
-                    allProducts.add(obj)
-                }
+            spinnerCategory = Spinner(ctx).apply {
+                minimumHeight = dp(46)
+                adapter = ArrayAdapter(
+                    ctx,
+                    android.R.layout.simple_spinner_dropdown_item,
+                    categoriesList.map { it.second }
+                )
             }
-        } catch (_: Throwable) {}
-    }
+            topCard.addView(spinnerCategory)
 
-    private fun fetchLiveProductsFromServer(ctx: Context) {
-        CoroutineScope(Dispatchers.IO).launch {
-            val serverList = mutableListOf<JSONObject>()
-            try {
-                val url = URL("https://mera-kisan-backend.vercel.app/api/v1/products?limit=50")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 6000
-                conn.readTimeout = 6000
-                if (conn.responseCode in 200..299) {
-                    val body = conn.inputStream.bufferedReader().use { it.readText() }
-                    val arr = JSONObject(body).optJSONArray("data")
-                    if (arr != null) {
-                        FeatureManager.saveLiveProductsCache(ctx, arr)
-                        for (i in 0 until arr.length()) {
-                            val item = arr.getJSONObject(i)
-                            if (!item.optString("id", "").startsWith("prod_10")) {
-                                serverList.add(item)
-                            }
-                        }
-                    }
-                }
-            } catch (_: Throwable) {}
-
-            withContext(Dispatchers.Main) {
-                if (!isAdded) return@withContext
-                if (serverList.isNotEmpty()) {
-                    allProducts.clear()
-                    allProducts.addAll(serverList)
-                }
-                renderFilteredProducts(ctx)
-            }
-        }
-    }
-
-    private fun renderFilteredProducts(ctx: Context) {
-        productsContainer.removeAllViews()
-        val q = etSearch.text.toString().trim().lowercase()
-
-        val filtered = allProducts.filter { obj ->
-            val name = obj.optString("name", "").lowercase()
-            val variety = obj.optString("variety", "").lowercase()
-            val farmer = obj.optString("seller_name", "").lowercase()
-            val village = obj.optString("village", "").lowercase()
-            val district = obj.optString("district", "").lowercase()
-            val minOrd = obj.optDouble("minimum_order_quantity", 1.0)
-            val badge = obj.optString("verification_status", "")
-
-            val matchesSearch = q.isEmpty() ||
-                name.contains(q) || variety.contains(q) || farmer.contains(q) ||
-                village.contains(q) || district.contains(q)
-
-            val matchesChip = when (activeFilter) {
-                "SMALL_QTY" -> minOrd <= 25.0
-                "VERIFIED" -> badge.contains("Verified", true) || badge.contains("सत्यापित")
-                else -> true
-            }
-
-            matchesSearch && matchesChip
-        }
-
-        tvCountBanner.text = "🟢 लाइव उपलब्ध फसलें: ${filtered.size} (0% डमी डेटा)"
-
-        if (filtered.isEmpty()) {
-            productsContainer.addView(TextView(ctx).apply {
-                text = "📭 अभी इस फ़िल्टर में कोई लाइव फसल उपलब्ध नहीं है।\n\n" +
-                       "• नई फसल बेचने के लिए ऊपर '+ फसल जोड़ें' दबाएं।\n" +
-                       "• या 'मुझे चाहिए' टैब में अपनी मांग पोस्ट करें।"
-                gravity = Gravity.CENTER
-                setTextColor(Color.parseColor("#616161"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                setPadding(dp(18), dp(36), dp(18), dp(36))
-            })
-            return
-        }
-
-        for (obj in filtered) {
-            val id = obj.optString("id", "")
-            val name = obj.optString("name", "ताज़ा फसल")
-            val variety = obj.optString("variety", "देशी")
-            val price = obj.optInt("price", 0)
-            val unit = obj.optString("unit", "kg")
-            val stock = obj.optInt("stock_quantity", 0)
-            val minOrd = obj.optInt("minimum_order_quantity", 1)
-            val harvest = obj.optString("harvest_date", "ताज़ा")
-            val farmer = obj.optString("seller_name", "किसान साथी")
-            val village = obj.optString("village", "")
-            val district = obj.optString("district", "")
-            val badge = obj.optString("verification_status", "✔ किसान द्वारा घोषित (Farmer Declared)")
-            val sellerPhone = obj.optString("seller_phone", obj.optString("farmer_phone", "")).trim()
-            val ratingCount = obj.optInt("rating_count", 0)
-            val ratingVal = obj.optDouble("farmer_rating", 0.0)
-
-            val openDetail = {
-                ctx.getSharedPreferences("mera_kisan_local_cache", Context.MODE_PRIVATE)
-                    .edit()
-                    .putString("selected_product_json", obj.toString())
-                    .apply()
-                navigateSafe("productDetailFragment")
-            }
-
-            val card = CardView(ctx).apply {
-                radius = dp(12).toFloat()
-                cardElevation = dp(2).toFloat()
-                setCardBackgroundColor(Color.WHITE)
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = dp(12) }
-                setOnClickListener { openDetail() }
-            }
-
-            val box = LinearLayout(ctx).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(14), dp(12), dp(14), dp(12))
-            }
-
-            val badgeRow = LinearLayout(ctx).apply {
+            val checksRow = LinearLayout(ctx).apply {
                 orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(4), 0, dp(6))
             }
-
-            badgeRow.addView(TextView(ctx).apply {
-                text = badge
-                setTextColor(Color.parseColor("#1B5E20"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-                setTypeface(typeface, Typeface.BOLD)
-                setPadding(dp(8), dp(3), dp(8), dp(3))
-                background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#E8F5E9"))
-                    cornerRadius = dp(8).toFloat()
-                }
-            })
-
-            if (minOrd <= 25) {
-                badgeRow.addView(TextView(ctx).apply {
-                    text = "1–25 kg उपलब्ध"
-                    setTextColor(Color.parseColor("#0D47A1"))
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-                    setTypeface(typeface, Typeface.BOLD)
-                    setPadding(dp(8), dp(3), dp(8), dp(3))
-                    background = GradientDrawable().apply {
-                        setColor(Color.parseColor("#E3F2FD"))
-                        cornerRadius = dp(8).toFloat()
-                    }
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply { leftMargin = dp(6) }
-                })
+            checkSmallQty = CheckBox(ctx).apply {
+                text = "⚖️ छोटी मात्रा (1–25 kg)"
+                setOnCheckedChangeListener { _, _ -> loadProductsList() }
             }
-
-            if (ratingCount > 0 && ratingVal > 0.0) {
-                badgeRow.addView(TextView(ctx).apply {
-                    text = "⭐ $ratingVal ($ratingCount)"
-                    setTextColor(Color.parseColor("#E65100"))
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-                    setTypeface(typeface, Typeface.BOLD)
-                    setPadding(dp(8), dp(3), dp(8), dp(3))
-                })
+            checkFreshToday = CheckBox(ctx).apply {
+                text = "🥬 आज ताज़ा"
+                setOnCheckedChangeListener { _, _ -> loadProductsList() }
             }
+            checksRow.addView(checkSmallQty)
+            checksRow.addView(checkFreshToday)
+            topCard.addView(checksRow)
 
-            box.addView(badgeRow)
-
-            box.addView(TextView(ctx).apply {
-                text = "🌾 $name ($variety)"
-                setTextColor(Color.parseColor("#212121"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
-                setTypeface(typeface, Typeface.BOLD)
-                setPadding(0, dp(6), 0, dp(2))
-            })
-
-            box.addView(TextView(ctx).apply {
-                text = "💰 ₹$price / $unit   •   📦 $stock $unit उपलब्ध   •   न्यूनतम ऑर्डर: $minOrd $unit"
-                setTextColor(Color.parseColor("#1B5E20"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                setTypeface(typeface, Typeface.BOLD)
-            })
-
-            box.addView(TextView(ctx).apply {
-                text = "👨‍🌾 किसान: $farmer  •  📍 $village, $district\n🗓️ कटाई/बैच: $harvest"
-                setTextColor(Color.parseColor("#616161"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-                setPadding(0, dp(4), 0, dp(10))
-            })
-
-            // Action Buttons Row: [🛒 खरीदें] | [💬 मोलभाव] | [📞 शेयर/कॉल]
             val btnRow = LinearLayout(ctx).apply {
                 orientation = LinearLayout.HORIZONTAL
-                weightSum = 3f
+            }
+            val btnSearch = createButton("🔍 खोजें", "#1B5E20") {
+                loadProductsList()
+            }.apply {
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    rightMargin = dp(6)
+                }
+            }
+            btnRow.addView(btnSearch)
+
+            if (FeatureManager.isEnabled("saved_search", ctx)) {
+                val btnSaveSearch = createButton("🔔 सर्च अलर्ट सेव करें", "#0D47A1") {
+                    saveCurrentSearchAlert()
+                }.apply {
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                        leftMargin = dp(6)
+                    }
+                }
+                btnRow.addView(btnSaveSearch)
+            }
+            topCard.addView(btnRow)
+
+            spinnerCategory.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                    loadProductsList()
+                }
+                override fun onNothingSelected(parent: AdapterView<*>?) {}
+            }
+        }
+
+        root.addView(topCard)
+
+        progressBar = ProgressBar(ctx).apply {
+            visibility = View.GONE
+            setPadding(0, dp(10), 0, dp(10))
+        }
+        root.addView(progressBar)
+
+        listContainer = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(8), 0, 0)
+        }
+        root.addView(listContainer)
+
+        scroll.addView(root)
+        return scroll
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        loadProductsList()
+    }
+
+    private fun loadProductsList() {
+        val ctx = context ?: return
+        val isFarmerMyCrops = screenMode == "FARMER_MY_CROPS"
+        progressBar.visibility = View.VISIBLE
+        listContainer.removeAllViews()
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            val res = if (isFarmerMyCrops) {
+                val myUid = SessionManager.getUserUid(ctx) ?: ""
+                ApiClient.request(
+                    context = ctx,
+                    endpointPath = "/products",
+                    method = "GET",
+                    queryParams = mapOf(
+                        "farmer_uid" to myUid,
+                        "include_sold" to "true"
+                    )
+                )
+            } else {
+                val q = searchInput.text?.toString()?.trim()
+                val catCode = categoriesList.getOrNull(spinnerCategory.selectedItemPosition)?.first ?: "all"
+                ApiClient.getProducts(
+                    context = ctx,
+                    category = if (catCode == "all") null else catCode,
+                    smallQuantityOnly = checkSmallQty.isChecked,
+                    freshTodayOnly = checkFreshToday.isChecked,
+                    searchQuery = q?.ifBlank { null }
+                )
             }
 
-            btnRow.addView(Button(ctx).apply {
-                text = "🛒 खरीदें"
-                textSize = 11f
-                setTextColor(Color.WHITE)
-                setBackgroundColor(Color.parseColor("#1B5E20"))
-                layoutParams = LinearLayout.LayoutParams(0, dp(38), 1f).apply { rightMargin = dp(4) }
-                setOnClickListener { openDetail() }
-            })
+            if (!isAdded) return@launch
+            progressBar.visibility = View.GONE
 
-            btnRow.addView(Button(ctx).apply {
-                text = "💬 मोलभाव"
-                textSize = 11f
-                setTextColor(Color.parseColor("#0D47A1"))
-                setBackgroundColor(Color.parseColor("#E3F2FD"))
-                layoutParams = LinearLayout.LayoutParams(0, dp(38), 1f).apply { leftMargin = dp(2); rightMargin = dp(2) }
-                setOnClickListener { showMakeOfferDialog(ctx, id, name, price, unit) }
-            })
+            val arr = res.dataArray ?: JSONArray()
+            if (arr.length() == 0) {
+                listContainer.addView(
+                    TextView(ctx).apply {
+                        text = if (isFarmerMyCrops) {
+                            "आपने अभी तक कोई फसल या उत्पाद नहीं जोड़ा है।"
+                        } else {
+                            "आपकी खोज के अनुसार अभी कोई उत्पाद नहीं मिला।"
+                        }
+                        setTextColor(Color.parseColor("#555555"))
+                        setPadding(dp(8), dp(16), dp(8), dp(16))
+                    }
+                )
+                return@launch
+            }
 
-            btnRow.addView(Button(ctx).apply {
-                text = "📞 शेयर/कॉल"
-                textSize = 11f
-                setTextColor(Color.parseColor("#1B5E20"))
-                setBackgroundColor(Color.parseColor("#E8F5E9"))
-                layoutParams = LinearLayout.LayoutParams(0, dp(38), 1f).apply { leftMargin = dp(4) }
-                setOnClickListener {
-                    showShareAndContactSheet(ctx, id, name, variety, price, stock, unit, farmer, village, district, badge, sellerPhone)
-                }
-            })
-
-            box.addView(btnRow)
-            card.addView(box)
-            productsContainer.addView(card)
+            for (i in 0 until arr.length()) {
+                val item = arr.optJSONObject(i) ?: continue
+                listContainer.addView(
+                    if (isFarmerMyCrops) buildFarmerManagedCropCard(item)
+                    else buildBuyerDiscoveryCard(item)
+                )
+            }
         }
     }
 
-    private fun showShareAndContactSheet(
-        ctx: Context,
-        id: String,
-        name: String,
-        variety: String,
-        price: Int,
-        stock: Int,
-        unit: String,
-        farmer: String,
-        village: String,
-        district: String,
-        badge: String,
-        sellerPhone: String
-    ) {
-        val shareMessage = "🌾 Mera Kisan\n$name ($variety)\n💰 ₹$price/$unit • 📦 $stock $unit उपलब्ध\n👨‍🌾 किसान: $farmer ($village, $district)\n$badge\n🔗 देखें: https://merakisan.in/product/$id"
+    private fun buildFarmerManagedCropCard(prod: JSONObject): View {
+        val ctx = requireContext()
+        val prodId = prod.optString("id", "")
+        val name = prod.optString("name", "फसल")
+        val variety = prod.optString("variety", "")
+        val priceRupees = prod.optDouble("price_rupees", prod.optDouble("price", 0.0))
+        val unit = prod.optString("unit", "kg")
+        val stock = prod.optDouble("stock_quantity", 0.0)
+        val status = prod.optString("status", "ACTIVE").uppercase()
+        val boosted = prod.optBoolean("boosted", false)
 
-        val options = arrayOf(
-            "🟢 WhatsApp पर शेयर करें",
-            "📤 सभी ऐप्स पर शेयर करें (Facebook/Instagram/SMS)",
-            "📞 किसान को सीधा कॉल करें"
+        val card = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBg("#FFFFFF", "#C8E6C9", dp(12))
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            val lp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            lp.topMargin = dp(10)
+            layoutParams = lp
+        }
+
+        val statusLabel = when (status) {
+            "SOLD" -> "🔴 बिक गई (SOLD)"
+            "ACTIVE" -> "🟢 बिक्री के लिए चालू (ACTIVE)"
+            else -> status
+        }
+
+        card.addView(
+            TextView(ctx).apply {
+                text = "$statusLabel ${if (boosted) "• 🚀 बूस्टेड" else ""}"
+                setTextColor(if (status == "ACTIVE") Color.parseColor("#1B5E20") else Color.parseColor("#B71C1C"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                setTypeface(typeface, Typeface.BOLD)
+            }
         )
 
-        AlertDialog.Builder(ctx)
-            .setTitle("📢 उत्पाद शेयर व किसान संपर्क")
-            .setItems(options) { _, which ->
-                when (which) {
-                    0, 1 -> {
-                        val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, shareMessage)
-                        }
-                        startActivity(Intent.createChooser(sendIntent, "उत्पाद शेयर करें"))
-                    }
-                    2 -> {
-                        // Resolve real phone from product OR logged-in farmer profile (NEVER dial fake 9876543210)
-                        val userPrefs = ctx.getSharedPreferences("mera_kisan_user", Context.MODE_PRIVATE)
-                        val fallbackOwnPhone = userPrefs.getString("phone", "")?.trim() ?: ""
-                        val realPhone = if (sellerPhone.length >= 10 && sellerPhone != "9876543210") {
-                            sellerPhone
-                        } else if (fallbackOwnPhone.length >= 10 && fallbackOwnPhone != "9876543210") {
-                            fallbackOwnPhone
-                        } else {
-                            ""
-                        }
+        card.addView(
+            TextView(ctx).apply {
+                text = "$name ${if (variety.isNotBlank() && variety != "null") "($variety)" else ""}"
+                setTextColor(Color.parseColor("#1A241A"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+                setTypeface(typeface, Typeface.BOLD)
+                setPadding(0, dp(4), 0, dp(2))
+            }
+        )
 
-                        if (realPhone.isNotEmpty()) {
-                            val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$realPhone"))
-                            startActivity(dialIntent)
-                        } else {
-                            Toast.makeText(
-                                ctx,
-                                "ℹ️ किसान ने अभी सार्वजनिक कॉल नंबर दर्ज नहीं किया है। कृपया '💬 मोलभाव' या '🛒 खरीदें' का उपयोग करें।",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
-                    }
+        card.addView(
+            TextView(ctx).apply {
+                text = "💰 भाव: ₹$priceRupees/$unit • 📦 स्टॉक: $stock $unit"
+                setTextColor(Color.parseColor("#BF360C"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                setTypeface(typeface, Typeface.BOLD)
+                setPadding(0, 0, 0, dp(10))
+            }
+        )
+
+        // Row 1: Edit | Mark Sold | Delete
+        val row1 = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
+
+        val btnEdit = createButton("✏️ एडिट", "#0D47A1") {
+            (activity as? MainActivity)?.openAddProductScreen(prodId)
+        }.apply {
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                rightMargin = dp(4)
+            }
+        }
+
+        val btnMarkSold = createButton("✅ बिक गई", "#4E342E") {
+            markCropAsSold(prodId, name)
+        }.apply {
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                leftMargin = dp(4)
+                rightMargin = dp(4)
+            }
+        }
+
+        val btnDelete = createButton("🗑️ हटाएँ", "#B71C1C") {
+            confirmAndDeleteCrop(prodId, name)
+        }.apply {
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                leftMargin = dp(4)
+            }
+        }
+
+        row1.addView(btnEdit)
+        row1.addView(btnMarkSold)
+        row1.addView(btnDelete)
+        card.addView(row1)
+
+        // Row 2: Poster & Share | Crop Boost (if enabled)
+        val row2 = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(8), 0, 0)
+        }
+
+        val btnPosterShare = createButton("🎨 .JPG पोस्टर व शेयर", "#1B5E20") {
+            (activity as? MainActivity)?.openProductDetailScreen(prodId)
+        }.apply {
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                rightMargin = dp(4)
+            }
+        }
+        row2.addView(btnPosterShare)
+
+        if (FeatureManager.isEnabled("crop_boost", ctx)) {
+            val boostFee = FeatureManager.getBoostPriceRupees()
+            val boostDays = FeatureManager.getBoostDurationDays()
+            val btnBoost = createButton("🚀 बूस्ट (₹$boostFee/${boostDays}d)", "#BF360C") {
+                requestCropBoost(prodId, name)
+            }.apply {
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    leftMargin = dp(4)
                 }
             }
-            .show()
+            row2.addView(btnBoost)
+        }
+
+        card.addView(row2)
+        return card
     }
 
-    private fun showMakeOfferDialog(ctx: Context, productId: String, productName: String, listedPrice: Int, unit: String) {
-        val box = LinearLayout(ctx).apply {
+    private fun buildBuyerDiscoveryCard(prod: JSONObject): View {
+        val ctx = requireContext()
+        val prodId = prod.optString("id", "")
+        val name = prod.optString("name", "कृषि उत्पाद")
+        val variety = prod.optString("variety", "")
+        val priceRupees = prod.optDouble("price_rupees", prod.optDouble("price", 0.0))
+        val unit = prod.optString("unit", "kg")
+        val stock = prod.optDouble("stock_quantity", 0.0)
+        val minOrder = prod.optDouble("min_order_quantity", 1.0)
+        val farmerName = prod.optString("farmer_name", "किसान")
+        val district = prod.optString("district", "")
+        val verif = prod.optString("verification_status", "farmer_declared")
+
+        val card = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(12), dp(20), dp(4))
-        }
-        val etOfferPrice = EditText(ctx).apply {
-            hint = "आपका प्रस्तावित भाव (₹ प्रति $unit)"
-            inputType = InputType.TYPE_CLASS_NUMBER
-            setText(listedPrice.toString())
-        }
-        val etOfferQty = EditText(ctx).apply {
-            hint = "मात्रा ($unit में)"
-            inputType = InputType.TYPE_CLASS_NUMBER
-            setText("20")
-        }
-        box.addView(etOfferPrice)
-        box.addView(etOfferQty)
-
-        AlertDialog.Builder(ctx)
-            .setTitle("💬 भाव प्रस्ताव भेजें ($productName)")
-            .setMessage("सूचीबद्ध भाव: ₹$listedPrice / $unit")
-            .setView(box)
-            .setPositiveButton("प्रस्ताव भेजें") { _, _ ->
-                val offered = etOfferPrice.text.toString().toIntOrNull() ?: listedPrice
-                val qty = etOfferQty.text.toString().toIntOrNull() ?: 10
-                submitOfferToServer(ctx, productId, productName, listedPrice, offered, qty)
+            background = roundedBg("#FFFFFF", "#D4E2D4", dp(12))
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            val lp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            lp.topMargin = dp(10)
+            layoutParams = lp
+            setOnClickListener {
+                (activity as? MainActivity)?.openProductDetailScreen(prodId)
             }
-            .setNegativeButton("रद्द करें", null)
+        }
+
+        card.addView(
+            TextView(ctx).apply {
+                text = "$name ${if (variety.isNotBlank() && variety != "null") "($variety)" else ""}"
+                setTextColor(Color.parseColor("#124116"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+                setTypeface(typeface, Typeface.BOLD)
+            }
+        )
+        card.addView(
+            TextView(ctx).apply {
+                text = "₹$priceRupees / $unit • उपलब्ध: $stock $unit (न्यूनतम ऑर्डर: $minOrder $unit)"
+                setTextColor(Color.parseColor("#BF360C"))
+                setTypeface(typeface, Typeface.BOLD)
+                setPadding(0, dp(3), 0, dp(3))
+            }
+        )
+        card.addView(
+            TextView(ctx).apply {
+                text = "👨‍🌾 $farmerName ($district) • स्थिति: $verif"
+                setTextColor(Color.parseColor("#4A5A4A"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                setPadding(0, 0, 0, dp(8))
+            }
+        )
+        card.addView(
+            createButton("🛒 विवरण देखें / खरीदें / भाव प्रस्ताव दें", "#1B5E20") {
+                (activity as? MainActivity)?.openProductDetailScreen(prodId)
+            }
+        )
+        return card
+    }
+
+    private fun markCropAsSold(productId: String, name: String) {
+        val ctx = context ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val updates = JSONObject().apply {
+                put("status", "SOLD")
+                put("stock_quantity", 0)
+            }
+            val res = ApiClient.updateProduct(ctx, productId, updates)
+            if (res.isSuccess) {
+                Toast.makeText(ctx, "'$name' को बिक गई (SOLD) मार्क कर दिया गया।", Toast.LENGTH_SHORT).show()
+                loadProductsList()
+            } else {
+                Toast.makeText(ctx, res.errorMessage ?: "अपडेट विफल रहा।", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun confirmAndDeleteCrop(productId: String, name: String) {
+        val ctx = context ?: return
+        AlertDialog.Builder(ctx)
+            .setTitle("🗑️ फसल हटाएँ")
+            .setMessage("क्या आप वाकई '$name' को बाज़ार से हटाना चाहते हैं?")
+            .setPositiveButton("हाँ, हटाएँ") { _, _ ->
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val res = ApiClient.deleteProduct(ctx, productId)
+                    if (res.isSuccess) {
+                        Toast.makeText(ctx, "'$name' को हटा दिया गया।", Toast.LENGTH_SHORT).show()
+                        loadProductsList()
+                    } else {
+                        Toast.makeText(ctx, res.errorMessage ?: "हटाने में समस्या आई।", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+            .setNegativeButton("नहीं", null)
             .show()
     }
 
-    private fun submitOfferToServer(ctx: Context, productId: String, productName: String, listed: Int, offered: Int, qty: Int) {
-        CoroutineScope(Dispatchers.IO).launch {
-            var ok = false
-            try {
-                val url = URL("https://mera-kisan-backend.vercel.app/api/v1/offers")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.setRequestProperty("x-user-uid", "buyer_${UUID.randomUUID().toString().take(6)}")
-                conn.doOutput = true
-                val payload = JSONObject().apply {
-                    put("product_id", productId)
-                    put("product_name", productName)
-                    put("original_price_paise", listed * 100)
-                    put("offered_price_paise", offered * 100)
-                    put("quantity", qty)
-                }
-                OutputStreamWriter(conn.outputStream).use { it.write(payload.toString()) }
-                ok = conn.responseCode in 200..299
-            } catch (_: Throwable) {}
-
-            withContext(Dispatchers.Main) {
-                if (!isAdded) return@withContext
-                if (ok) {
-                    Toast.makeText(ctx, "✅ आपका प्रस्ताव (₹$offered × $qty) सर्वर पर किसान को भेज दिया गया!", Toast.LENGTH_LONG).show()
-                } else {
-                    Toast.makeText(ctx, "⚠️ सर्वर से संपर्क नहीं हो सका। कृपया इंटरनेट जांचें।", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-    }
-
-    private fun navigateSafe(vararg names: String) {
+    private fun requestCropBoost(productId: String, name: String) {
         val ctx = context ?: return
-        val pkg = ctx.packageName
-        for (n in names) {
-            val id = ctx.resources.getIdentifier(n, "id", pkg)
-            if (id != 0) {
-                try {
-                    findNavController().navigate(id)
-                    return
-                } catch (_: Throwable) {}
+        viewLifecycleOwner.lifecycleScope.launch {
+            val body = JSONObject().apply { put("product_id", productId) }
+            val res = ApiClient.request(ctx, "/crop-boost", method = "POST", bodyJson = body)
+            if (res.isSuccess) {
+                Toast.makeText(
+                    ctx,
+                    "'$name' के लिए बूस्ट अनुरोध दर्ज हो गया! सत्यापन के बाद यह शीर्ष पर दिखेगी।",
+                    Toast.LENGTH_LONG
+                ).show()
+            } else {
+                Toast.makeText(ctx, res.errorMessage ?: "बूस्ट अनुरोध विफल रहा।", Toast.LENGTH_LONG).show()
             }
         }
     }
 
-    private fun dp(value: Int): Int {
-        return TypedValue.applyDimension(
+    private fun saveCurrentSearchAlert() {
+        val ctx = context ?: return
+        val q = searchInput.text?.toString()?.trim() ?: ""
+        if (q.length < 2) {
+            Toast.makeText(ctx, "कृपया पहले खोज बॉक्स में फसल का नाम लिखें।", Toast.LENGTH_SHORT).show()
+            return
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            val body = JSONObject().apply {
+                put("query", q)
+                put("district", SessionManager.getUserDistrict(ctx))
+            }
+            val res = ApiClient.request(ctx, "/modules/saved-searches", method = "POST", bodyJson = body)
+            if (res.isSuccess) {
+                Toast.makeText(ctx, "🔔 आपकी खोज '$q' सेव हो गई! नया उत्पाद आने पर सूचना मिलेगी।", Toast.LENGTH_LONG).show()
+            } else {
+                Toast.makeText(ctx, res.errorMessage ?: "खोज सहेजने में त्रुटि।", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun createButton(label: String, bgHex: String, onClick: () -> Unit): Button =
+        Button(requireContext()).apply {
+            text = label
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, Typeface.BOLD)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            background = roundedBg(bgHex, bgHex, dp(10))
+            minHeight = dp(42)
+            setOnClickListener { onClick() }
+        }
+
+    private fun roundedBg(fillHex: String, strokeHex: String, radiusPx: Int): GradientDrawable =
+        GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = radiusPx.toFloat()
+            setColor(Color.parseColor(fillHex))
+            setStroke(dp(1), Color.parseColor(strokeHex))
+        }
+
+    private fun dp(value: Int): Int =
+        TypedValue.applyDimension(
             TypedValue.COMPLEX_UNIT_DIP,
             value.toFloat(),
             resources.displayMetrics
         ).toInt()
-    }
 }
