@@ -10,8 +10,8 @@ import org.json.JSONObject
 
 /**
  * MERA KISAN — ENCRYPTED SESSION & ROLE STATE MANAGER
- * Includes `UserSession`, `getUserSession()`, `saveSession(...)`, `email` support,
- * and `consumeLastCrashSummary()` for full ViewModel & Repository compatibility.
+ * Includes `isAuthenticated` on both `UserSession` and `SessionManager` (fixes AuthTokenProvider.kt:43)
+ * and `consumeLastCrashSummary` (fixes HomeViewModel.kt:54).
  */
 class SessionManager(private val context: Context) {
 
@@ -36,6 +36,7 @@ class SessionManager(private val context: Context) {
         val organicVerified: Boolean = false,
         val verificationStatus: String = "farmer_declared",
         val isLoggedIn: Boolean = false,
+        val isAuthenticated: Boolean = false,
         val isOnboarded: Boolean = false,
         val farmStory: String = "",
         val farmingMethod: String = ""
@@ -47,6 +48,9 @@ class SessionManager(private val context: Context) {
         val userPhone: String get() = phone
         val location: String
             get() = if (village.isNotBlank() && district.isNotBlank()) "$village, $district" else district.ifBlank { village }
+
+        // Allows `session.isAuthenticated()` function call syntax as well as `session.isAuthenticated` property syntax
+        operator fun Boolean.invoke(): Boolean = this
 
         fun isFarmer(): Boolean =
             activeMode.equals("FARMER", ignoreCase = true) || role.equals("farmer", ignoreCase = true)
@@ -181,6 +185,7 @@ class SessionManager(private val context: Context) {
 
     fun isLoggedInAndOnboarded(): Boolean = Companion.isLoggedInAndOnboarded(context)
     fun isLoggedIn(): Boolean = Companion.isLoggedInAndOnboarded(context)
+    fun isAuthenticated(): Boolean = Companion.isAuthenticated(context)
 
     fun getUserUid(): String? = Companion.getUserUid(context)
     fun getUid(): String? = Companion.getUserUid(context)
@@ -258,10 +263,19 @@ class SessionManager(private val context: Context) {
         @Volatile
         private var cachedPrefs: SharedPreferences? = null
 
+        @Volatile
+        private var appContextHolder: Context? = null
+
         @JvmStatic
-        fun getInstance(context: Context): SessionManager = SessionManager(context.applicationContext)
+        fun getInstance(context: Context): SessionManager {
+            appContextHolder = context.applicationContext
+            return SessionManager(context.applicationContext)
+        }
 
         private fun getSecurePrefs(context: Context): SharedPreferences {
+            if (appContextHolder == null) {
+                appContextHolder = context.applicationContext
+            }
             cachedPrefs?.let { return it }
             synchronized(this) {
                 cachedPrefs?.let { return it }
@@ -303,6 +317,7 @@ class SessionManager(private val context: Context) {
             val fcm = prefs.getString(KEY_FCM_TOKEN, "") ?: ""
             val verif = prefs.getString(KEY_VERIFICATION_STATUS, "farmer_declared") ?: "farmer_declared"
             val onboarded = prefs.getBoolean(KEY_ONBOARDING_DONE, false)
+            val authenticated = uid.isNotBlank() || token.isNotBlank() || phone.isNotBlank()
 
             return UserSession(
                 uid = uid,
@@ -324,7 +339,8 @@ class SessionManager(private val context: Context) {
                 isVerified = verif != "unverified" && verif != "farmer_declared",
                 organicVerified = verif == "organic_certified",
                 verificationStatus = verif,
-                isLoggedIn = uid.isNotBlank() && phone.isNotBlank(),
+                isLoggedIn = authenticated,
+                isAuthenticated = authenticated,
                 isOnboarded = onboarded
             )
         }
@@ -383,8 +399,10 @@ class SessionManager(private val context: Context) {
             getSecurePrefs(context).getString(KEY_FCM_TOKEN, null)
 
         @JvmStatic
-        fun consumeLastCrashSummary(context: Context): String? {
-            val prefs = getSecurePrefs(context)
+        @JvmOverloads
+        fun consumeLastCrashSummary(context: Context? = null): String? {
+            val ctx = context ?: appContextHolder ?: return null
+            val prefs = getSecurePrefs(ctx)
             val summary = prefs.getString(KEY_LAST_CRASH_SUMMARY, null)
             if (!summary.isNullOrBlank()) {
                 prefs.edit().remove(KEY_LAST_CRASH_SUMMARY).apply()
@@ -476,6 +494,15 @@ class SessionManager(private val context: Context) {
             val phone = prefs.getString(KEY_PHONE, null)
             val onboarded = prefs.getBoolean(KEY_ONBOARDING_DONE, false)
             return !uid.isNullOrBlank() && !phone.isNullOrBlank() && onboarded
+        }
+
+        @JvmStatic
+        fun isAuthenticated(context: Context): Boolean {
+            val prefs = getSecurePrefs(context)
+            val uid = prefs.getString(KEY_UID, null)
+            val token = prefs.getString(KEY_AUTH_TOKEN, null)
+            val phone = prefs.getString(KEY_PHONE, null)
+            return !uid.isNullOrBlank() || !token.isNullOrBlank() || !phone.isNullOrBlank()
         }
 
         @JvmStatic
