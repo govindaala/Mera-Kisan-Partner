@@ -10,7 +10,7 @@ import kotlin.math.abs
 
 /**
  * MERA KISAN — COMPLETE CENTRAL FEATURE CONTROL & REMOTE CONFIG ENGINE
- * Fixes line 410 overload ambiguity and adds `isFeatureEnabled` compatibility.
+ * Includes `consumeLastCrashSummary` for HomeViewModel.kt:54 compatibility.
  */
 object FeatureManager {
 
@@ -19,6 +19,7 @@ object FeatureManager {
     private const val KEY_PARAMS_JSON = "remote_parameters_json"
     private const val KEY_SERVICES_STATUS_JSON = "services_status_json"
     private const val KEY_LAST_SYNC_MS = "last_sync_timestamp_ms"
+    private const val KEY_LAST_CRASH_SUMMARY = "last_crash_summary"
 
     const val CURRENT_APP_VERSION = "1.3.0"
 
@@ -173,6 +174,9 @@ object FeatureManager {
     @Volatile
     private var isInitialized: Boolean = false
 
+    @Volatile
+    private var lastCrashInMemory: String? = null
+
     fun initFromLocalCache(context: Context) {
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         try {
@@ -190,6 +194,43 @@ object FeatureManager {
             memoryFlags = JSONObject()
             memoryParams = JSONObject()
             memoryServicesStatus = JSONObject()
+        }
+    }
+
+    /**
+     * Resolves `HomeViewModel.kt:54:43 Unresolved reference: consumeLastCrashSummary`
+     */
+    @JvmStatic
+    @JvmOverloads
+    fun consumeLastCrashSummary(context: Context? = null): String? {
+        val inMem = lastCrashInMemory
+        if (!inMem.isNullOrBlank()) {
+            lastCrashInMemory = null
+            return inMem
+        }
+        if (context != null) {
+            val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val saved = prefs.getString(KEY_LAST_CRASH_SUMMARY, null)
+            if (!saved.isNullOrBlank()) {
+                prefs.edit().remove(KEY_LAST_CRASH_SUMMARY).apply()
+                return saved
+            }
+            return SessionManager.consumeLastCrashSummary(context)
+        }
+        return null
+    }
+
+    @JvmStatic
+    @JvmOverloads
+    fun saveCrashSummary(summary: String, context: Context? = null) {
+        if (summary.isBlank()) return
+        lastCrashInMemory = summary.trim()
+        if (context != null) {
+            context.applicationContext
+                .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putString(KEY_LAST_CRASH_SUMMARY, summary.trim())
+                .apply()
         }
     }
 
@@ -332,9 +373,6 @@ object FeatureManager {
         }
     }
 
-    /**
-     * Primary evaluation method: (featureKey: String, context: Context? = null)
-     */
     @JvmStatic
     @JvmOverloads
     fun isEnabled(featureKey: String, context: Context? = null): Boolean {
@@ -392,17 +430,10 @@ object FeatureManager {
         return true
     }
 
-    /**
-     * Reversed parameter order overload: (context: Context?, featureKey: String)
-     * Uses positional arguments to avoid named-argument overload ambiguity.
-     */
     @JvmStatic
     fun isEnabled(appContext: Context?, flagKey: String): Boolean =
         isEnabled(flagKey, appContext)
 
-    /**
-     * Compatibility alias for `ui/product/ProductDetailFragment.kt`
-     */
     @JvmStatic
     @JvmOverloads
     fun isFeatureEnabled(featureKey: String, context: Context? = null): Boolean =
