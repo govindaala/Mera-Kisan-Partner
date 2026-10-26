@@ -10,8 +10,7 @@ import org.json.JSONObject
 
 /**
  * MERA KISAN — ENCRYPTED SESSION & ROLE STATE MANAGER
- * Includes `isAuthenticated` on both `UserSession` and `SessionManager` (fixes AuthTokenProvider.kt:43)
- * and `consumeLastCrashSummary` (fixes HomeViewModel.kt:54).
+ * Eliminates Platform declaration clash between instance and companion methods.
  */
 class SessionManager(private val context: Context) {
 
@@ -49,7 +48,6 @@ class SessionManager(private val context: Context) {
         val location: String
             get() = if (village.isNotBlank() && district.isNotBlank()) "$village, $district" else district.ifBlank { village }
 
-        // Allows `session.isAuthenticated()` function call syntax as well as `session.isAuthenticated` property syntax
         operator fun Boolean.invoke(): Boolean = this
 
         fun isFarmer(): Boolean =
@@ -180,6 +178,7 @@ class SessionManager(private val context: Context) {
     fun saveFcmToken(token: String) = Companion.saveFcmToken(context, token)
     fun getFcmToken(): String? = Companion.getFcmToken(context)
 
+    // Instance method (0 parameters)
     fun consumeLastCrashSummary(): String? = Companion.consumeLastCrashSummary(context)
     fun saveCrashSummary(summary: String) = Companion.saveCrashSummary(context, summary)
 
@@ -398,11 +397,11 @@ class SessionManager(private val context: Context) {
         fun getFcmToken(context: Context): String? =
             getSecurePrefs(context).getString(KEY_FCM_TOKEN, null)
 
+        // Static companion method (1 parameter: Context).
+        // No @JvmOverloads or default value, strictly avoiding JVM signature clash with instance method.
         @JvmStatic
-        @JvmOverloads
-        fun consumeLastCrashSummary(context: Context? = null): String? {
-            val ctx = context ?: appContextHolder ?: return null
-            val prefs = getSecurePrefs(ctx)
+        fun consumeLastCrashSummary(context: Context): String? {
+            val prefs = getSecurePrefs(context)
             val summary = prefs.getString(KEY_LAST_CRASH_SUMMARY, null)
             if (!summary.isNullOrBlank()) {
                 prefs.edit().remove(KEY_LAST_CRASH_SUMMARY).apply()
