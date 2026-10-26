@@ -3,131 +3,127 @@ package `in`.merakisan.app.ui.home
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import `in`.merakisan.app.core.config.FeatureManager
 import `in`.merakisan.app.core.network.ApiClient
-import `in`.merakisan.app.core.network.model.ProductDto
 import `in`.merakisan.app.core.security.SessionManager
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 
-sealed class HomeUiState {
-    object Loading : HomeUiState()
-
-    data class Success(
-        val userName: String = "किसान साथी",
-        val locationText: String = "मध्य प्रदेश",
-        val activeRole: String = "BUYER",
-        val activeProduceCount: Int = 0,
-        val pendingOrdersCount: Int = 0,
-        val announcementBanner: String? = null,
-        val freshProducts: List<ProductDto> = emptyList(),
-        val freshToday: List<ProductDto> = emptyList(),
-        val nearbyProducts: List<ProductDto> = emptyList(),
-        val smallQuantityProducts: List<ProductDto> = emptyList()
-    ) : HomeUiState()
-
-    data class Error(val message: String = "") : HomeUiState()
-}
-
+/**
+ * MERA KISAN — UNIFIED HOME VIEWMODEL (FARMER & BUYER MODES)
+ * Exact Repository Path: app/src/main/java/in/merakisan/app/ui/home/HomeViewModel.kt
+ *
+ * Resolves `HomeViewModel.kt:54:43 Unresolved reference: consumeLastCrashSummary`
+ * and synchronizes Home state with ApiClient, FeatureManager, and SessionManager.
+ */
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     private val appContext = application.applicationContext
-    private val apiService = ApiClient.getApiService(appContext)
     private val sessionManager = SessionManager(appContext)
+    private val apiService = ApiClient.getApiService(appContext)
 
-    private val _uiState = MutableStateFlow<HomeUiState>(HomeUiState.Loading)
-    val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+    data class HomeUiState(
+        val isLoading: Boolean = false,
+        val userName: String = "",
+        val activeRole: String = "farmer",
+        val isFarmerMode: Boolean = true,
+        val district: String = "",
+        val village: String = "",
+        val bannerText: String = "",
+        val announcementText: String = "",
+        val freshTodayProducts: JSONArray = JSONArray(),
+        val nearbyProducts: JSONArray = JSONArray(),
+        val buyerRequests: JSONArray = JSONArray(),
+        val activeProductsCount: Int = 0,
+        val pendingOrdersCount: Int = 0,
+        val lastCrashSummary: String? = null,
+        val errorMessage: String? = null
+    )
+
+    private val _uiState = MutableLiveData(HomeUiState())
+    val uiState: LiveData<HomeUiState> = _uiState
+
+    private val _lastCrashReport = MutableLiveData<String?>(null)
+    val lastCrashReport: LiveData<String?> = _lastCrashReport
 
     init {
-        loadHomeData()
+        checkDiagnosticsAndLoadHome()
     }
 
-    fun loadHomeData() {
-        _uiState.value = HomeUiState.Loading
+    fun checkDiagnosticsAndLoadHome() {
+        val crashSummary = SessionManager.consumeLastCrashSummary(appContext)
+        _lastCrashReport.value = crashSummary
+        refreshHomeDashboard()
+    }
+
+    fun refreshHomeDashboard() {
+        val session = sessionManager.getUserSession()
+        val isFarmer = sessionManager.isFarmerModeActive()
+
+        _uiState.value = (_uiState.value ?: HomeUiState()).copy(
+            isLoading = true,
+            userName = session.name,
+            activeRole = session.role,
+            isFarmerMode = isFarmer,
+            district = session.district,
+            village = session.village,
+            bannerText = FeatureManager.getHomeBannerText(),
+            announcementText = FeatureManager.getAnnouncementText(),
+            lastCrashSummary = _lastCrashReport.value,
+            errorMessage = null
+        )
 
         viewModelScope.launch {
-            val previousCrash = ApiClient.consumeLastCrashSummary(appContext)
+            FeatureManager.syncFromServer(appContext)
 
-            try {
-                // Background me remote config sync karein (bina UI block kiye)
-                withContext(Dispatchers.IO) {
-                    FeatureManager.syncRemoteConfig(appContext)
-                }
-
-                val session = try {
-                    sessionManager.getUserSession()
-                } catch (_: Throwable) {
-                    null
-                }
-
-                val response = withContext(Dispatchers.IO) {
-                    try {
-                        apiService.getProducts()
-                    } catch (_: Throwable) {
-                        null
-                    }
-                }
-
-                val rawList: List<ProductDto> = if (response != null && response.isSuccessful) {
-                    response.body()?.data ?: emptyList()
-                } else {
-                    emptyList()
-                }
-
-                val productList = rawList.mapNotNull {
-                    try {
-                        it.sanitize()
-                    } catch (_: Throwable) {
-                        null
-                    }
-                }
-
-                val fresh = productList.filter {
-                    it.verificationStatus == "farmer_declared" || it.createdAt != null
-                }.ifEmpty { productList }.take(10)
-
-                val smallQty = productList.filter {
-                    it.stockQuantity in 0.5..25.0
-                }
-
-                val userName = session?.name?.ifBlank { "किसान साथी" } ?: "किसान साथी"
-                val roleStr = session?.role?.ifBlank { "BUYER" } ?: "BUYER"
-                val activeRole = if (roleStr.equals("FARMER", ignoreCase = true)) "FARMER" else "BUYER"
-
-                _uiState.value = HomeUiState.Success(
-                    userName = userName,
-                    locationText = "मध्य प्रदेश",
-                    activeRole = activeRole,
-                    activeProduceCount = productList.size,
-                    pendingOrdersCount = 0,
-                    announcementBanner = previousCrash,
-                    freshProducts = fresh,
-                    freshToday = fresh,
-                    nearbyProducts = productList,
-                    smallQuantityProducts = smallQty
-                )
-            } catch (t: Throwable) {
-                // Network ya parsing error par bhi app crash ya freeze na ho, safe state dikhe
-                _uiState.value = HomeUiState.Success(
-                    userName = "किसान साथी",
-                    locationText = "मध्य प्रदेश",
-                    activeRole = "BUYER",
-                    announcementBanner = previousCrash ?: "ऑफ़लाइन मोड: सर्वर से डेटा सिंक हो रहा है",
-                    freshProducts = emptyList(),
-                    freshToday = emptyList(),
-                    nearbyProducts = emptyList(),
-                    smallQuantityProducts = emptyList()
-                )
+            val productsRes = if (isFarmer && session.uid.isNotBlank()) {
+                ApiClient.getProducts(appContext, farmerUid = session.uid)
+            } else {
+                ApiClient.getProducts(appContext, district = session.district.ifBlank { null })
             }
+
+            val freshRes = ApiClient.getProducts(appContext, freshTodayOnly = true)
+            val requestsRes = ApiClient.getBuyerRequests(appContext, district = session.district.ifBlank { null })
+
+            val nearbyArr = productsRes.dataArray ?: JSONArray()
+            val freshArr = freshRes.dataArray ?: JSONArray()
+            val reqArr = requestsRes.dataArray ?: JSONArray()
+
+            _uiState.postValue(
+                HomeUiState(
+                    isLoading = false,
+                    userName = session.name,
+                    activeRole = session.role,
+                    isFarmerMode = isFarmer,
+                    district = session.district,
+                    village = session.village,
+                    bannerText = FeatureManager.getHomeBannerText(),
+                    announcementText = FeatureManager.getAnnouncementText(),
+                    freshTodayProducts = freshArr,
+                    nearbyProducts = nearbyArr,
+                    buyerRequests = reqArr,
+                    activeProductsCount = nearbyArr.length(),
+                    pendingOrdersCount = 0,
+                    lastCrashSummary = _lastCrashReport.value,
+                    errorMessage = if (!productsRes.isSuccess) productsRes.errorMessage else null
+                )
+            )
         }
     }
 
-    fun loadDashboardData() {
-        loadHomeData()
+    fun switchRoleMode(targetMode: String) {
+        sessionManager.setActiveMode(targetMode)
+        viewModelScope.launch {
+            ApiClient.switchActiveRole(appContext, targetMode.lowercase())
+            refreshHomeDashboard()
+        }
+    }
+
+    fun clearCrashReportBanner() {
+        _lastCrashReport.value = null
     }
 }
