@@ -1,6 +1,7 @@
 // app/src/main/java/in/merakisan/app/ui/mandi/MandiPricesFragment.kt
 package `in`.merakisan.app.ui.mandi
 
+import android.app.DatePickerDialog
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -32,68 +33,72 @@ import `in`.merakisan.app.core.security.SessionManager
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Calendar
+import java.util.Locale
 
 /**
- * MERA KISAN — ZERO-DEFAULT LIVE GOVERNMENT MANDI, 1-2 YEAR GRAPH,
- * 2-MANDI COMPARISON & AI SELLING ADVISOR SCREEN
+ * MERA KISAN — LIVE & HISTORICAL GOVERNMENT MANDI PRICES, DATE SYNC & MULTI-POINT GRAPH
+ * Exact Repository Path: app/src/main/java/in/merakisan/app/ui/mandi/MandiPricesFragment.kt
  *
- * Rules Enforced:
- * 1. 0% Default Data in Code: States, Districts, Mandis, and Commodities are fetched live
- *    from government source (api.data.gov.in via ApiClient) and the UI waits until data arrives.
- * 2. Step-by-Step Cascading: State -> District -> Mandi & Commodity -> Live Prices.
- * 3. Range Fluctuation Graph: 7d, 30d, 90d, 180d, 1 Year (1y), and 2 Years (2y) interactive Canvas chart.
- * 4. 2-Mandi Comparison: Side-by-side comparison over selected range.
- * 5. AI Selling Advisor: Net profit calculation after transport cost based on farmer location.
- * 6. AI Spelling Matcher: Matches Hindi/Hinglish/misspelled crop or mandi names with government dataset.
+ * Fixes:
+ * 1. White-on-White Spinner dropdown text replaced with high-contrast dark green/black text (#124116 on #FFFFFF).
+ * 2. Date Picker + Full State/Mandi Sync button ("📅 तारीख चुनें" & "🔄 इस तारीख का डेटा सिंक करें").
+ * 3. Handles both String and JSONObject items for commodities/mandis so raw JSON never appears.
+ * 4. Plots every available date point in the server for 7d, 30d, 90d, 180d, 1y, 2y trends & Mandi A vs B comparison.
  */
 class MandiPricesFragment : Fragment() {
 
-    private lateinit var statusBanner: TextView
-    private lateinit var progressBar: ProgressBar
+    private var selectedIsoDate: String? = null // null = Latest available date
 
-    // Step-by-Step Cascading Spinners (0% Default Data)
+    private val statesList = mutableListOf<String>()
+    private val districtsList = mutableListOf<String>()
+    private val mandisList = mutableListOf<String>()
+    private val commoditiesList = mutableListOf<String>()
+
+    private lateinit var tvStatusBanner: TextView
+    private lateinit var btnPickDate: Button
+    private lateinit var btnSyncDateAllMandis: Button
+    private lateinit var btnClearDateFilter: Button
+
     private lateinit var spinnerState: Spinner
     private lateinit var spinnerDistrict: Spinner
     private lateinit var spinnerMandi: Spinner
     private lateinit var spinnerCommodity: Spinner
+    private lateinit var progressBar: ProgressBar
+    private lateinit var ratesListContainer: LinearLayout
 
-    private lateinit var liveRatesContainer: LinearLayout
-
-    // 1-2 Year Historical Trend Graph Controls
+    // Section 2: Multi-Date Trend Graph Controls
     private lateinit var inputTrendCommodity: EditText
     private lateinit var spinnerTrendRange: Spinner
-    private lateinit var trendSummaryText: TextView
-    private lateinit var trendCanvasView: MandiTrendCanvasView
+    private lateinit var tvTrendSummary: TextView
+    private lateinit var trendChartContainer: LinearLayout
+    private lateinit var trendDateTableContainer: LinearLayout
 
-    // Two-Mandi Comparison Controls
-    private lateinit var inputCompareMandiA: EditText
-    private lateinit var inputCompareMandiB: EditText
+    // Section 3: Two-Mandi Date-Wise Comparison Controls
+    private lateinit var inputMandiA: EditText
+    private lateinit var inputMandiB: EditText
     private lateinit var inputCompareCommodity: EditText
     private lateinit var spinnerCompareRange: Spinner
-    private lateinit var compareVerdictText: TextView
+    private lateinit var tvCompareResult: TextView
+    private lateinit var compareChartContainer: LinearLayout
+    private lateinit var compareDateTableContainer: LinearLayout
 
-    // AI Location-Based Selling Advisor Controls
+    // Section 4: AI Selling Advisor
     private lateinit var inputAdvisorState: EditText
     private lateinit var inputAdvisorDistrict: EditText
     private lateinit var inputAdvisorCommodity: EditText
-    private lateinit var inputAdvisorQtyQuintals: EditText
-    private lateinit var aiAdvisorResultText: TextView
+    private lateinit var inputAdvisorQuantity: EditText
+    private lateinit var tvAdvisorOutput: TextView
 
-    // AI Spelling Correction Box
-    private lateinit var inputSpellingQuery: EditText
-    private lateinit var spinnerSpellingType: Spinner
-    private lateinit var spellingResultText: TextView
-
-    private val discoveredStates = mutableListOf<String>()
-    private val discoveredDistricts = mutableListOf<String>()
-    private val discoveredMandis = mutableListOf<String>()
-    private val discoveredCommodities = mutableListOf<String>()
+    // Section 5: AI Spelling Matcher
+    private lateinit var inputSpellingTerm: EditText
+    private lateinit var tvSpellingResult: TextView
 
     private val rangeOptions = listOf(
         "7d" to "7 दिन (1 सप्ताह)",
         "30d" to "30 दिन (1 महीना)",
-        "90d" to "90 दिन (3 महीने)",
-        "180d" to "6 महीने (180 दिन)",
+        "90d" to "90 दिन (3 महीने — हर उपलब्ध तारीख)",
+        "180d" to "6 महीने (180 दिन — हर उपलब्ध तारीख)",
         "1y" to "1 साल (365 दिन)",
         "2y" to "2 साल (730 दिन)"
     )
@@ -111,284 +116,343 @@ class MandiPricesFragment : Fragment() {
 
         val root = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(14), dp(14), dp(30))
+            setPadding(dp(14), dp(14), dp(14), dp(32))
         }
 
-        // Header
-        val header = LinearLayout(ctx).apply {
+        // Top Title Card
+        val heroCard = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             background = roundedBg("#1B5E20", "#124116", dp(14))
-            setPadding(dp(16), dp(16), dp(16), dp(16))
+            setPadding(dp(16), dp(14), dp(16), dp(14))
         }
-        header.addView(
+        heroCard.addView(
             TextView(ctx).apply {
-                text = "📈 लाइव सरकारी मंडी भाव, 1–2 साल ग्राफ व AI सलाहकार"
+                text = "📈 लाइव सरकारी मंडी भाव, तारीख सिंक व मल्टी-डेट ग्राफ"
                 setTextColor(Color.WHITE)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
                 setTypeface(typeface, Typeface.BOLD)
             }
         )
-        header.addView(
+        heroCard.addView(
             TextView(ctx).apply {
-                text = "सीधे सरकारी सोर्स (data.gov.in) से लाइव डेटा • राज्य → ज़िला → मंडी → फसल"
-                setTextColor(Color.parseColor("#E8F5E9"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                text = "सीधे सरकारी सोर्स (api.data.gov.in) से किसी भी तारीख का मंडी डेटा सिंक करें और हर तारीख का ग्राफ देखें"
+                setTextColor(Color.parseColor("#C8E6C9"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
                 setPadding(0, dp(4), 0, 0)
             }
         )
-        root.addView(header)
+        root.addView(heroCard)
 
-        statusBanner = TextView(ctx).apply {
-            text = "⏳ सरकारी सर्वर से लाइव राज्यों की सूची मंगाई जा रही है, कृपया प्रतीक्षा करें..."
+        // Status Banner
+        tvStatusBanner = TextView(ctx).apply {
+            text = "⏳ सरकारी सर्वर से मंडी डेटा की जाँच हो रही है..."
             setTextColor(Color.parseColor("#1B5E20"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
             setTypeface(typeface, Typeface.BOLD)
             background = roundedBg("#E8F5E9", "#A5D6A7", dp(10))
             setPadding(dp(12), dp(10), dp(12), dp(10))
             val lp = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            lp.topMargin = dp(10)
+            ).apply { topMargin = dp(10) }
             layoutParams = lp
         }
-        root.addView(statusBanner)
+        root.addView(tvStatusBanner)
 
         progressBar = ProgressBar(ctx).apply {
-            visibility = View.VISIBLE
+            visibility = View.GONE
             setPadding(0, dp(8), 0, dp(8))
         }
         root.addView(progressBar)
 
         // ====================================================================
-        // SECTION 1: ZERO-DEFAULT CASCADING DROPDOWNS (State -> District -> Mandi -> Crop)
+        // CARD 0: DATE PICKER & ALL-STATE / ALL-MANDI SYNC BAR
         // ====================================================================
-        val cascadeCard = createCard("1. क्रमबद्ध मंडी व फसल चयन (100% सरकारी सोर्स से लाइव)")
+        val dateSyncCard = createSectionCard()
+        dateSyncCard.addView(createHeading("📅 तारीख अनुसार मंडी भाव व सर्वर डेटा सिंक"))
+        dateSyncCard.addView(
+            TextView(ctx).apply {
+                text = "कोई भी तारीख चुनकर उस दिन के सभी प्रदेशों और सभी मंडियों का डेटा सर्वर में सिंक करें:"
+                setTextColor(Color.parseColor("#4A5A4A"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                setPadding(0, 0, 0, dp(8))
+            }
+        )
 
-        cascadeCard.addView(createLabel("स्टेप 1 — पहले राज्य चुनें (State):"))
-        spinnerState = Spinner(ctx).apply { minimumHeight = dp(46) }
-        cascadeCard.addView(spinnerState)
-
-        cascadeCard.addView(createLabel("स्टेप 2 — उस राज्य का ज़िला चुनें (District):"))
-        spinnerDistrict = Spinner(ctx).apply {
-            minimumHeight = dp(46)
-            isEnabled = false
-        }
-        cascadeCard.addView(spinnerDistrict)
-
-        cascadeCard.addView(createLabel("स्टेप 3 — उस ज़िले की मंडी चुनें (Market):"))
-        spinnerMandi = Spinner(ctx).apply {
-            minimumHeight = dp(46)
-            isEnabled = false
-        }
-        cascadeCard.addView(spinnerMandi)
-
-        cascadeCard.addView(createLabel("स्टेप 4 — फसल चुनें (Commodity):"))
-        spinnerCommodity = Spinner(ctx).apply {
-            minimumHeight = dp(46)
-            isEnabled = false
-        }
-        cascadeCard.addView(spinnerCommodity)
-
-        val btnRowCascade = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, dp(8), 0, 0)
-        }
-        val btnReloadGovStates = createButton("🔄 राज्य री-लोड करें", "#0D47A1") {
-            loadStatesFromGovernmentSource(forceRefresh = true)
+        val dateRow = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
+        btnPickDate = createButton("📅 तारीख चुनें (आज/कोई भी दिन)", "#0D47A1") {
+            openDatePickerForMandi()
         }.apply {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
                 rightMargin = dp(6)
             }
         }
-        val btnFetchRates = createButton("🌾 ताज़ा भाव देखें", "#1B5E20") {
-            fetchFilteredMandiRates()
+
+        btnClearDateFilter = createButton("🔄 ताज़ा (Latest)", "#455A64") {
+            selectedIsoDate = null
+            btnPickDate.text = "📅 तारीख चुनें (Latest)"
+            loadStatesFromServer(forceRefresh = false)
+        }
+        dateRow.addView(btnPickDate)
+        dateRow.addView(btnClearDateFilter)
+        dateSyncCard.addView(dateRow)
+
+        btnSyncDateAllMandis = createButton(
+            "☁️ चुनी गई तारीख का पूरे देश/प्रदेश की मंडियों का डेटा सिंक करें",
+            "#BF360C"
+        ) {
+            syncSelectedDateAcrossMandis()
+        }.apply {
+            val lp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(8) }
+            layoutParams = lp
+        }
+        dateSyncCard.addView(btnSyncDateAllMandis)
+        root.addView(dateSyncCard)
+
+        // ====================================================================
+        // CARD 1: STEP-BY-STEP STATE -> DISTRICT -> MANDI -> COMMODITY
+        // ====================================================================
+        val filterCard = createSectionCard()
+        filterCard.addView(createHeading("1. क्रमबद्ध मंडी व फसल चयन (100% सरकारी सोर्स)"))
+
+        filterCard.addView(createLabel("स्टेप 1 — पहले राज्य चुनें (State):"))
+        spinnerState = createHighContrastSpinner()
+        filterCard.addView(spinnerState)
+
+        filterCard.addView(createLabel("स्टेप 2 — उस राज्य का ज़िला चुनें (District):"))
+        spinnerDistrict = createHighContrastSpinner()
+        filterCard.addView(spinnerDistrict)
+
+        filterCard.addView(createLabel("स्टेप 3 — उस ज़िले की मंडी चुनें (Market):"))
+        spinnerMandi = createHighContrastSpinner()
+        filterCard.addView(spinnerMandi)
+
+        filterCard.addView(createLabel("स्टेप 4 — फसल चुनें (Commodity):"))
+        spinnerCommodity = createHighContrastSpinner()
+        filterCard.addView(spinnerCommodity)
+
+        val actionRow = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(10), 0, 0)
+        }
+
+        val btnReloadStates = createButton("🔄 राज्य री-लोड करें", "#0D47A1") {
+            loadStatesFromServer(forceRefresh = true)
+        }.apply {
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                rightMargin = dp(6)
+            }
+        }
+
+        val btnFetchRates = createButton("🌾 मंडी भाव देखें", "#1B5E20") {
+            fetchRatesForCurrentSelection()
         }.apply {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
                 leftMargin = dp(6)
             }
         }
-        btnRowCascade.addView(btnReloadGovStates)
-        btnRowCascade.addView(btnFetchRates)
-        cascadeCard.addView(btnRowCascade)
 
-        liveRatesContainer = LinearLayout(ctx).apply {
+        actionRow.addView(btnReloadStates)
+        actionRow.addView(btnFetchRates)
+        filterCard.addView(actionRow)
+
+        ratesListContainer = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(10), 0, 0)
         }
-        cascadeCard.addView(liveRatesContainer)
-        root.addView(cascadeCard)
+        filterCard.addView(ratesListContainer)
+        root.addView(filterCard)
 
         // ====================================================================
-        // SECTION 2: 1 TO 2 YEAR HISTORICAL FLUCTUATION & INTERACTIVE GRAPH
+        // CARD 2: MULTI-DATE PRICE TREND GRAPH (EVERY AVAILABLE SERVER DATE)
         // ====================================================================
-        val graphCard = createCard("2. रेंज अनुसार फसल भाव उतार-चढ़ाव ग्राफ (7 दिन से 2 साल तक)")
-        graphCard.addView(createLabel("फसल (Commodity):"))
-        inputTrendCommodity = createInput("ऊपर से फसल चुनें या नाम लिखें...")
-        graphCard.addView(inputTrendCommodity)
+        val trendCard = createSectionCard()
+        trendCard.addView(createHeading("2. रेंज अनुसार फसल भाव उतार-चढ़ाव ग्राफ (हर उपलब्ध तारीख का डेटा)"))
 
-        graphCard.addView(createLabel("अवधि रेंज चुनें (1 साल / 2 साल आदि):"))
-        spinnerTrendRange = Spinner(ctx).apply {
-            minimumHeight = dp(46)
-            adapter = ArrayAdapter(
-                ctx,
-                android.R.layout.simple_spinner_dropdown_item,
-                rangeOptions.map { it.second }
-            )
-            setSelection(4) // Default "1 साल (365 दिन)"
-        }
-        graphCard.addView(spinnerTrendRange)
+        trendCard.addView(createLabel("फसल (Commodity):"))
+        inputTrendCommodity = createEditText("उदा. Soyabean, Wheat, Groundnut, Garlic...")
+        trendCard.addView(inputTrendCommodity)
 
-        graphCard.addView(
-            createButton("📊 उतार-चढ़ाव ग्राफ व विश्लेषण देखें", "#1B5E20") {
-                loadHistoricalTrendGraph()
+        trendCard.addView(createLabel("अवधि रेंज चुनें (7 दिन / 3 महीने / 1 साल आदि):"))
+        spinnerTrendRange = createHighContrastSpinner()
+        setSpinnerItems(spinnerTrendRange, rangeOptions.map { it.second })
+        spinnerTrendRange.setSelection(2) // Default: 90d (3 months)
+        trendCard.addView(spinnerTrendRange)
+
+        trendCard.addView(
+            createButton("📊 उतार-चढ़ाव ग्राफ व हर तारीख का विश्लेषण देखें", "#1B5E20") {
+                loadMultiPointTrendGraph()
+            }.apply {
+                val lp = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(10) }
+                layoutParams = lp
             }
         )
 
-        trendSummaryText = TextView(ctx).apply {
+        tvTrendSummary = TextView(ctx).apply {
             visibility = View.GONE
             setTextColor(Color.parseColor("#124116"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
             setPadding(0, dp(10), 0, dp(6))
         }
-        graphCard.addView(trendSummaryText)
+        trendCard.addView(tvTrendSummary)
 
-        trendCanvasView = MandiTrendCanvasView(ctx).apply {
-            visibility = View.GONE
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(210)
-            ).apply { topMargin = dp(6) }
+        trendChartContainer = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
         }
-        graphCard.addView(trendCanvasView)
-        root.addView(graphCard)
+        trendCard.addView(trendChartContainer)
+
+        trendDateTableContainer = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(8), 0, 0)
+        }
+        trendCard.addView(trendDateTableContainer)
+        root.addView(trendCard)
 
         // ====================================================================
-        // SECTION 3: TWO-MANDI COMPARISON OVER A RANGE (Mandi A vs Mandi B)
+        // CARD 3: TWO-MANDI DATE-BY-DATE COMPARISON (MANDI A VS MANDI B)
         // ====================================================================
-        val compareCard = createCard("3. दो मंडियों के भाव की रेंज अनुसार तुलना (Mandi A बनाम Mandi B)")
+        val compareCard = createSectionCard()
+        compareCard.addView(createHeading("3. दो मंडियों के भाव की तारीख-वार तुलना (Mandi A बनाम Mandi B)"))
+
         compareCard.addView(createLabel("पहली मंडी (Mandi A):"))
-        inputCompareMandiA = createInput("पहली मंडी का नाम...")
-        compareCard.addView(inputCompareMandiA)
+        inputMandiA = createEditText("उदा. Indore APMC या Mandsaur")
+        compareCard.addView(inputMandiA)
 
         compareCard.addView(createLabel("दूसरी मंडी (Mandi B):"))
-        inputCompareMandiB = createInput("दूसरी मंडी का नाम...")
-        compareCard.addView(inputCompareMandiB)
+        inputMandiB = createEditText("उदा. Sanwer APMC या Neemuch")
+        compareCard.addView(inputMandiB)
 
         compareCard.addView(createLabel("फसल का नाम (Commodity):"))
-        inputCompareCommodity = createInput("फसल का नाम...")
+        inputCompareCommodity = createEditText("उदा. Soyabean, Wheat, Garlic...")
         compareCard.addView(inputCompareCommodity)
 
-        compareCard.addView(createLabel("तुलना की रेंज:"))
-        spinnerCompareRange = Spinner(ctx).apply {
-            minimumHeight = dp(46)
-            adapter = ArrayAdapter(
-                ctx,
-                android.R.layout.simple_spinner_dropdown_item,
-                rangeOptions.map { it.second }
-            )
-            setSelection(4)
-        }
+        compareCard.addView(createLabel("तुलना की रेंज (हर उपलब्ध तारीख):"))
+        spinnerCompareRange = createHighContrastSpinner()
+        setSpinnerItems(spinnerCompareRange, rangeOptions.map { it.second })
+        spinnerCompareRange.setSelection(2) // Default: 90d (3 months)
         compareCard.addView(spinnerCompareRange)
 
         compareCard.addView(
-            createButton("⚖️ दोनों मंडियों की तुलना करें", "#0D47A1") {
-                runTwoMandiComparison()
+            createButton("⚖️ दोनों मंडियों की तारीख-वार तुलना व ग्राफ देखें", "#0D47A1") {
+                compareMandisDateByDate()
+            }.apply {
+                val lp = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(10) }
+                layoutParams = lp
             }
         )
 
-        compareVerdictText = TextView(ctx).apply {
+        tvCompareResult = TextView(ctx).apply {
             visibility = View.GONE
-            background = roundedBg("#E3F2FD", "#90CAF9", dp(10))
-            setTextColor(Color.parseColor("#0D47A1"))
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            val lp = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            lp.topMargin = dp(10)
-            layoutParams = lp
+            setTextColor(Color.parseColor("#1A241A"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            setPadding(0, dp(10), 0, dp(6))
         }
-        compareCard.addView(compareVerdictText)
+        compareCard.addView(tvCompareResult)
+
+        compareChartContainer = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        compareCard.addView(compareChartContainer)
+
+        compareDateTableContainer = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(8), 0, 0)
+        }
+        compareCard.addView(compareDateTableContainer)
         root.addView(compareCard)
 
         // ====================================================================
-        // SECTION 4: AI LOCATION-BASED SELLING ADVISOR
+        // CARD 4: AI MANDI SELLING ADVISOR
         // ====================================================================
-        val aiCard = createCard("4. 🤖 AI मंडी विक्रय सलाहकार (आपकी लोकेशन व भाड़े के अनुसार)")
-        aiCard.addView(createLabel("आपका राज्य:"))
-        inputAdvisorState = createInput("राज्य...").apply {
-            setText(SessionManager.getUserState(ctx))
+        val advisorCard = createSectionCard()
+        advisorCard.addView(createHeading("4. 🤖 AI मंडी विक्रय सलाहकार (भाड़ा घटाकर शुद्ध लाभ)"))
+
+        advisorCard.addView(createLabel("आपका राज्य:"))
+        inputAdvisorState = createEditText("Madhya Pradesh").apply {
+            setText(SessionManager.getUserState(ctx).ifBlank { "Madhya Pradesh" })
         }
-        aiCard.addView(inputAdvisorState)
+        advisorCard.addView(inputAdvisorState)
 
-        aiCard.addView(createLabel("आपका ज़िला:"))
-        inputAdvisorDistrict = createInput("आपका ज़िला...").apply {
-            setText(SessionManager.getUserDistrict(ctx))
+        advisorCard.addView(createLabel("आपका ज़िला:"))
+        inputAdvisorDistrict = createEditText("Mandsaur").apply {
+            setText(SessionManager.getUserDistrict(ctx).ifBlank { "Mandsaur" })
         }
-        aiCard.addView(inputAdvisorDistrict)
+        advisorCard.addView(inputAdvisorDistrict)
 
-        aiCard.addView(createLabel("बेचने वाली फसल:"))
-        inputAdvisorCommodity = createInput("फसल का नाम...")
-        aiCard.addView(inputAdvisorCommodity)
+        advisorCard.addView(createLabel("बेचने वाली फसल:"))
+        inputAdvisorCommodity = createEditText("उदा. Soyabean, Wheat, Garlic...")
+        advisorCard.addView(inputAdvisorCommodity)
 
-        aiCard.addView(createLabel("कुल मात्रा (क्विंटल में):"))
-        inputAdvisorQtyQuintals = createInput("उदा. 15", isNumber = true).apply {
-            setText("15")
-        }
-        aiCard.addView(inputAdvisorQtyQuintals)
+        advisorCard.addView(createLabel("कुल मात्रा (क्विंटल में):"))
+        inputAdvisorQuantity = createEditText("15", isNumber = true).apply { setText("15") }
+        advisorCard.addView(inputAdvisorQuantity)
 
-        aiCard.addView(
+        advisorCard.addView(
             createButton("🤖 AI से जानें: किस मंडी में बेचना सबसे फायदेमंद है?", "#BF360C") {
-                fetchAiLocationSellingAdvice()
+                runAiSellingAdvisor()
+            }.apply {
+                val lp = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(10) }
+                layoutParams = lp
             }
         )
 
-        aiAdvisorResultText = TextView(ctx).apply {
+        tvAdvisorOutput = TextView(ctx).apply {
             visibility = View.GONE
-            background = roundedBg("#FFF8E1", "#FFB300", dp(10))
+            background = roundedBg("#FFF8E1", "#FFE082", dp(10))
             setTextColor(Color.parseColor("#3E2723"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
             setPadding(dp(12), dp(10), dp(12), dp(10))
             val lp = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            lp.topMargin = dp(10)
+            ).apply { topMargin = dp(10) }
             layoutParams = lp
         }
-        aiCard.addView(aiAdvisorResultText)
-        root.addView(aiCard)
+        advisorCard.addView(tvAdvisorOutput)
+        root.addView(advisorCard)
 
         // ====================================================================
-        // SECTION 5: AI SPELLING CORRECTION & DATASET MATCHER
+        // CARD 5: AI SPELLING MATCHER
         // ====================================================================
-        val spellCard = createCard("5. 🔤 AI स्पेलिंग सुधारक व सरकारी डेटा सेंटर मैचर")
-        spellCard.addView(createLabel("गलत स्पेलिंग या हिंदी नाम लिखें (फसल / मंडी / ज़िला):"))
-        inputSpellingQuery = createInput("उदा. सोयाबिन, लसून, धनीया...")
-        spellCard.addView(inputSpellingQuery)
-
-        spinnerSpellingType = Spinner(ctx).apply {
-            minimumHeight = dp(46)
-            adapter = ArrayAdapter(
-                ctx,
-                android.R.layout.simple_spinner_dropdown_item,
-                listOf("commodity (फसल)", "mandi (मंडी)", "district (ज़िला)", "state (राज्य)")
-            )
-        }
-        spellCard.addView(spinnerSpellingType)
+        val spellCard = createSectionCard()
+        spellCard.addView(createHeading("5. 🔤 AI स्पेलिंग सुधारक व सरकारी डेटा सेंटर मैचर"))
+        inputSpellingTerm = createEditText("गलत स्पेलिंग या हिंदी नाम लिखें (उदा. सोयाबीन, लहसुन, मंदसौर)")
+        spellCard.addView(inputSpellingTerm)
 
         spellCard.addView(
             createButton("🔤 सरकारी स्पेलिंग से मैच करें", "#2E7D32") {
                 runSpellingMatcher()
+            }.apply {
+                val lp = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(8) }
+                layoutParams = lp
             }
         )
 
-        spellingResultText = TextView(ctx).apply {
+        tvSpellingResult = TextView(ctx).apply {
             visibility = View.GONE
             setTextColor(Color.parseColor("#1B5E20"))
+            setTypeface(typeface, Typeface.BOLD)
             setPadding(0, dp(8), 0, 0)
         }
-        spellCard.addView(spellingResultText)
+        spellCard.addView(tvSpellingResult)
         root.addView(spellCard)
+
+        setupSpinnerListeners()
 
         scroll.addView(root)
         return scroll
@@ -396,643 +460,869 @@ class MandiPricesFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        loadStatesFromGovernmentSource(forceRefresh = false)
+        // Show cached rates immediately if available so the user never waits on a blank screen
+        val cached = SessionManager.getFrequentMandiCache(requireContext())
+        if (cached != null) {
+            val cachedRates = cached.optJSONArray("rates")
+            if (cachedRates != null && cachedRates.length() > 0) {
+                renderRatesCards(cachedRates)
+            }
+        }
+        loadStatesFromServer(forceRefresh = false)
     }
 
     // ========================================================================
-    // STEP 1: LOAD LIVE STATES FROM GOVERNMENT SOURCE (Wait until response)
+    // HIGH-CONTRAST SPINNER ADAPTER (FIXES WHITE-ON-WHITE DROPDOWN TEXT)
     // ========================================================================
-    private fun loadStatesFromGovernmentSource(forceRefresh: Boolean) {
-        val ctx = context ?: return
-        progressBar.visibility = View.VISIBLE
-        statusBanner.text = "⏳ सरकारी सर्वर (api.data.gov.in) से लाइव राज्यों की सूची आ रही है, कृपया प्रतीक्षा करें..."
 
-        spinnerState.adapter = ArrayAdapter(
+    private fun createHighContrastSpinner(): Spinner {
+        val ctx = requireContext()
+        return Spinner(ctx, Spinner.MODE_DROPDOWN).apply {
+            minimumHeight = dp(48)
+            background = roundedBg("#FAFAFA", "#81C784", dp(8))
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+        }
+    }
+
+    private fun setSpinnerItems(spinner: Spinner, items: List<String>) {
+        val ctx = context ?: return
+        val adapter = object : ArrayAdapter<String>(ctx, android.R.layout.simple_spinner_item, items) {
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val tv = (super.getView(position, convertView, parent) as? TextView) ?: TextView(ctx)
+                tv.text = getItem(position) ?: ""
+                tv.setTextColor(Color.parseColor("#124116"))
+                tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                tv.setTypeface(tv.typeface, Typeface.BOLD)
+                tv.setPadding(dp(10), dp(10), dp(10), dp(10))
+                return tv
+            }
+
+            override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val tv = (super.getDropDownView(position, convertView, parent) as? TextView) ?: TextView(ctx)
+                tv.text = getItem(position) ?: ""
+                tv.setBackgroundColor(Color.WHITE)
+                tv.setTextColor(Color.parseColor("#1A241A"))
+                tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                tv.setTypeface(null, if (position == 0) Typeface.BOLD else Typeface.NORMAL)
+                tv.setPadding(dp(16), dp(14), dp(16), dp(14))
+                return tv
+            }
+        }
+        spinner.adapter = adapter
+    }
+
+    private fun setupSpinnerListeners() {
+        spinnerState.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                if (position <= 0 || position > statesList.size) return
+                val chosenState = statesList[position - 1]
+                inputAdvisorState.setText(chosenState)
+                loadDistrictsForState(chosenState)
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+
+        spinnerDistrict.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                if (position <= 0 || position > districtsList.size) return
+                val chosenDistrict = districtsList[position - 1]
+                val chosenState = statesList.getOrNull(spinnerState.selectedItemPosition - 1)
+                inputAdvisorDistrict.setText(chosenDistrict)
+                loadMandisAndCommoditiesForDistrict(chosenState, chosenDistrict)
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+
+        spinnerCommodity.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                if (position <= 0 || position > commoditiesList.size) return
+                val cleanComm = commoditiesList[position - 1]
+                inputTrendCommodity.setText(cleanComm)
+                inputCompareCommodity.setText(cleanComm)
+                inputAdvisorCommodity.setText(cleanComm)
+                fetchRatesForCurrentSelection()
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+    }
+
+    // ========================================================================
+    // DATE PICKER & DATE-BASED FULL MANDI SYNC
+    // ========================================================================
+
+    private fun openDatePickerForMandi() {
+        val ctx = context ?: return
+        val cal = Calendar.getInstance()
+        DatePickerDialog(
             ctx,
-            android.R.layout.simple_spinner_dropdown_item,
-            listOf("⏳ सरकारी सर्वर से राज्य लोड हो रहे हैं...")
-        )
-        spinnerDistrict.isEnabled = false
-        spinnerMandi.isEnabled = false
-        spinnerCommodity.isEnabled = false
+            { _, year, monthOfYear, dayOfMonth ->
+                val iso = String.format(Locale.US, "%04d-%02d-%02d", year, monthOfYear + 1, dayOfMonth)
+                val dmy = String.format(Locale.US, "%02d/%02d/%04d", dayOfMonth, monthOfYear + 1, year)
+                selectedIsoDate = iso
+                btnPickDate.text = "📅 तारीख: $dmy"
+                tvStatusBanner.text = "📅 चुनी गई तारीख: $dmy ($iso) — राज्यों व मंडियों का डेटा लोड हो रहा है..."
+                loadStatesFromServer(forceRefresh = true)
+            },
+            cal.get(Calendar.YEAR),
+            cal.get(Calendar.MONTH),
+            cal.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
+
+    private fun syncSelectedDateAcrossMandis() {
+        val ctx = context ?: return
+        val dateToSync = selectedIsoDate ?: Calendar.getInstance().let {
+            String.format(
+                Locale.US,
+                "%04d-%02d-%02d",
+                it.get(Calendar.YEAR),
+                it.get(Calendar.MONTH) + 1,
+                it.get(Calendar.DAY_OF_MONTH)
+            )
+        }
+        val stateFilter = statesList.getOrNull(spinnerState.selectedItemPosition - 1)
+
+        progressBar.visibility = View.VISIBLE
+        tvStatusBanner.text = "☁️ तारीख $dateToSync के लिए सभी राज्यों और मंडियों का डेटा सरकारी सर्वर से सिंक हो रहा है..."
 
         viewLifecycleOwner.lifecycleScope.launch {
-            val res = ApiClient.getMandiStates(ctx, forceRefresh = forceRefresh)
+            val body = JSONObject().apply {
+                put("date", dateToSync)
+                if (!stateFilter.isNullOrBlank()) put("state", stateFilter)
+            }
+            val res = ApiClient.request(ctx, "/mandi-prices/sync-date", method = "POST", bodyJson = body)
             if (!isAdded) return@launch
             progressBar.visibility = View.GONE
 
-            val statesArr = res.dataObject?.optJSONArray("states")
-            if (!res.isSuccess || statesArr == null || statesArr.length() == 0) {
-                statusBanner.text = "⚠️ सरकारी सर्वर से राज्य लोड करने में देरी: ${res.errorMessage ?: "कृपया 'राज्य री-लोड करें' दबाएँ"}"
-                return@launch
-            }
-
-            discoveredStates.clear()
-            val displayLabels = mutableListOf("-- 1. अपना राज्य चुनें (${statesArr.length()} राज्य लाइव) --")
-            for (i in 0 until statesArr.length()) {
-                val obj = statesArr.optJSONObject(i) ?: continue
-                val stName = obj.optString("state", "").trim()
-                val distCount = obj.optInt("active_districts_count", 0)
-                if (stName.isNotEmpty()) {
-                    discoveredStates.add(stName)
-                    displayLabels.add("$stName ($distCount ज़िले)")
-                }
-            }
-
-            spinnerState.adapter = ArrayAdapter(
-                ctx,
-                android.R.layout.simple_spinner_dropdown_item,
-                displayLabels
-            )
-
-            statusBanner.text = "✅ सरकारी सर्वर से ${discoveredStates.size} राज्यों का लाइव डेटा आ गया। कृपया अब अपना राज्य चुनें।"
-
-            spinnerState.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                    if (position > 0 && position <= discoveredStates.size) {
-                        val selectedState = discoveredStates[position - 1]
-                        inputAdvisorState.setText(selectedState)
-                        loadDistrictsForSelectedState(selectedState)
-                    }
-                }
-                override fun onNothingSelected(parent: AdapterView<*>?) {}
+            if (res.isSuccess && res.dataObject != null) {
+                val d = res.dataObject
+                val savedCount = d.optInt("total_records_saved", 0)
+                val statesCov = d.optInt("states_covered", 0)
+                val mandisCov = d.optInt("mandis_covered", 0)
+                tvStatusBanner.text = "✅ तारीख $dateToSync सिंक पूर्ण: $statesCov राज्यों की $mandisCov मंडियों के $savedCount भाव सर्वर में सेव हो गए!"
+                loadStatesFromServer(forceRefresh = true)
+            } else {
+                tvStatusBanner.text = "⚠️ सिंक संदेश: ${res.errorMessage ?: "उस तारीख का डेटा अभी सरकारी पोर्टल पर अपलोड नहीं हुआ है।"}"
             }
         }
     }
 
     // ========================================================================
-    // STEP 2: ON STATE SELECT -> LOAD ALL DISTRICTS OF THAT STATE
+    // STEP 1..4 HIERARCHICAL MANDI LOADING
     // ========================================================================
-    private fun loadDistrictsForSelectedState(stateName: String) {
+
+    private fun loadStatesFromServer(forceRefresh: Boolean) {
         val ctx = context ?: return
         progressBar.visibility = View.VISIBLE
-        statusBanner.text = "⏳ '$stateName' राज्य के सभी ज़िलों की सूची सरकारी सर्वर से लोड हो रही है..."
-
-        spinnerDistrict.isEnabled = false
-        spinnerMandi.isEnabled = false
-        spinnerCommodity.isEnabled = false
-        spinnerDistrict.adapter = ArrayAdapter(
-            ctx,
-            android.R.layout.simple_spinner_dropdown_item,
-            listOf("⏳ $stateName के ज़िले आ रहे हैं...")
-        )
 
         viewLifecycleOwner.lifecycleScope.launch {
-            val res = ApiClient.getMandiDistricts(ctx, state = stateName, forceRefresh = false)
-            if (!isAdded) return@launch
-            progressBar.visibility = View.GONE
-
-            val distArr = res.dataObject?.optJSONArray("districts")
-            if (!res.isSuccess || distArr == null || distArr.length() == 0) {
-                statusBanner.text = "⚠️ '$stateName' के ज़िले लोड करने में समस्या: ${res.errorMessage ?: "पुनः प्रयास करें"}"
-                return@launch
-            }
-
-            discoveredDistricts.clear()
-            val displayLabels = mutableListOf("-- 2. ज़िला चुनें (${distArr.length()} ज़िले उपलब्ध) --")
-            for (i in 0 until distArr.length()) {
-                val dObj = distArr.optJSONObject(i) ?: continue
-                val dName = dObj.optString("district", "").trim()
-                val mCount = dObj.optInt("mandis_count", 0)
-                if (dName.isNotEmpty()) {
-                    discoveredDistricts.add(dName)
-                    displayLabels.add("$dName ($mCount मंडियाँ)")
-                }
-            }
-
-            spinnerDistrict.adapter = ArrayAdapter(
-                ctx,
-                android.R.layout.simple_spinner_dropdown_item,
-                displayLabels
+            val res = ApiClient.request(
+                context = ctx,
+                endpointPath = "/mandi-prices/states",
+                method = "GET",
+                queryParams = mapOf(
+                    "date" to selectedIsoDate,
+                    "refresh" to if (forceRefresh) "true" else null
+                )
             )
-            spinnerDistrict.isEnabled = true
-            statusBanner.text = "✅ '$stateName' के ${discoveredDistricts.size} ज़िले लोड हो गए। अब अपना ज़िला चुनें।"
-
-            spinnerDistrict.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                    if (position > 0 && position <= discoveredDistricts.size) {
-                        val selectedDistrict = discoveredDistricts[position - 1]
-                        inputAdvisorDistrict.setText(selectedDistrict)
-                        loadMandisAndCommoditiesForSelectedDistrict(stateName, selectedDistrict)
-                    }
-                }
-                override fun onNothingSelected(parent: AdapterView<*>?) {}
-            }
-        }
-    }
-
-    // ========================================================================
-    // STEP 3: ON DISTRICT SELECT -> LOAD ALL MANDIS, CROPS & LIVE RATES
-    // ========================================================================
-    private fun loadMandisAndCommoditiesForSelectedDistrict(stateName: String, districtName: String) {
-        val ctx = context ?: return
-        progressBar.visibility = View.VISIBLE
-        statusBanner.text = "⏳ '$districtName' ज़िले की सभी मंडियाँ, फसलें और ताज़ा भाव लोड हो रहे हैं..."
-
-        spinnerMandi.isEnabled = false
-        spinnerCommodity.isEnabled = false
-
-        viewLifecycleOwner.lifecycleScope.launch {
-            val res = ApiClient.getMandisAndCommoditiesByDistrict(ctx, stateName, districtName)
             if (!isAdded) return@launch
             progressBar.visibility = View.GONE
 
             val data = res.dataObject
-            if (!res.isSuccess || data == null) {
-                statusBanner.text = "⚠️ '$districtName' की मंडियाँ लोड करने में समस्या: ${res.errorMessage ?: ""}"
-                return@launch
-            }
+            val arr = data?.optJSONArray("states") ?: JSONArray()
+            statesList.clear()
+            val displayLabels = mutableListOf("स्टेप 1 — पहले राज्य चुनें (${arr.length()} राज्य उपलब्ध)")
 
-            val mandisArr = data.optJSONArray("mandis") ?: JSONArray()
-            val commsArr = data.optJSONArray("commodities") ?: JSONArray()
-            val ratesArr = data.optJSONArray("rates") ?: JSONArray()
-
-            discoveredMandis.clear()
-            val mandiLabels = mutableListOf("सभी मंडियाँ (${mandisArr.length()})")
-            for (i in 0 until mandisArr.length()) {
-                val mObj = mandisArr.optJSONObject(i) ?: continue
-                val mName = mObj.optString("mandi", "").trim()
-                val recCount = mObj.optInt("records_count", 0)
-                if (mName.isNotEmpty()) {
-                    discoveredMandis.add(mName)
-                    mandiLabels.add("$mName ($recCount भाव)")
-                }
-            }
-
-            discoveredCommodities.clear()
-            val commLabels = mutableListOf("सभी फसलें (${commsArr.length()})")
-            for (i in 0 until commsArr.length()) {
-                val cName = commsArr.optString(i, "").trim()
-                if (cName.isNotEmpty()) {
-                    discoveredCommodities.add(cName)
-                    commLabels.add(cName)
-                }
-            }
-
-            spinnerMandi.adapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item, mandiLabels)
-            spinnerCommodity.adapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item, commLabels)
-            spinnerMandi.isEnabled = true
-            spinnerCommodity.isEnabled = true
-
-            // ग्राफ, तुलना और AI सलाहकार के इनपुट्स में सुविधा के लिए पहली वास्तविक मंडी व फसल भरें
-            if (discoveredCommodities.isNotEmpty()) {
-                val firstCrop = discoveredCommodities[0]
-                inputTrendCommodity.setText(firstCrop)
-                inputCompareCommodity.setText(firstCrop)
-                inputAdvisorCommodity.setText(firstCrop)
-            }
-            if (discoveredMandis.size >= 2) {
-                inputCompareMandiA.setText(discoveredMandis[0])
-                inputCompareMandiB.setText(discoveredMandis[1])
-            } else if (discoveredMandis.size == 1) {
-                inputCompareMandiA.setText(discoveredMandis[0])
-            }
-
-            spinnerMandi.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                    if (position > 0) fetchFilteredMandiRates()
-                }
-                override fun onNothingSelected(parent: AdapterView<*>?) {}
-            }
-
-            spinnerCommodity.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                    if (position > 0 && position <= discoveredCommodities.size) {
-                        val chosenCrop = discoveredCommodities[position - 1]
-                        inputTrendCommodity.setText(chosenCrop)
-                        inputCompareCommodity.setText(chosenCrop)
-                        inputAdvisorCommodity.setText(chosenCrop)
-                        fetchFilteredMandiRates()
+            for (i in 0 until arr.length()) {
+                val item = arr.opt(i)
+                when (item) {
+                    is JSONObject -> {
+                        val stName = item.optString("state", item.optString("name", "")).trim()
+                        val dCount = item.optInt("districts_count", item.optInt("district_count", 0))
+                        if (stName.isNotBlank()) {
+                            statesList.add(stName)
+                            displayLabels.add(if (dCount > 0) "$stName ($dCount ज़िले)" else stName)
+                        }
+                    }
+                    is String -> {
+                        if (item.isNotBlank()) {
+                            statesList.add(item)
+                            displayLabels.add(item)
+                        }
                     }
                 }
-                override fun onNothingSelected(parent: AdapterView<*>?) {}
             }
 
-            statusBanner.text = "✅ '$districtName' की ${discoveredMandis.size} मंडियाँ, ${discoveredCommodities.size} फसलें और ${ratesArr.length()} लाइव भाव प्राप्त हुए।"
-            SessionManager.saveFrequentMandiCache(ctx, stateName, districtName, ratesArr)
-            renderLiveMandiRatesList(ratesArr)
+            setSpinnerItems(spinnerState, displayLabels)
+            setSpinnerItems(spinnerDistrict, listOf("स्टेप 2 — पहले ऊपर राज्य चुनें"))
+            setSpinnerItems(spinnerMandi, listOf("स्टेप 3 — पहले ज़िला चुनें"))
+            setSpinnerItems(spinnerCommodity, listOf("स्टेप 4 — पहले ज़िला चुनें"))
+
+            val effDate = data?.optString("selected_date", selectedIsoDate ?: "Latest") ?: "Latest"
+            tvStatusBanner.text = if (statesList.isNotEmpty()) {
+                "✅ सरकारी सर्वर से ${statesList.size} राज्यों का डेटा (तारीख: $effDate) आ गया। अब अपना राज्य चुनें।"
+            } else {
+                "⚠️ चयनित तारीख ($effDate) पर अभी कोई राज्य सूचीबद्ध नहीं मिला। कृपया दूसरी तारीख चुनें या री-लोड करें।"
+            }
         }
     }
 
-    private fun fetchFilteredMandiRates() {
+    private fun loadDistrictsForState(stateName: String) {
         val ctx = context ?: return
-        val stateIdx = spinnerState.selectedItemPosition
-        val distIdx = spinnerDistrict.selectedItemPosition
-        val mandiIdx = spinnerMandi.selectedItemPosition
-        val commIdx = spinnerCommodity.selectedItemPosition
-
-        val stateVal = if (stateIdx > 0 && stateIdx <= discoveredStates.size) discoveredStates[stateIdx - 1] else null
-        val distVal = if (distIdx > 0 && distIdx <= discoveredDistricts.size) discoveredDistricts[distIdx - 1] else null
-        val mandiVal = if (mandiIdx > 0 && mandiIdx <= discoveredMandis.size) discoveredMandis[mandiIdx - 1] else null
-        val commVal = if (commIdx > 0 && commIdx <= discoveredCommodities.size) discoveredCommodities[commIdx - 1] else null
-
         progressBar.visibility = View.VISIBLE
+        tvStatusBanner.text = "⏳ '$stateName' राज्य के सभी ज़िलों की सूची लोड हो रही है..."
+
         viewLifecycleOwner.lifecycleScope.launch {
-            val res = ApiClient.getLiveMandiRates(
+            val res = ApiClient.request(
                 context = ctx,
-                state = stateVal,
-                district = distVal,
-                mandi = mandiVal,
-                commodity = commVal,
-                limit = 150
+                endpointPath = "/mandi-prices/districts",
+                method = "GET",
+                queryParams = mapOf(
+                    "state" to stateName,
+                    "date" to selectedIsoDate
+                )
             )
             if (!isAdded) return@launch
             progressBar.visibility = View.GONE
 
-            val ratesArr = res.dataObject?.optJSONArray("rates") ?: JSONArray()
-            renderLiveMandiRatesList(ratesArr)
+            val arr = res.dataObject?.optJSONArray("districts") ?: JSONArray()
+            districtsList.clear()
+            val displayLabels = mutableListOf("स्टेप 2 — ज़िला चुनें (${arr.length()} ज़िले उपलब्ध)")
+
+            for (i in 0 until arr.length()) {
+                val item = arr.opt(i)
+                when (item) {
+                    is JSONObject -> {
+                        val dName = item.optString("district", item.optString("name", "")).trim()
+                        val mCount = item.optInt("mandis_count", item.optInt("mandi_count", 0))
+                        if (dName.isNotBlank()) {
+                            districtsList.add(dName)
+                            displayLabels.add(if (mCount > 0) "$dName ($mCount मंडियाँ)" else dName)
+                        }
+                    }
+                    is String -> {
+                        if (item.isNotBlank()) {
+                            districtsList.add(item)
+                            displayLabels.add(item)
+                        }
+                    }
+                }
+            }
+
+            setSpinnerItems(spinnerDistrict, displayLabels)
+            tvStatusBanner.text = "✅ '$stateName' के ${districtsList.size} ज़िले लोड हो गए। अब अपना ज़िला चुनें।"
         }
     }
 
-    private fun renderLiveMandiRatesList(ratesArr: JSONArray) {
+    private fun loadMandisAndCommoditiesForDistrict(stateName: String?, districtName: String) {
         val ctx = context ?: return
-        liveRatesContainer.removeAllViews()
+        progressBar.visibility = View.VISIBLE
+        tvStatusBanner.text = "⏳ '$districtName' ज़िले की सभी मंडियाँ, फसलें और भाव लोड हो रहे हैं..."
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            val res = ApiClient.request(
+                context = ctx,
+                endpointPath = "/mandi-prices/mandis",
+                method = "GET",
+                queryParams = mapOf(
+                    "state" to stateName,
+                    "district" to districtName,
+                    "date" to selectedIsoDate
+                )
+            )
+            if (!isAdded) return@launch
+            progressBar.visibility = View.GONE
+
+            val data = res.dataObject
+            val mandisArr = data?.optJSONArray("mandis") ?: JSONArray()
+            val commArr = data?.optJSONArray("commodities") ?: JSONArray()
+            val ratesArr = data?.optJSONArray("rates") ?: JSONArray()
+
+            mandisList.clear()
+            val mandiLabels = mutableListOf("सभी मंडियाँ (${mandisArr.length()})")
+            for (i in 0 until mandisArr.length()) {
+                val item = mandisArr.opt(i)
+                val mName = when (item) {
+                    is JSONObject -> item.optString("mandi", item.optString("market", item.optString("name", ""))).trim()
+                    is String -> extractCleanNameIfJson(item, "mandi")
+                    else -> ""
+                }
+                if (mName.isNotBlank()) {
+                    mandisList.add(mName)
+                    mandiLabels.add(mName)
+                }
+            }
+
+            commoditiesList.clear()
+            val commLabels = mutableListOf("सभी फसलें (${commArr.length()})")
+            for (i in 0 until commArr.length()) {
+                val item = commArr.opt(i)
+                val cName = when (item) {
+                    is JSONObject -> item.optString("commodity", item.optString("name", "")).trim()
+                    is String -> extractCleanNameIfJson(item, "commodity")
+                    else -> ""
+                }
+                if (cName.isNotBlank()) {
+                    commoditiesList.add(cName)
+                    commLabels.add(cName)
+                }
+            }
+
+            setSpinnerItems(spinnerMandi, mandiLabels)
+            setSpinnerItems(spinnerCommodity, commLabels)
+
+            if (mandisList.size >= 2) {
+                inputMandiA.setText(mandisList[0])
+                inputMandiB.setText(mandisList[1])
+            } else if (mandisList.size == 1) {
+                inputMandiA.setText(mandisList[0])
+            }
+            if (commoditiesList.isNotEmpty()) {
+                inputTrendCommodity.setText(commoditiesList[0])
+                inputCompareCommodity.setText(commoditiesList[0])
+                inputAdvisorCommodity.setText(commoditiesList[0])
+            }
+
+            tvStatusBanner.text = "✅ '$districtName' की ${mandisList.size} मंडियाँ, ${commoditiesList.size} फसलें और ${ratesArr.length()} भाव प्राप्त हुए।"
+
+            if (ratesArr.length() > 0) {
+                SessionManager.saveFrequentMandiCache(ctx, stateName ?: "", districtName, ratesArr)
+                renderRatesCards(ratesArr)
+            } else {
+                fetchRatesForCurrentSelection()
+            }
+        }
+    }
+
+    private fun fetchRatesForCurrentSelection() {
+        val ctx = context ?: return
+        val stateName = statesList.getOrNull(spinnerState.selectedItemPosition - 1)
+        val districtName = districtsList.getOrNull(spinnerDistrict.selectedItemPosition - 1)
+        val mandiName = mandisList.getOrNull(spinnerMandi.selectedItemPosition - 1)
+        val commodityName = commoditiesList.getOrNull(spinnerCommodity.selectedItemPosition - 1)
+
+        progressBar.visibility = View.VISIBLE
+        viewLifecycleOwner.lifecycleScope.launch {
+            val res = ApiClient.request(
+                context = ctx,
+                endpointPath = "/mandi-prices",
+                method = "GET",
+                queryParams = mapOf(
+                    "state" to stateName,
+                    "district" to districtName,
+                    "mandi" to mandiName,
+                    "commodity" to commodityName,
+                    "date" to selectedIsoDate,
+                    "limit" to "250"
+                )
+            )
+            if (!isAdded) return@launch
+            progressBar.visibility = View.GONE
+
+            val ratesArr = res.dataObject?.optJSONArray("rates")
+                ?: res.dataArray
+                ?: JSONArray()
+            renderRatesCards(ratesArr)
+        }
+    }
+
+    private fun renderRatesCards(ratesArr: JSONArray) {
+        val ctx = context ?: return
+        ratesListContainer.removeAllViews()
 
         if (ratesArr.length() == 0) {
-            liveRatesContainer.addView(
+            ratesListContainer.addView(
                 TextView(ctx).apply {
-                    text = "चयनित फ़िल्टर के लिए अभी सरकारी सर्वर पर कोई रिकॉर्ड नहीं मिला।"
-                    setTextColor(Color.parseColor("#666666"))
-                    setPadding(0, dp(8), 0, dp(8))
+                    text = "चयनित फ़िल्टर या तारीख के लिए कोई रिकॉर्ड नहीं मिला। ऊपर '☁️ डेटा सिंक करें' दबाएँ या दूसरी तारीख चुनें।"
+                    setTextColor(Color.parseColor("#555555"))
+                    setPadding(dp(8), dp(12), dp(8), dp(12))
                 }
             )
             return
         }
 
-        for (i in 0 until ratesArr.length()) {
+        val countToRender = minOf(ratesArr.length(), 80)
+        for (i in 0 until countToRender) {
             val r = ratesArr.optJSONObject(i) ?: continue
-            val mandi = r.optString("mandi", "—")
-            val district = r.optString("district", "")
-            val state = r.optString("state", "")
-            val comm = r.optString("commodity", "—")
+            val comm = r.optString("commodity", "फसल")
             val variety = r.optString("variety", "")
-            val arrivalDate = r.optString("arrival_date", "—")
-            val minQ = r.optInt("min_price_quintal", 0)
-            val maxQ = r.optInt("max_price_quintal", 0)
-            val modalQ = r.optInt("modal_price_quintal", 0)
-            val modalKg = r.optDouble("modal_price_kg", modalQ / 100.0)
+            val market = r.optString("market", r.optString("mandi", ""))
+            val dist = r.optString("district", "")
+            val state = r.optString("state", "")
+            val arrivalDate = r.optString("arrival_date", r.optString("iso_date", ""))
+            val minP = r.optInt("min_price", 0)
+            val maxP = r.optInt("max_price", 0)
+            val modalP = r.optInt("modal_price", 0)
+            val perKg = String.format(Locale.US, "%.1f", modalP / 100.0)
 
-            val itemCard = LinearLayout(ctx).apply {
+            val card = LinearLayout(ctx).apply {
                 orientation = LinearLayout.VERTICAL
-                background = roundedBg("#FAFAFA", "#C8E6C9", dp(10))
+                background = roundedBg("#FFFFFF", "#C8E6C9", dp(10))
                 setPadding(dp(12), dp(10), dp(12), dp(10))
                 val lp = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-                lp.topMargin = dp(8)
+                ).apply { topMargin = dp(8) }
                 layoutParams = lp
             }
 
-            itemCard.addView(
+            card.addView(
                 TextView(ctx).apply {
                     text = "🌾 $comm ${if (variety.isNotBlank() && variety != "null") "($variety)" else ""}"
-                    setTextColor(Color.parseColor("#1B5E20"))
+                    setTextColor(Color.parseColor("#124116"))
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
                     setTypeface(typeface, Typeface.BOLD)
                 }
             )
-            itemCard.addView(
+            card.addView(
                 TextView(ctx).apply {
-                    text = "🏛️ मंडी: $mandi ($district, $state) • 📅 आवक: $arrivalDate"
+                    text = "🏛️ मंडी: $market ($dist, $state) • 📅 आवक: $arrivalDate"
                     setTextColor(Color.parseColor("#4A5A4A"))
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
                     setPadding(0, dp(2), 0, dp(4))
                 }
             )
-            itemCard.addView(
+            card.addView(
                 TextView(ctx).apply {
-                    text = "💰 मॉडल भाव: ₹$modalQ/क्विंटल (₹$modalKg/kg)\n📊 रेंज: न्यूनतम ₹$minQ  |  अधिकतम ₹$maxQ प्रति क्विंटल"
+                    text = "💰 मॉडल भाव: ₹$modalP/क्विंटल (₹$perKg/kg)\n📊 रेंज: न्यूनतम ₹$minP | अधिकतम ₹$maxP प्रति क्विंटल"
                     setTextColor(Color.parseColor("#BF360C"))
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
                     setTypeface(typeface, Typeface.BOLD)
                 }
             )
 
-            liveRatesContainer.addView(itemCard)
+            ratesListContainer.addView(card)
         }
     }
 
     // ========================================================================
-    // SECTION 2 LOGIC: 1-2 YEAR HISTORICAL FLUCTUATION GRAPH
+    // SECTION 2: MULTI-POINT TIME-SERIES GRAPH (ALL AVAILABLE SERVER DATES)
     // ========================================================================
-    private fun loadHistoricalTrendGraph() {
+
+    private fun loadMultiPointTrendGraph() {
         val ctx = context ?: return
-        val comm = inputTrendCommodity.text?.toString()?.trim() ?: ""
-        if (comm.isBlank()) {
+        val rawComm = inputTrendCommodity.text?.toString()?.trim() ?: ""
+        val cleanComm = extractCleanNameIfJson(rawComm, "commodity")
+        if (cleanComm.isBlank()) {
             Toast.makeText(ctx, "कृपया ग्राफ देखने के लिए फसल का नाम चुनें या लिखें।", Toast.LENGTH_SHORT).show()
             return
         }
+        inputTrendCommodity.setText(cleanComm)
 
-        val stateIdx = spinnerState.selectedItemPosition
-        val distIdx = spinnerDistrict.selectedItemPosition
-        val mandiIdx = spinnerMandi.selectedItemPosition
-
-        val stateVal = if (stateIdx > 0 && stateIdx <= discoveredStates.size) discoveredStates[stateIdx - 1] else null
-        val distVal = if (distIdx > 0 && distIdx <= discoveredDistricts.size) discoveredDistricts[distIdx - 1] else null
-        val mandiVal = if (mandiIdx > 0 && mandiIdx <= discoveredMandis.size) discoveredMandis[mandiIdx - 1] else null
-        val rangeCode = rangeOptions.getOrNull(spinnerTrendRange.selectedItemPosition)?.first ?: "1y"
+        val rangeCode = rangeOptions.getOrNull(spinnerTrendRange.selectedItemPosition)?.first ?: "90d"
+        val stateName = statesList.getOrNull(spinnerState.selectedItemPosition - 1)
+        val districtName = districtsList.getOrNull(spinnerDistrict.selectedItemPosition - 1)
+        val mandiName = mandisList.getOrNull(spinnerMandi.selectedItemPosition - 1)
 
         progressBar.visibility = View.VISIBLE
+        trendChartContainer.removeAllViews()
+        trendDateTableContainer.removeAllViews()
+
         viewLifecycleOwner.lifecycleScope.launch {
-            val res = ApiClient.getMandiPriceTrends(
+            val res = ApiClient.request(
                 context = ctx,
-                state = stateVal,
-                district = distVal,
-                mandi = mandiVal,
-                commodity = comm,
-                range = rangeCode
+                endpointPath = "/mandi-prices/trends",
+                method = "GET",
+                queryParams = mapOf(
+                    "state" to stateName,
+                    "district" to districtName,
+                    "mandi" to mandiName,
+                    "commodity" to cleanComm,
+                    "range" to rangeCode
+                )
             )
             if (!isAdded) return@launch
             progressBar.visibility = View.GONE
 
-            val data = res.dataObject
-            if (!res.isSuccess || data == null) {
-                Toast.makeText(ctx, res.errorMessage ?: "ग्राफ डेटा लोड करने में समस्या आई।", Toast.LENGTH_LONG).show()
+            val d = res.dataObject
+            val pointsArr = d?.optJSONArray("points")
+                ?: d?.optJSONArray("trend_points")
+                ?: JSONArray()
+
+            if (pointsArr.length() == 0) {
+                tvTrendSummary.visibility = View.VISIBLE
+                tvTrendSummary.text = "⚠️ '$cleanComm' के लिए इस रेंज में अभी कोई तारीख डेटा उपलब्ध नहीं है। कृपया ऊपर तारीख चुनकर सिंक करें।"
                 return@launch
             }
 
-            val summary = data.optJSONObject("summary")
-            val avgModal = summary?.optInt("average_modal_quintal", 0) ?: 0
-            val changePct = summary?.optDouble("price_change_percent", 0.0) ?: 0.0
-            val direction = summary?.optString("trend_direction", "STABLE") ?: "STABLE"
-            val highObj = summary?.optJSONObject("highest_peak")
-            val lowObj = summary?.optJSONObject("lowest_dip")
+            val avgModal = d?.optInt("average_modal_price", 0) ?: 0
+            val trendDir = d?.optString("trend_direction", "STABLE") ?: "STABLE"
+            val changePct = d?.optDouble("change_percent", 0.0) ?: 0.0
+            val peakObj = d?.optJSONObject("peak_point")
+            val dipObj = d?.optJSONObject("dip_point")
+            val rangeLabel = d?.optString("range_label", rangeCode) ?: rangeCode
 
-            trendSummaryText.visibility = View.VISIBLE
-            trendSummaryText.text = buildString {
-                append("📈 फसल: ${data.optString("commodity", comm)} (${rangeCode.uppercase()})\n")
+            tvTrendSummary.visibility = View.VISIBLE
+            tvTrendSummary.text = buildString {
+                append("📈 फसल: ${d?.optString("commodity", cleanComm)} ($rangeLabel)\n")
+                append("• सर्वर में उपलब्ध कुल तारीखें: ${pointsArr.length()} दिन\n")
                 append("• औसत मॉडल भाव: ₹$avgModal/क्विंटल\n")
-                if (highObj != null) {
-                    append("• उच्चतम स्तर (Peak): ₹${highObj.optInt("modal_price_quintal")} (${highObj.optString("date")})\n")
+                if (peakObj != null) {
+                    append("• उच्चतम स्तर (Peak): ₹${peakObj.optInt("modal_price")} (${peakObj.optString("date")})\n")
                 }
-                if (lowObj != null) {
-                    append("• न्यूनतम स्तर (Dip): ₹${lowObj.optInt("modal_price_quintal")} (${lowObj.optString("date")})\n")
+                if (dipObj != null) {
+                    append("• न्यूनतम स्तर (Dip): ₹${dipObj.optInt("modal_price")} (${dipObj.optString("date")})\n")
                 }
-                append("• रुझान (Trend): $direction ($changePct%)")
+                append("• रुझान (Trend): $trendDir ($changePct%)")
             }
 
-            val seriesArr = data.optJSONArray("graph_series") ?: JSONArray()
-            val modalPoints = mutableListOf<Float>()
-            val movingAvgPoints = mutableListOf<Float>()
-            val labels = mutableListOf<String>()
-
-            for (i in 0 until seriesArr.length()) {
-                val pt = seriesArr.optJSONObject(i) ?: continue
-                modalPoints.add(pt.optDouble("modal_price_quintal", 0.0).toFloat())
-                movingAvgPoints.add(pt.optDouble("moving_avg_quintal", 0.0).toFloat())
-                labels.add(pt.optString("date", ""))
-            }
-
-            trendCanvasView.visibility = View.VISIBLE
-            trendCanvasView.setSeriesData(modalPoints, movingAvgPoints, labels)
-        }
-    }
-
-    // ========================================================================
-    // SECTION 3 LOGIC: TWO-MANDI COMPARISON OVER RANGE
-    // ========================================================================
-    private fun runTwoMandiComparison() {
-        val ctx = context ?: return
-        val mA = inputCompareMandiA.text?.toString()?.trim() ?: ""
-        val mB = inputCompareMandiB.text?.toString()?.trim() ?: ""
-        val comm = inputCompareCommodity.text?.toString()?.trim() ?: ""
-
-        if (mA.isBlank() || mB.isBlank() || comm.isBlank()) {
-            Toast.makeText(ctx, "कृपया दोनों मंडियों के नाम और फसल का नाम भरें।", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val stateIdx = spinnerState.selectedItemPosition
-        val stateVal = if (stateIdx > 0 && stateIdx <= discoveredStates.size) discoveredStates[stateIdx - 1] else null
-        val rangeCode = rangeOptions.getOrNull(spinnerCompareRange.selectedItemPosition)?.first ?: "1y"
-
-        progressBar.visibility = View.VISIBLE
-        viewLifecycleOwner.lifecycleScope.launch {
-            val res = ApiClient.compareTwoMandis(
-                context = ctx,
-                state = stateVal,
-                mandiA = mA,
-                mandiB = mB,
-                commodity = comm,
-                range = rangeCode
+            val chartView = MultiPointLineChartView(ctx, pointsArr, null, cleanComm, null)
+            chartView.layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(230)
             )
-            if (!isAdded) return@launch
-            progressBar.visibility = View.GONE
+            trendChartContainer.addView(chartView)
 
-            val data = res.dataObject
-            if (!res.isSuccess || data == null) {
-                Toast.makeText(ctx, res.errorMessage ?: "तुलना करने में त्रुटि।", Toast.LENGTH_LONG).show()
-                return@launch
+            // Render every available date's record below the graph
+            trendDateTableContainer.addView(
+                TextView(ctx).apply {
+                    text = "📅 हर उपलब्ध तारीख का मंडी भाव विवरण (${pointsArr.length()} तारीखें):"
+                    setTextColor(Color.parseColor("#124116"))
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                    setPadding(0, dp(8), 0, dp(4))
+                }
+            )
+
+            for (i in pointsArr.length() - 1 downTo 0) {
+                val pt = pointsArr.optJSONObject(i) ?: continue
+                val dt = pt.optString("date", pt.optString("iso_date", ""))
+                val mod = pt.optInt("modal_price", 0)
+                val minP = pt.optInt("min_price", mod)
+                val maxP = pt.optInt("max_price", mod)
+                val mCount = pt.optInt("mandis_reporting", 1)
+
+                trendDateTableContainer.addView(
+                    TextView(ctx).apply {
+                        text = "• $dt  →  मॉडल: ₹$mod/q  (न्यूनतम: ₹$minP | अधिकतम: ₹$maxP) • $mCount मंडी"
+                        setTextColor(Color.parseColor("#333333"))
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                        setPadding(dp(4), dp(3), dp(4), dp(3))
+                    }
+                )
             }
-
-            val cmp = data.optJSONObject("comparison")
-            val verdictHi = cmp?.optString("verdict_hi", "") ?: ""
-            val diff = cmp?.optInt("average_difference_per_quintal", 0) ?: 0
-            val avgA = data.optJSONObject("mandi_a")?.optJSONObject("summary")?.optInt("average_modal_quintal", 0) ?: 0
-            val avgB = data.optJSONObject("mandi_b")?.optJSONObject("summary")?.optInt("average_modal_quintal", 0) ?: 0
-
-            compareVerdictText.visibility = View.VISIBLE
-            compareVerdictText.text = "⚖️ तुलना परिणाम ($comm — $rangeCode):\n" +
-                "• $mA औसत भाव: ₹$avgA/क्विंटल\n" +
-                "• $mB औसत भाव: ₹$avgB/क्विंटल\n" +
-                "• औसत अंतर: ₹$diff/क्विंटल\n\n" +
-                " निष्कर्ष: $verdictHi"
         }
     }
 
     // ========================================================================
-    // SECTION 4 LOGIC: LOCATION-BASED AI SELLING ADVISOR
+    // SECTION 3: TWO-MANDI DATE-BY-DATE COMPARISON
     // ========================================================================
-    private fun fetchAiLocationSellingAdvice() {
-        val ctx = context ?: return
-        val st = inputAdvisorState.text?.toString()?.trim()
-        val dist = inputAdvisorDistrict.text?.toString()?.trim()
-        val comm = inputAdvisorCommodity.text?.toString()?.trim() ?: ""
-        val qty = inputAdvisorQtyQuintals.text?.toString()?.toDoubleOrNull() ?: 10.0
 
-        if (comm.isBlank() || (st.isNullOrBlank() && dist.isNullOrBlank())) {
-            Toast.makeText(ctx, "कृपया अपना राज्य/ज़िला और फसल का नाम दर्ज करें।", Toast.LENGTH_SHORT).show()
+    private fun compareMandisDateByDate() {
+        val ctx = context ?: return
+        val mandiA = extractCleanNameIfJson(inputMandiA.text?.toString() ?: "", "mandi")
+        val mandiB = extractCleanNameIfJson(inputMandiB.text?.toString() ?: "", "mandi")
+        val comm = extractCleanNameIfJson(inputCompareCommodity.text?.toString() ?: "", "commodity")
+        val rangeCode = rangeOptions.getOrNull(spinnerCompareRange.selectedItemPosition)?.first ?: "90d"
+        val stateName = statesList.getOrNull(spinnerState.selectedItemPosition - 1)
+
+        if (mandiA.isBlank() || mandiB.isBlank() || comm.isBlank()) {
+            Toast.makeText(ctx, "कृपया पहली मंडी, दूसरी मंडी और फसल तीनों का नाम भरें।", Toast.LENGTH_SHORT).show()
             return
         }
 
         progressBar.visibility = View.VISIBLE
+        compareChartContainer.removeAllViews()
+        compareDateTableContainer.removeAllViews()
+
         viewLifecycleOwner.lifecycleScope.launch {
-            val res = ApiClient.getAiMandiSellingAdvice(
+            val res = ApiClient.request(
                 context = ctx,
-                state = st,
-                farmerDistrict = dist,
-                commodity = comm,
-                quantityQuintals = qty
+                endpointPath = "/mandi-prices/compare",
+                method = "GET",
+                queryParams = mapOf(
+                    "state" to stateName,
+                    "mandi_a" to mandiA,
+                    "mandi_b" to mandiB,
+                    "commodity" to comm,
+                    "range" to rangeCode
+                )
             )
             if (!isAdded) return@launch
             progressBar.visibility = View.GONE
 
-            val data = res.dataObject
-            if (!res.isSuccess || data == null) {
-                Toast.makeText(ctx, res.errorMessage ?: "AI सलाह प्राप्त करने में समस्या आई।", Toast.LENGTH_LONG).show()
+            val d = res.dataObject
+            if (!res.isSuccess || d == null) {
+                tvCompareResult.visibility = View.VISIBLE
+                tvCompareResult.text = res.errorMessage ?: "तुलना डेटा प्राप्त करने में समस्या आई।"
                 return@launch
             }
 
-            val recHi = data.optString("ai_recommendation_hi", data.optString("message_hi", ""))
-            val disclaimer = data.optString("disclaimer_hi", "")
-            val bestObj = data.optJSONObject("best_recommended_mandi")
+            val objA = d.optJSONObject("mandi_a")
+            val objB = d.optJSONObject("mandi_b")
+            val seriesA = objA?.optJSONArray("series") ?: JSONArray()
+            val seriesB = objB?.optJSONArray("series") ?: JSONArray()
+            val dateWiseArr = d.optJSONArray("date_wise_comparison") ?: JSONArray()
+            val recHi = d.optString("recommendation_hi", "")
 
-            aiAdvisorResultText.visibility = View.VISIBLE
-            aiAdvisorResultText.text = buildString {
-                append("🤖 AI मंडी विक्रय सलाह:\n$recHi\n")
-                if (bestObj != null) {
-                    append("\n🏆 सर्वोच्च शुद्ध लाभ मंडी: ${bestObj.optString("mandi")} (${bestObj.optString("district")})\n")
-                    append("• मंडी मॉडल भाव: ₹${bestObj.optInt("modal_price_quintal")}/क्विंटल\n")
-                    append("• अनुमानित भाड़ा: ₹${bestObj.optInt("estimated_transport_per_quintal")}/क्विंटल\n")
-                    append("• भाड़ा घटाकर शुद्ध भाव: ₹${bestObj.optInt("net_price_per_quintal")}/क्विंटल\n")
-                    append("• $qty क्विंटल पर कुल अनुमानित शुद्ध प्राप्ति: ₹${bestObj.optInt("estimated_total_net_rupees")}\n")
-                }
-                if (disclaimer.isNotBlank()) {
-                    append("\n⚠️ सूचना: $disclaimer")
+            tvCompareResult.visibility = View.VISIBLE
+            tvCompareResult.text = "⚖️ $recHi"
+
+            if (seriesA.length() > 0 || seriesB.length() > 0) {
+                val dualChart = MultiPointLineChartView(ctx, seriesA, seriesB, mandiA, mandiB)
+                dualChart.layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(230)
+                )
+                compareChartContainer.addView(dualChart)
+            }
+
+            if (dateWiseArr.length() > 0) {
+                compareDateTableContainer.addView(
+                    TextView(ctx).apply {
+                        text = "📅 तारीख-वार तुलना ($mandiA बनाम $mandiB — ${dateWiseArr.length()} तारीखें):"
+                        setTextColor(Color.parseColor("#0D47A1"))
+                        setTypeface(typeface, Typeface.BOLD)
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                        setPadding(0, dp(8), 0, dp(4))
+                    }
+                )
+                for (i in dateWiseArr.length() - 1 downTo 0) {
+                    val row = dateWiseArr.optJSONObject(i) ?: continue
+                    val dt = row.optString("date", "")
+                    val pA = if (row.isNull("mandi_a_modal_price")) "N/A" else "₹${row.optInt("mandi_a_modal_price")}"
+                    val pB = if (row.isNull("mandi_b_modal_price")) "N/A" else "₹${row.optInt("mandi_b_modal_price")}"
+                    val diff = if (row.isNull("difference_rupees")) "" else " (अंतर: ₹${row.optInt("difference_rupees")})"
+
+                    compareDateTableContainer.addView(
+                        TextView(ctx).apply {
+                            text = "• $dt : $mandiA = $pA  |  $mandiB = $pB$diff"
+                            setTextColor(Color.parseColor("#333333"))
+                            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                            setPadding(dp(4), dp(3), dp(4), dp(3))
+                        }
+                    )
                 }
             }
         }
     }
 
     // ========================================================================
-    // SECTION 5 LOGIC: AI SPELLING CORRECTION MATCHER
+    // SECTION 4 & 5: AI ADVISOR & SPELLING MATCHER
     // ========================================================================
+
+    private fun runAiSellingAdvisor() {
+        val ctx = context ?: return
+        val st = inputAdvisorState.text?.toString()?.trim() ?: ""
+        val dist = inputAdvisorDistrict.text?.toString()?.trim() ?: ""
+        val comm = extractCleanNameIfJson(inputAdvisorCommodity.text?.toString() ?: "", "commodity")
+        val qty = inputAdvisorQuantity.text?.toString()?.toDoubleOrNull() ?: 10.0
+
+        if (comm.isBlank()) {
+            Toast.makeText(ctx, "कृपया बेचने वाली फसल का नाम लिखें।", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        progressBar.visibility = View.VISIBLE
+        viewLifecycleOwner.lifecycleScope.launch {
+            val res = ApiClient.getAiMandiSellingAdvice(ctx, st, dist, comm, qty)
+            if (!isAdded) return@launch
+            progressBar.visibility = View.GONE
+
+            tvAdvisorOutput.visibility = View.VISIBLE
+            tvAdvisorOutput.text = res.dataObject?.optString("advice_hi")
+                ?: res.errorMessage
+                ?: "सलाह उपलब्ध नहीं हो सकी।"
+        }
+    }
+
     private fun runSpellingMatcher() {
         val ctx = context ?: return
-        val term = inputSpellingQuery.text?.toString()?.trim() ?: ""
+        val term = inputSpellingTerm.text?.toString()?.trim() ?: ""
         if (term.isBlank()) {
             Toast.makeText(ctx, "कृपया कोई शब्द लिखें।", Toast.LENGTH_SHORT).show()
             return
         }
 
-        val rawType = spinnerSpellingType.selectedItem?.toString() ?: "commodity"
-        val cleanType = rawType.substringBefore(" ").trim()
-        val stateIdx = spinnerState.selectedItemPosition
-        val distIdx = spinnerDistrict.selectedItemPosition
-        val stateVal = if (stateIdx > 0 && stateIdx <= discoveredStates.size) discoveredStates[stateIdx - 1] else null
-        val distVal = if (distIdx > 0 && distIdx <= discoveredDistricts.size) discoveredDistricts[distIdx - 1] else null
-
-        progressBar.visibility = View.VISIBLE
         viewLifecycleOwner.lifecycleScope.launch {
-            val res = ApiClient.matchMandiSpelling(ctx, term, cleanType, stateVal, distVal)
+            val res = ApiClient.matchMandiSpelling(ctx, term, "commodity")
             if (!isAdded) return@launch
-            progressBar.visibility = View.GONE
-
-            val data = res.dataObject
-            if (res.isSuccess && data != null) {
-                val matched = data.optString("matched", term)
-                val conf = (data.optDouble("confidence", 0.0) * 100).toInt()
-                spellingResultText.visibility = View.VISIBLE
-                spellingResultText.text = "✅ आपका शब्द: '$term' → सरकारी डेटा सेंटर मिलान: '$matched' (सटीकता: $conf%)"
-            } else {
-                spellingResultText.visibility = View.VISIBLE
-                spellingResultText.text = "मिलान परिणाम उपलब्ध नहीं हो सका।"
-            }
+            val matched = res.dataObject?.optString("matched_official_name", term) ?: term
+            tvSpellingResult.visibility = View.VISIBLE
+            tvSpellingResult.text = "✅ सरकारी पोर्टल नाम: '$matched'"
+            inputTrendCommodity.setText(matched)
+            inputCompareCommodity.setText(matched)
+            inputAdvisorCommodity.setText(matched)
         }
     }
 
-    // ========================================================================
-    // CUSTOM CANVAS LINE CHART FOR 1-2 YEAR PRICE TRENDS
-    // ========================================================================
-    private class MandiTrendCanvasView(context: Context) : View(context) {
+    private fun extractCleanNameIfJson(raw: String, key: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.startsWith("{") && trimmed.contains(":")) {
+            try {
+                val obj = JSONObject(trimmed)
+                return obj.optString(key, obj.optString("name", obj.optString("commodity", ""))).trim()
+            } catch (_: Exception) {}
+        }
+        return trimmed
+    }
 
-        private var modalSeries: List<Float> = emptyList()
-        private var maSeries: List<Float> = emptyList()
-        private var dateLabels: List<String> = emptyList()
+    // ========================================================================
+    // CUSTOM MULTI-POINT CANVAS CHART (PLOTS ALL DATES WITH REALISTIC SCALE)
+    // ========================================================================
 
-        private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#FAFDFA")
+    private inner class MultiPointLineChartView(
+        context: Context,
+        private val seriesA: JSONArray,
+        private val seriesB: JSONArray?,
+        private val labelA: String,
+        private val labelB: String?
+    ) : View(context) {
+
+        private val linePaintA = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#1B5E20")
+            strokeWidth = dp(3).toFloat()
+            style = Paint.Style.STROKE
+        }
+        private val linePaintB = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#0D47A1")
+            strokeWidth = dp(3).toFloat()
+            style = Paint.Style.STROKE
+        }
+        private val dotPaintA = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#1B5E20")
+            style = Paint.Style.FILL
+        }
+        private val dotPaintB = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#0D47A1")
             style = Paint.Style.FILL
         }
         private val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#D4E2D4")
-            strokeWidth = 2f
-            style = Paint.Style.STROKE
-        }
-        private val modalLinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#1B5E20")
-            strokeWidth = 6f
-            style = Paint.Style.STROKE
-        }
-        private val maLinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#BF360C")
-            strokeWidth = 4f
-            style = Paint.Style.STROKE
+            color = Color.parseColor("#E0E8E0")
+            strokeWidth = dp(1).toFloat()
         }
         private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#1A241A")
-            textSize = 26f
-        }
-
-        fun setSeriesData(modal: List<Float>, movingAvg: List<Float>, labels: List<String>) {
-            this.modalSeries = modal
-            this.maSeries = movingAvg
-            this.dateLabels = labels
-            invalidate()
+            color = Color.parseColor("#263238")
+            textSize = dp(11).toFloat()
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
 
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
-            val w = width.toFloat()
-            val h = height.toFloat()
-            canvas.drawRect(0f, 0f, w, h, bgPaint)
+            canvas.drawColor(Color.parseColor("#FAFAFA"))
 
-            if (modalSeries.isEmpty()) {
-                canvas.drawText("इस रेंज के लिए पर्याप्त ग्राफ बिंदु उपलब्ध नहीं हैं", 32f, h / 2f, textPaint)
-                return
+            val padLeft = dp(48).toFloat()
+            val padRight = dp(24).toFloat()
+            val padTop = dp(28).toFloat()
+            val padBottom = dp(36).toFloat()
+
+            val chartW = width - padLeft - padRight
+            val chartH = height - padTop - padBottom
+            if (chartW <= 0 || chartH <= 0) return
+
+            // Collect all date keys and price values
+            val dateSet = sortedSetOf<String>()
+            val mapA = mutableMapOf<String, Float>()
+            val mapB = mutableMapOf<String, Float>()
+            val allValues = mutableListOf<Float>()
+
+            for (i in 0 until seriesA.length()) {
+                val obj = seriesA.optJSONObject(i) ?: continue
+                val d = obj.optString("date", obj.optString("iso_date", ""))
+                val v = obj.optDouble("modal_price", 0.0).toFloat()
+                if (d.isNotBlank() && v > 0f) {
+                    dateSet.add(d)
+                    mapA[d] = v
+                    allValues.add(v)
+                }
             }
 
-            val minVal = modalSeries.minOrNull() ?: 0f
-            val maxVal = modalSeries.maxOrNull() ?: 100f
-            val span = (maxVal - minVal).coerceAtLeast(10f)
+            if (seriesB != null) {
+                for (i in 0 until seriesB.length()) {
+                    val obj = seriesB.optJSONObject(i) ?: continue
+                    val d = obj.optString("date", obj.optString("iso_date", ""))
+                    val v = obj.optDouble("modal_price", 0.0).toFloat()
+                    if (d.isNotBlank() && v > 0f) {
+                        dateSet.add(d)
+                        mapB[d] = v
+                        allValues.add(v)
+                    }
+                }
+            }
 
-            val padLeft = 40f
-            val padRight = 30f
-            val padTop = 36f
-            val padBottom = 42f
-            val plotW = (w - padLeft - padRight).coerceAtLeast(10f)
-            val plotH = (h - padTop - padBottom).coerceAtLeast(10f)
+            val dates = dateSet.toList()
+            if (dates.isEmpty() || allValues.isEmpty()) return
+
+            val rawMin = allValues.minOrNull() ?: 0f
+            val rawMax = allValues.maxOrNull() ?: 100f
+            val avg = allValues.average().toFloat()
+
+            // Prevent tiny differences (e.g. ₹43 on ₹7000) from looking like a vertical rocket
+            val minPaddingBand = maxOf((rawMax - rawMin) * 0.25f, avg * 0.06f, 100f)
+            val yMin = (rawMin - minPaddingBand).coerceAtLeast(0f)
+            val yMax = rawMax + minPaddingBand
 
             // Draw horizontal grid lines
-            canvas.drawLine(padLeft, padTop, w - padRight, padTop, gridPaint)
-            canvas.drawLine(padLeft, padTop + plotH / 2f, w - padRight, padTop + plotH / 2f, gridPaint)
-            canvas.drawLine(padLeft, padTop + plotH, w - padRight, padTop + plotH, gridPaint)
-
-            // Draw Modal Price Line
-            val modalPath = Path()
-            modalSeries.forEachIndexed { idx, value ->
-                val x = if (modalSeries.size == 1) padLeft + plotW / 2f
-                else padLeft + (idx.toFloat() / (modalSeries.size - 1)) * plotW
-                val y = padTop + plotH - ((value - minVal) / span) * plotH
-                if (idx == 0) modalPath.moveTo(x, y) else modalPath.lineTo(x, y)
+            for (g in 0..3) {
+                val ratio = g / 3f
+                val y = padTop + chartH * (1f - ratio)
+                canvas.drawLine(padLeft, y, width - padRight, y, gridPaint)
+                val priceLabel = "₹${Math.round(yMin + (yMax - yMin) * ratio)}"
+                canvas.drawText(priceLabel, dp(4).toFloat(), y + dp(4).toFloat(), textPaint)
             }
-            canvas.drawPath(modalPath, modalLinePaint)
 
-            // Draw Moving Average Line
-            if (maSeries.size == modalSeries.size && maSeries.size > 1) {
-                val maPath = Path()
-                maSeries.forEachIndexed { idx, value ->
-                    val x = padLeft + (idx.toFloat() / (maSeries.size - 1)) * plotW
-                    val y = padTop + plotH - ((value - minVal) / span) * plotH
-                    if (idx == 0) maPath.moveTo(x, y) else maPath.lineTo(x, y)
+            fun xForIndex(idx: Int): Float =
+                if (dates.size == 1) padLeft + chartW / 2f
+                else padLeft + (idx.toFloat() / (dates.size - 1).toFloat()) * chartW
+
+            fun yForPrice(price: Float): Float =
+                padTop + chartH * (1f - ((price - yMin) / (yMax - yMin).coerceAtLeast(1f)))
+
+            // Draw Series A path & points
+            val pathA = Path()
+            var startedA = false
+            for (i in dates.indices) {
+                val v = mapA[dates[i]] ?: continue
+                val x = xForIndex(i)
+                val y = yForPrice(v)
+                if (!startedA) {
+                    pathA.moveTo(x, y)
+                    startedA = true
+                } else {
+                    pathA.lineTo(x, y)
                 }
-                canvas.drawPath(maPath, maLinePaint)
+                canvas.drawCircle(x, y, dp(4).toFloat(), dotPaintA)
+            }
+            if (startedA) canvas.drawPath(pathA, linePaintA)
+
+            // Draw Series B path & points (if comparing 2 mandis)
+            if (seriesB != null) {
+                val pathB = Path()
+                var startedB = false
+                for (i in dates.indices) {
+                    val v = mapB[dates[i]] ?: continue
+                    val x = xForIndex(i)
+                    val y = yForPrice(v)
+                    if (!startedB) {
+                        pathB.moveTo(x, y)
+                        startedB = true
+                    } else {
+                        pathB.lineTo(x, y)
+                    }
+                    canvas.drawCircle(x, y, dp(4).toFloat(), dotPaintB)
+                }
+                if (startedB) canvas.drawPath(pathB, linePaintB)
             }
 
-            // Min/Max & Date Labels
-            canvas.drawText("Max: ₹${maxVal.toInt()}", padLeft, 26f, textPaint)
-            canvas.drawText("Min: ₹${minVal.toInt()}", w - 220f, 26f, textPaint)
-            if (dateLabels.isNotEmpty()) {
-                canvas.drawText(dateLabels.first(), padLeft, h - 10f, textPaint)
-                if (dateLabels.size > 1) {
-                    canvas.drawText(dateLabels.last(), w - 200f, h - 10f, textPaint)
-                }
+            // Draw X-axis start, middle, and end date labels
+            val firstDate = dates.first()
+            val lastDate = dates.last()
+            canvas.drawText(firstDate, padLeft, height - dp(8).toFloat(), textPaint)
+            if (dates.size > 2) {
+                val midDate = dates[dates.size / 2]
+                canvas.drawText(midDate, padLeft + chartW * 0.42f, height - dp(8).toFloat(), textPaint)
             }
+            if (dates.size > 1) {
+                canvas.drawText(lastDate, width - padRight - dp(72).toFloat(), height - dp(8).toFloat(), textPaint)
+            }
+
+            // Legend at top
+            val legend = if (labelB != null) "🟢 $labelA   🔵 $labelB (${dates.size} तारीखें)" else "🟢 $labelA (${dates.size} उपलब्ध तारीखें)"
+            canvas.drawText(legend, padLeft, dp(18).toFloat(), textPaint)
         }
     }
 
-    private fun createCard(title: String): LinearLayout {
+    private fun createSectionCard(): LinearLayout {
         val ctx = requireContext()
         return LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -1041,21 +1331,19 @@ class MandiPricesFragment : Fragment() {
             val lp = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            lp.topMargin = dp(12)
+            ).apply { topMargin = dp(12) }
             layoutParams = lp
-
-            addView(
-                TextView(ctx).apply {
-                    text = title
-                    setTextColor(Color.parseColor("#124116"))
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-                    setTypeface(typeface, Typeface.BOLD)
-                    setPadding(0, 0, 0, dp(6))
-                }
-            )
         }
     }
+
+    private fun createHeading(textStr: String): TextView =
+        TextView(requireContext()).apply {
+            text = textStr
+            setTextColor(Color.parseColor("#124116"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(0, 0, 0, dp(6))
+        }
 
     private fun createLabel(textStr: String): TextView =
         TextView(requireContext()).apply {
@@ -1063,12 +1351,14 @@ class MandiPricesFragment : Fragment() {
             setTextColor(Color.parseColor("#1A241A"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
             setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, dp(6), 0, dp(2))
+            setPadding(0, dp(8), 0, dp(3))
         }
 
-    private fun createInput(hintStr: String, isNumber: Boolean = false): EditText =
+    private fun createEditText(hintStr: String, isNumber: Boolean = false): EditText =
         EditText(requireContext()).apply {
             hint = hintStr
+            setTextColor(Color.parseColor("#1A241A"))
+            setHintTextColor(Color.parseColor("#757575"))
             inputType = if (isNumber) {
                 InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
             } else {
@@ -1085,8 +1375,9 @@ class MandiPricesFragment : Fragment() {
             isAllCaps = false
             setTextColor(Color.WHITE)
             setTypeface(typeface, Typeface.BOLD)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             background = roundedBg(bgHex, bgHex, dp(10))
-            minHeight = dp(46)
+            minHeight = dp(44)
             setOnClickListener { onClick() }
         }
 
